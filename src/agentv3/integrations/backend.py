@@ -31,6 +31,150 @@ class BackendError(RuntimeError):
         super().__init__(message)
         self.status = status
         self.details = details
+        # Parsed once at construction so tool code can program against it
+        # without re-walking the envelope.
+        self.payload = _unwrap_envelopes(details)
+        self.field_errors = _extract_field_errors(self.payload)
+        self.detail_message = _extract_detail(self.payload)
+        self.codes = _extract_codes(self.payload)
+
+    def __str__(self) -> str:
+        base = super().__str__()
+        if self.details is None:
+            return base
+        try:
+            body = _format_details(self.details)
+        except Exception:
+            body = ""
+        return f"{base}\n{body}" if body else base
+
+    def human_message(self) -> str:
+        """One-line human-readable summary (without HTTP location prefix)."""
+        if self.field_errors:
+            first_field, msgs = next(iter(self.field_errors.items()))
+            text = msgs[0] if msgs else ""
+            if first_field in {"non_field_errors", "detail", "errors"}:
+                return text
+            return f"{first_field}: {text}"
+        if self.detail_message:
+            return self.detail_message
+        if isinstance(self.payload, str):
+            return self.payload
+        return f"HTTP {self.status}" if self.status else "Backend error"
+
+
+def _unwrap_envelopes(data: Any, depth: int = 0) -> Any:
+    """Peel repeated ``{"status": <bool>, "data": …}`` envelopes.
+
+    Combined with `BaseViewSetMixin.finalize_response` + project-level
+    `custom_exception_handler`, errors arrive double-wrapped:
+        {"status": false, "data": {"status": false, "detail": "ValidationError",
+                                    "errors": {"plan_id": ["…"]}}}
+    This walks down until it sees actual content.
+    """
+    while (
+        isinstance(data, dict)
+        and "data" in data
+        and ("status" in data or "errors" in data or "detail" in data)
+        and depth < 4
+    ):
+        # Only descend if the inner `data` is itself a dict/list — otherwise
+        # we'd lose information (e.g. {"status": true, "data": "ok"}).
+        inner = data.get("data")
+        if not isinstance(inner, (dict, list)):
+            break
+        data = inner
+        depth += 1
+    return data
+
+
+def _extract_field_errors(payload: Any) -> dict[str, list[str]]:
+    """Return DRF-style field → [messages] regardless of envelope shape."""
+    if not isinstance(payload, dict):
+        return {}
+    # Preferred shape from custom_exception_handler: {"errors": {…}}
+    errors = payload.get("errors")
+    if isinstance(errors, dict):
+        return {k: _as_msg_list(v) for k, v in errors.items()}
+    if isinstance(errors, list):
+        return {"non_field_errors": [str(x) for x in errors]}
+    # Bare DRF ValidationError dict: {"plan_id": [...], "project": [...]}.
+    # Heuristic: every value is a list/str of messages and no envelope keys.
+    envelope_keys = {"status", "detail", "code", "incident_id"}
+    if all(
+        k not in envelope_keys and isinstance(v, (list, str))
+        for k, v in payload.items()
+    ) and payload:
+        return {k: _as_msg_list(v) for k, v in payload.items()}
+    return {}
+
+
+def _as_msg_list(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(x) for x in value]
+    return [str(value)]
+
+
+def _extract_codes(payload: Any) -> list[str]:
+    """Flatten the backend's `codes` map into a flat list for easy matching."""
+    if not isinstance(payload, dict):
+        return []
+    raw = payload.get("codes")
+    if raw is None and isinstance(payload.get("code"), str):
+        return [payload["code"]]
+    out: list[str] = []
+
+    def walk(node: Any) -> None:
+        if isinstance(node, str):
+            out.append(node)
+        elif isinstance(node, dict):
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    walk(raw)
+    return [c for c in out if c]
+
+
+def _extract_detail(payload: Any) -> str | None:
+    if not isinstance(payload, dict):
+        return None
+    detail = payload.get("detail")
+    if isinstance(detail, str) and detail not in {"ValidationError", "ParseError"}:
+        return detail
+    return None
+
+
+def _format_details(details: Any) -> str:
+    """Convert DRF error envelope into a compact human-readable string.
+
+    Output is line-oriented and field-prefixed so the LLM can match on
+    substrings (the system prompt encodes a few of these as decision triggers).
+    """
+    if details is None:
+        return ""
+    payload = _unwrap_envelopes(details)
+    lines: list[str] = []
+    detail = _extract_detail(payload)
+    if detail:
+        lines.append(detail)
+    for field, msgs in _extract_field_errors(payload).items():
+        joined = "; ".join(msgs)
+        if field in {"non_field_errors", "detail"}:
+            lines.append(joined)
+        else:
+            lines.append(f"- {field}: {joined}")
+    if isinstance(payload, dict):
+        code = payload.get("code")
+        if isinstance(code, str):
+            lines.append(f"(code: {code})")
+    if lines:
+        return "\n".join(lines)
+    if isinstance(payload, list):
+        return "\n".join(str(x) for x in payload)
+    return str(payload)
 
 
 def _unwrap_list(payload: Any) -> list[dict[str, Any]]:
@@ -206,12 +350,25 @@ class BackendClient:
         return _unwrap_list(d)
 
     async def create_release(
-        self, project_id: str | int, *, auth_claims: dict | None = None
+        self,
+        project_id: str | int,
+        *,
+        plan_id: int | None = None,
+        months: int | None = None,
+        auth_claims: dict | None = None,
     ) -> dict[str, Any]:
-        d = await self._request(
-            "POST", "/api/relase/", json={"project": project_id}, **_auth_kw(auth_claims)
-        )
+        body: dict[str, Any] = {"project": project_id}
+        if plan_id is not None:
+            body["plan_id"] = plan_id
+        if months is not None:
+            body["months"] = months
+        d = await self._request("POST", "/api/relase/", json=body, **_auth_kw(auth_claims))
         return _unwrap_item(d)
+
+    # ── plans (billing) ───────────────────────────────────────────────
+    async def list_plans(self, *, auth_claims: dict | None = None) -> list[dict[str, Any]]:
+        d = await self._request("GET", "/api/plans/", **_auth_kw(auth_claims))
+        return _unwrap_list(d)
 
     # ── files ──────────────────────────────────────────────────────────
     async def list_files(

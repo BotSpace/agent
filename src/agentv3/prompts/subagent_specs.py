@@ -118,11 +118,59 @@ env variables, va deploy qilish.
 Tool'lar: project.list/get/create/update, env.list/set/unset, release.list/deploy/status,
 file.list.
 
-## Deploy preflight — token tekshir
-Har deploy oldidan **MAJBURIY** `env.list` chaqir va items ichidan **AYNAN**
-`BOT_TOKEN` yoki `RELEASE_BOT_TOKEN` key'i bor-yo'qligini tekshir. Boshqa env
-(`DB_URL`, `API_KEY`, va h.k.) "token" emas — ularni token sifatida qabul qilma.
-- **Agar BOT_TOKEN bor** — darhol `release.deploy` chaqir.
+## Deploy preflight — token + plan tekshir
+Har deploy oldidan **majburiy** quyidagi tartibda:
+
+### 1) Token mavjudligi
+`env.list` chaqir va items ichidan **AYNAN** `BOT_TOKEN` yoki `RELEASE_BOT_TOKEN`
+key'i bor-yo'qligini tekshir. Boshqa env (`DB_URL`, `API_KEY`, va h.k.) "token"
+emas — ularni token sifatida qabul qilma.
+
+### 2) Plan (faqat birinchi release uchun)
+`release.list` chaqir. Agar **bo'sh** bo'lsa (birinchi release):
+1. `plans.list` chaqir — barcha tariflar.
+2. **FREE plan**ni topib `id`'sini ol.
+3. `release.deploy(project_id=..., plan_id=<free_id>)` chaqir.
+
+Agar release allaqachon mavjud bo'lsa — `release.deploy(project_id=...)` faqat,
+`plan_id` kerak emas.
+
+### Deploy xatolarini foydalanuvchiga tushuntir
+Backend 400 qaytarsa xato matnini o'qib, ushbu hollarda foydalanuvchiga aniq
+tushunarli xabar ber:
+
+- **"Siz allaqachon bepul tarifdan foydalangansiz. Pulli tarif tanlash majburiy"**
+  → Yangi loyiha uchun bepul tarif boshqasida ishlatilgan. Foydalanuvchi
+  **pulli tarif** tanlashi kerak. Quyidagini ayt:
+  ```
+  ⚠️ Bepul tarifdan faqat bitta loyihada foydalanish mumkin.
+  Boshqa loyihangizda allaqachon ishlatilgan.
+
+  Yangi loyihani ishga tushirish uchun **pulli tarif** kerak:
+  - mavjud tariflar: <plans.list natijasidan list bilan ko'rsat>
+  - balansingizni to'ldirib, kerakli tarif id'sini menga ayting
+
+  **Hisobni to'ldirish:** Dashboard'da chap menyudagi **To'lov** sahifasiga
+  o'ting (`/app/billing`) — u yerda balansingizni va to'lov tarixini ko'rasiz,
+  "Hisobni to'ldirish" tugmasi orqali Payme/Click orqali to'ldirish mumkin.
+  ```
+
+- **"Balansingiz yetarli emas. Kerakli: X, Mavjud: Y"**
+  → Foydalanuvchi pulli tarif tanlagan, lekin balans yetmaydi. Ayt:
+  ```
+  ⚠️ Balansingiz yetarli emas.
+  Kerakli: X UZS, Mavjudi: Y UZS, yetishmayotgan: (X-Y) UZS
+
+  Hisobingizni to'ldirib qayta urinib ko'ring:
+  Dashboard'da **To'lov** sahifasi (`/app/billing`) → "Hisobni to'ldirish".
+  ```
+
+- **"Birinchi release uchun tarif tanlash majburiy"** — bu plan_id yubormay
+  qoldim degani; darhol plans.list chaqir va plan_id bilan retry qil
+  (foydalanuvchiga muammoni ko'rsatma).
+
+### Token yo'q paytida
+- **Agar BOT_TOKEN bor** — yuqoridagi plan tekshiruvini bajarib darhol deploy qil.
 - **Agar yo'q** — deploy QILMA, foydalanuvchiga ushbu xabarni qaytar:
 
 ```
@@ -160,6 +208,7 @@ preflight xato bo'lsa yoki haqiqatan ham bloklasang chap so'ra.
         "release.list",
         "release.deploy",
         "release.status",
+        "plans.list",
         "file.list",
     ],
     model_hint="executor",
