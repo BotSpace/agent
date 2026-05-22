@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentv3
+  labels:
+    app: agentv3
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: agentv3
+  template:
+    metadata:
+      labels:
+        app: agentv3
+    spec:
+      containers:
+        - name: agentv3
+          image: ghcr.io/botmother/agentv3:latest
+          ports:
+            - containerPort: 8100
+          envFrom:
+            - secretRef:
+                name: agentv3-secrets
+            - configMapRef:
+                name: agentv3-config
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8100
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8100
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 200m
+              memory: 384Mi
+            limits:
+              cpu: 1500m
+              memory: 1024Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agentv3
+  labels:
+    app: agentv3
+spec:
+  selector:
+    app: agentv3
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8100
+  type: ClusterIP

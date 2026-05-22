@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: agentv3-postgres
+    environment:
+      POSTGRES_USER: agentv3
+      POSTGRES_PASSWORD: agentv3
+      POSTGRES_DB: agentv3
+    ports:
+      - "5433:5432"
+    volumes:
+      - agentv3_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentv3"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: agentv3-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - agentv3_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  agent:
+    build: .
+    container_name: agentv3-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      AGENT_DATABASE_URL: postgresql+psycopg://agentv3:agentv3@postgres:5432/agentv3
+      AGENT_REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8100:8100"
+
+volumes:
+  agentv3_pg:
+  agentv3_redis:
