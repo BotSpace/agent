@@ -10,11 +10,11 @@ dist/
 *.egg
 MANIFEST
 
-# Virtualenv
-.venv/
-venv/
-env/
-ENV/
+# Virtualenv (top-level only — don't shadow the agentv3.tools.env module)
+/.venv/
+/venv/
+/env/
+/ENV/
 
 # Distribution / packaging
 pip-log.txt
