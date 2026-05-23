@@ -46,7 +46,6 @@ configMaps:
     BACKEND_BASE_URL: "http://web:8000"
     MONGO_BASE_URL: "mongodb://mongodb:27017"
     ENGINE_BASE_URL: "http://engine-plugin:8090"
-    AGENT_DATABASE_URL: "postgresql+psycopg://agent:REDACTED@82.25.190.52:5432/agent"
     AGENT_RAG_ENABLED: "false"
     AGENT_RAG_TOP_K: "6"
     JWT_ALGORITHM: "HS256"
