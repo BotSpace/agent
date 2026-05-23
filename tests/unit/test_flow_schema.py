@@ -1,4 +1,4 @@
-from agentv3.flow.schema import FlowDocument, FlowEdge, FlowNode
+from agent.flow.schema import FlowDocument, FlowEdge, FlowNode
 
 
 def test_flow_document_upsert_replaces_existing_node():

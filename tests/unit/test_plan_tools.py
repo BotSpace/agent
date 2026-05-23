@@ -1,7 +1,7 @@
 import pytest
 
-from agentv3.tools.base import ToolContext
-from agentv3.tools.plan import build_plan_tools, has_incomplete_plan
+from agent.tools.base import ToolContext
+from agent.tools.plan import build_plan_tools, has_incomplete_plan
 
 
 @pytest.mark.asyncio

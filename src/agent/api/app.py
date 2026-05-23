@@ -47,7 +47,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/health")
     async def health() -> dict[str, str]:
-        return {"status": "ok", "service": "agentv3", "provider": s.llm_provider}
+        return {"status": "ok", "service": "agent", "provider": s.llm_provider}
 
     @app.get("/tools")
     async def list_tools() -> dict[str, object]:

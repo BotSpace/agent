@@ -1,8 +1,8 @@
 import pytest
 from pydantic import BaseModel
 
-from agentv3.tools.base import ToolContext, ToolResult, tool
-from agentv3.tools.registry import ToolRegistry
+from agent.tools.base import ToolContext, ToolResult, tool
+from agent.tools.registry import ToolRegistry
 
 
 class _In(BaseModel):

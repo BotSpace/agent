@@ -52,7 +52,7 @@ class Settings(BaseSettings):
 
     # ── persistence ─────────────────────────────────────────────────────
     database_url: str = Field(
-        default="postgresql+psycopg://agentv3:agentv3@localhost:5433/agentv3",
+        default="postgresql+psycopg://agent:agent@localhost:5433/agent",
         alias="AGENT_DATABASE_URL",
     )
     redis_url: str = Field(default="redis://localhost:6380/0", alias="AGENT_REDIS_URL")
@@ -89,7 +89,7 @@ class Settings(BaseSettings):
     otel_endpoint: str | None = Field(default=None, alias="OTEL_EXPORTER_OTLP_ENDPOINT")
     langsmith_api_key: str | None = Field(default=None, alias="LANGSMITH_API_KEY")
     langsmith_project: str = Field(
-        default="botmother-agentv3", alias="LANGSMITH_PROJECT"
+        default="botmother-agent", alias="LANGSMITH_PROJECT"
     )
 
     # ── derived ─────────────────────────────────────────────────────────

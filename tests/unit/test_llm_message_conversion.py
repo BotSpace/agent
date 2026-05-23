@@ -1,8 +1,8 @@
 """Provider mappings should not drop content parts."""
 
-from agentv3.llm.anthropic import AnthropicClient
-from agentv3.llm.base import Message, TextPart, ToolResultPart, ToolUsePart
-from agentv3.llm.openai import OpenAIClient
+from agent.llm.anthropic import AnthropicClient
+from agent.llm.base import Message, TextPart, ToolResultPart, ToolUsePart
+from agent.llm.openai import OpenAIClient
 
 
 def test_anthropic_converts_tool_messages_to_user_role():

@@ -84,7 +84,7 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
     seeded_prompt = f"[Sub-agent: {spec.name}]\n{spec.full_prompt}\n\nTask: {input.prompt}"
     sub_state: dict[str, Any] = {
         "messages": [
-            __import__("agentv3.llm.base", fromlist=["Message"]).Message.user_text(seeded_prompt)
+            __import__("agent.llm.base", fromlist=["Message"]).Message.user_text(seeded_prompt)
         ],
         "run_id": f"{ctx.run_id}-sub-{spec.name}",
         "project_id": ctx.project_id,

@@ -3,7 +3,7 @@ requires = ["hatchling>=1.25.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "agentv3"
+name = "agent"
 version = "0.1.0"
 description = "Botmother AI Agent — Claude Code level autonomous flow & platform builder"
 readme = "README.md"
@@ -64,10 +64,10 @@ otel = [
 ]
 
 [project.scripts]
-agentv3 = "agentv3.cli:app"
+agent = "agent.cli:app"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/agentv3"]
+packages = ["src/agent"]
 
 [tool.ruff]
 line-length = 110

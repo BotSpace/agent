@@ -1,5 +1,5 @@
-from agentv3.flow.schema import FlowDocument, FlowEdge, FlowNode
-from agentv3.flow.validator import validate
+from agent.flow.schema import FlowDocument, FlowEdge, FlowNode
+from agent.flow.validator import validate
 
 
 def test_valid_flow_passes():

@@ -18,7 +18,7 @@ def configure_otel(app=None) -> bool:  # noqa: ANN001
     except ImportError:
         return False
 
-    provider = TracerProvider(resource=Resource.create({"service.name": "agentv3"}))
+    provider = TracerProvider(resource=Resource.create({"service.name": "agent"}))
     provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=s.otel_endpoint)))
     trace.set_tracer_provider(provider)
 

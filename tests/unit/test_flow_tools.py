@@ -1,7 +1,7 @@
 import pytest
 
-from agentv3.tools.base import ToolContext
-from agentv3.tools.flow import build_flow_tools
+from agent.tools.base import ToolContext
+from agent.tools.flow import build_flow_tools
 
 
 def _tools():

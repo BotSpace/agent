@@ -1,9 +1,9 @@
 """CLI — local dev va smoke testing uchun.
 
 Asosiy buyruqlar:
-    agentv3 serve            — uvicorn dev server
-    agentv3 tools            — registry'dagi tool'larni ko'rsatish
-    agentv3 chat "prompt"    — bir martalik prompt (local LLM call, store yo'q)
+    agent serve            — uvicorn dev server
+    agent tools            — registry'dagi tool'larni ko'rsatish
+    agent chat "prompt"    — bir martalik prompt (local LLM call, store yo'q)
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ def serve(
     """Run FastAPI dev server."""
     s = get_settings()
     uvicorn.run(
-        "agentv3.main:app",
+        "agent.main:app",
         host=host or s.host,
         port=port or s.port,
         reload=reload,
