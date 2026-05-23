@@ -40,23 +40,32 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
     "CommandTriggerNode": NodeTypeSpec(
         type="CommandTriggerNode",
         category="trigger",
-        description="Telegram /command bilan boshlanadigan trigger",
+        description="Telegram /command trigger. global:true har yerda ishlaydi. withArgs:true bo'lsa argument qabul qiladi.",
         required_data=["command"],
-        optional_data=["state"],
+        optional_data=["global", "withArgs", "state"],
         is_trigger=True,
     ),
     "MessageTriggerNode": NodeTypeSpec(
         type="MessageTriggerNode",
         category="trigger",
-        description="Foydalanuvchi xabar yuborganida ishga tushadi (text/photo/contact/location/file)",
-        optional_data=["messageType", "state"],
+        description=(
+            "Xabar turini kutib trigger. type: text/photo/video/audio/document/contact/location/any. "
+            "filter: any/equals/contains/starts_with/regex. context.value: filter qiymati. "
+            "global:false bo'lsa faqat pauzada ishlaydi (foydalanuvchi javobini kutish)."
+        ),
+        required_data=["type"],
+        optional_data=["filter", "context", "global", "state"],
         is_trigger=True,
     ),
     "CallbackQueryTriggerNode": NodeTypeSpec(
         type="CallbackQueryTriggerNode",
         category="trigger",
-        description="Inline button callback bo'yicha trigger",
-        required_data=["callbackData"],
+        description=(
+            "Inline button callback trigger. filter: any/equals/contains/starts_with/regex. "
+            "context.value: mos keladigan callback_data. global:true bo'lsa har yerda ishlaydi."
+        ),
+        required_data=["filter"],
+        optional_data=["context", "global", "state"],
         is_trigger=True,
     ),
     "CallbackButtonTriggerNode": NodeTypeSpec(
@@ -68,8 +77,9 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
     "ReplyButtonTriggerNode": NodeTypeSpec(
         type="ReplyButtonTriggerNode",
         category="trigger",
-        description="Reply keyboard button tomonidan trigger",
-        required_data=["buttonText"],
+        description="Reply keyboard button bosilganda trigger. selectedButton: {id, text, type:'reply'}",
+        required_data=["selectedButton"],
+        optional_data=["catchNoButton"],
         is_trigger=True,
     ),
     "CronTriggerNode": NodeTypeSpec(
@@ -90,9 +100,15 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
     "SendTextMessageNode": NodeTypeSpec(
         type="SendTextMessageNode",
         category="send",
-        description="Text xabar yuborish, keyboard bilan",
+        description=(
+            "Text xabar yuborish. keyboard.active: 'inline'/'reply'/'none'. "
+            "keyboard.inline: [[{text,type:'callback'/'url',value}]]. "
+            "keyboard.reply: [[{id:'btn-xxx',text,type:'reply'/'request_contact'/'request_location'}]]. "
+            "recipients: {sendToSender:bool, additionalIds:[chatId]}. "
+            "{{state.key}} — saqlangan qiymat, {{first_name}} — user ismi."
+        ),
         required_data=["messageText"],
-        optional_data=["parseMode", "keyboard", "disableWebPagePreview", "replyToMessageId"],
+        optional_data=["parseMode", "keyboard", "recipients", "disableWebPagePreview"],
     ),
     "SendPhotoNode": NodeTypeSpec(
         type="SendPhotoNode",
@@ -193,9 +209,12 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
     "EditMessageNode": NodeTypeSpec(
         type="EditMessageNode",
         category="edit",
-        description="Avvalgi xabarni edit qilish",
-        required_data=["messageText"],
-        optional_data=["targetMessageNodeId"],
+        description=(
+            "Avvalgi xabarni edit qilish. messageIdSource: 'this_message' (callback xabarini edit) "
+            "yoki node ID. newText: yangi matn. keyboard: yangilangan tugmalar."
+        ),
+        required_data=["newText"],
+        optional_data=["messageIdSource", "keyboard", "parseMode", "editType"],
     ),
     "DeleteMessageNode": NodeTypeSpec(
         type="DeleteMessageNode",
@@ -226,9 +245,13 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
     "IfConditionNode": NodeTypeSpec(
         type="IfConditionNode",
         category="flow_control",
-        description="Multi-branch shart. Har branch handle'i 'branch-0', 'branch-1', ...",
-        required_data=["branches"],
-        source_handles=["branch-0", "branch-1", "else"],
+        description=(
+            "Shart tekshirish. Oddiy: conditions[] + operator(AND/OR) → sourceHandle 'true'/'false'. "
+            "Multi-branch: branches[{type,conditions,operator}] → sourceHandle 'branch_0','branch_1',..."
+        ),
+        required_data=["conditions"],
+        optional_data=["branches", "operator"],
+        source_handles=["true", "false"],
     ),
     "ElseIfNode": NodeTypeSpec(
         type="ElseIfNode",
@@ -261,9 +284,9 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
     "ForLoopNode": NodeTypeSpec(
         type="ForLoopNode",
         category="flow_control",
-        description="Massiv ustidan iteration. 'item' va 'index' context variables.",
+        description="Massiv ustidan iteration. 'loop_item','loop_current_index' context vars.",
         required_data=["array"],
-        source_handles=["iteration", "done"],
+        source_handles=["loop-body", "no-items"],
     ),
     "ForLoopContinueNode": NodeTypeSpec(
         type="ForLoopContinueNode",
@@ -280,21 +303,34 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
     "StateNode": NodeTypeSpec(
         type="StateNode",
         category="data",
-        description="Trigger ma'lumotini state'ga saqlash (text, callback, file_id, ...)",
+        description=(
+            "Ma'lumotni state'ga saqlash. type: text/caption/callback/contact_phone_number/"
+            "photo_file_id/video_file_id/audio_file_id/document_file_id/file_id/user_id/"
+            "first_name/last_name/username/language_code/location_latitude/location_longitude/"
+            "Custom. Custom bo'lsa customType maydonida expression yoziladi (masalan '{{inserted_id}}')."
+        ),
         required_data=["key", "type"],
+        optional_data=["customType"],
     ),
     # ── Collection (CMS) ───────────────────────────────────────────────
     "CollectionNode": NodeTypeSpec(
         type="CollectionNode",
         category="data",
-        description="MongoDB collection ga document qo'shish",
+        description=(
+            "MongoDB collection'ga document qo'shish. fieldMappings: {db_field: state_key}. "
+            "Saqlangandan keyin context'da '{{inserted_id}}' mavjud bo'ladi."
+        ),
         required_data=["collection_name", "fieldMappings"],
     ),
     "LoadCollectionItemNode": NodeTypeSpec(
         type="LoadCollectionItemNode",
         category="data",
-        description="Bitta document yuklash (filter bo'yicha)",
-        required_data=["collection_name", "filter"],
+        description=(
+            "Bitta document yuklash. collection.name, contextKey, "
+            "filters: [{field, operator:'equals', valueSource:'state'/'static', stateKey, value}]. "
+            "Topilsa context'da collection_{contextKey}_{field} mavjud."
+        ),
+        required_data=["collection", "contextKey", "filters"],
         source_handles=["found", "not_found"],
     ),
     "LoadCollectionListNode": NodeTypeSpec(
@@ -341,7 +377,7 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         category="integration",
         description="Foydalanuvchi kanal/guruh a'zosi ekanligini tekshirish",
         required_data=["chatId"],
-        source_handles=["member", "not_member"],
+        source_handles=["is-member", "not-member"],
     ),
     "DownloadNode": NodeTypeSpec(
         type="DownloadNode",

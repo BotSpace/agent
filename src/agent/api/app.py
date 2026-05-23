@@ -11,6 +11,9 @@ from ..config import Settings, get_settings
 from ..logging import configure_logging
 from ..runtime.store import get_run_store
 from ..tools import build_default_registry
+from fastapi import Depends
+
+from .deps import CurrentUser, get_current_user, get_store
 from .routes.runs import router as runs_router
 
 
@@ -63,4 +66,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"count": len(specs), "tools": specs}
 
     app.include_router(runs_router)
+
+    @app.get("/usage")
+    async def usage(
+        user: CurrentUser = Depends(get_current_user),
+        store=Depends(get_store),
+    ) -> dict:
+        used = await store.count_user_runs_today(user.user_id)
+        return {
+            "user_id": user.user_id,
+            "used_today": used,
+            "limit": user.prompt_limit,
+            "remaining": max(0, user.prompt_limit - used),
+        }
+
     return app

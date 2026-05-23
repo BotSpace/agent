@@ -677,6 +677,31 @@ class BackendClient:
         )
         return d if isinstance(d, list) else _unwrap_list(d)
 
+    # ── subscription / token usage ─────────────────────────────────────
+    async def report_token_usage(
+        self,
+        user_id: str | int,
+        input_tokens: int,
+        output_tokens: int,
+        project_id: str | int | None = None,
+    ) -> None:
+        """Report AI token usage to backend for subscription tracking."""
+        await self._request(
+            "POST",
+            "/api/subscription/usage/report/",
+            json={
+                "user_id": int(user_id),
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "project_id": str(project_id) if project_id else None,
+            },
+        )
+
+    async def get_subscription_usage(self, *, auth_claims: dict | None = None) -> dict[str, Any]:
+        """Foydalanuvchining joriy oylik token va prompt usage ma'lumotini olish."""
+        d = await self._request("GET", "/api/subscription/usage/", **_auth_kw(auth_claims))
+        return d.get("data", d) if isinstance(d, dict) else {}
+
 
 @lru_cache(maxsize=2)
 def get_backend_client(_settings_id: int = 0) -> BackendClient:

@@ -74,7 +74,11 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
             "assistant_message",
             {"text": result.message.text, "usage": result.usage.__dict__},
         )
-        return {"messages": [result.message]}
+        return {
+            "messages": [result.message],
+            "total_input_tokens": state.get("total_input_tokens", 0) + (result.usage.input_tokens or 0),
+            "total_output_tokens": state.get("total_output_tokens", 0) + (result.usage.output_tokens or 0),
+        }
 
     async def tool_exec(state: AgentState) -> dict[str, Any]:
         history = state.get("messages") or []

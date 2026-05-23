@@ -56,6 +56,35 @@ async def create_run(
     user: CurrentUser = Depends(get_current_user),
     store: RunStore = Depends(get_store),
 ) -> RunCreateResponse:
+    used = await store.count_user_runs_today(user.user_id)
+    if used >= user.prompt_limit:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "message": f"Kunlik limit tugadi ({user.prompt_limit} ta prompt). Ertaga qayta urinib ko'ring yoki tarifni yangilang.",
+                "used": used,
+                "limit": user.prompt_limit,
+            },
+        )
+
+    try:
+        from ...integrations.backend import get_backend_client
+        backend = get_backend_client()
+        usage = await backend.get_subscription_usage(auth_claims=user.claims)
+        if usage.get("tokens_remaining", 1) <= 0:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "message": "Oylik token limiti tugadi. Tarifni yangilang.",
+                    "tokens_used": usage.get("tokens_used_output", 0),
+                    "tokens_limit": usage.get("tokens_limit", 0),
+                },
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # Backend mavjud bo'lmasa, runni to'xtatmaymiz
+
     rec = await store.create(
         prompt=body.prompt,
         project_id=project_id,

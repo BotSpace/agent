@@ -76,10 +76,14 @@ class Settings(BaseSettings):
     session_secret: str = Field(
         default="change-me-to-a-32-char-secret-string", alias="SESSION_SECRET"
     )
-    jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
+    jwt_algorithm: str = Field(default="RS256", alias="JWT_ALGORITHM")
+    jwt_public_key_path: str = Field(
+        default="keys/public.pem", alias="JWT_PUBLIC_KEY_PATH"
+    )
     internal_api_token: str | None = Field(
         default=None, alias="AGENT_INTERNAL_API_TOKEN"
     )
+    default_prompt_limit: int = Field(default=5, alias="AGENT_DEFAULT_PROMPT_LIMIT")
 
     # ── memory / rag ────────────────────────────────────────────────────
     rag_enabled: bool = Field(default=True, alias="AGENT_RAG_ENABLED")

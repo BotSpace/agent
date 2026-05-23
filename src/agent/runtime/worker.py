@@ -13,7 +13,10 @@ Lifecycle:
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from langgraph.types import Command
 
@@ -141,6 +144,23 @@ async def run_agent(
         # SSE stream sees only `close` and the UI never marks the run complete.
         await emit("run_completed", {"final_response": final_text})
         await store.complete(request_id, final_text)
+
+        # Record token usage
+        total_in = result.get("total_input_tokens", 0)
+        total_out = result.get("total_output_tokens", 0)
+        await store.record_tokens(request_id, total_in, total_out)
+
+        try:
+            from ..integrations.backend import get_backend_client
+            backend = get_backend_client()
+            await backend.report_token_usage(
+                user_id=rec.user_id or "",
+                input_tokens=total_in,
+                output_tokens=total_out,
+                project_id=rec.project_id,
+            )
+        except Exception:
+            logger.warning("Failed to report token usage to backend", exc_info=True)
     except asyncio.CancelledError:
         # User-initiated cancellation via /cancel endpoint.
         print(f"[agent_worker] RUN CANCELLED ({request_id})", flush=True)

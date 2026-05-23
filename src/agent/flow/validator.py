@@ -160,10 +160,10 @@ def validate(flow: FlowDocument) -> ValidationResult:
 
     # ── 5. Required source handles for branching nodes ─────────────────
     branching_handles = {
-        "IfConditionNode": {"else"},
+        "IfConditionNode": {"true", "false"},
         "LoadCollectionItemNode": {"found", "not_found"},
-        "CheckMembershipNode": {"member", "not_member"},
-        "ForLoopNode": {"iteration", "done"},
+        "CheckMembershipNode": {"is-member", "not-member"},
+        "ForLoopNode": {"loop-body", "no-items"},
     }
     edges_by_source: dict[str, set[str]] = {}
     for e in flow.edges:

@@ -190,9 +190,13 @@ class FlowConnectInput(BaseModel):
 @tool(
     name="flow.connect",
     description=(
-        "Connect two nodes with an edge. For branching nodes (IfConditionNode, "
-        "LoadCollectionItemNode, CheckMembershipNode, ForLoopNode), set `source_handle` "
-        "to the appropriate branch (e.g. 'found', 'not_found', 'true', 'false', 'iteration')."
+        "Connect two nodes with an edge. Default source_handle='source-handler'. "
+        "For branching nodes use exact engine handles: "
+        "IfConditionNode → 'true'/'false' (or 'branch_0','branch_1' for multi-branch), "
+        "LoadCollectionItemNode → 'found'/'not_found', "
+        "CheckMembershipNode → 'is-member'/'not-member', "
+        "ForLoopNode → 'loop-body'/'no-items', "
+        "RandomNode → 'option_0'/'option_1'/..."
     ),
     input_model=FlowConnectInput,
 )

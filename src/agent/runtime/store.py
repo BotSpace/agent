@@ -66,6 +66,8 @@ CREATE TABLE IF NOT EXISTS agent_runs (
     pending_approval JSONB,
     pending_clarification JSONB,
     current_plan    JSONB,
+    input_tokens    BIGINT DEFAULT 0,
+    output_tokens   BIGINT DEFAULT 0,
     created_at      TIMESTAMPTZ DEFAULT NOW(),
     updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
@@ -124,6 +126,16 @@ class RunStore:
         # request_id → running asyncio.Task — used by /cancel endpoint.
         self._tasks: dict[str, asyncio.Task] = {}
 
+    async def _ensure_token_columns(self, conn: psycopg.AsyncConnection) -> None:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS input_tokens BIGINT DEFAULT 0;"
+            )
+            await cur.execute(
+                "ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS output_tokens BIGINT DEFAULT 0;"
+            )
+        await conn.commit()
+
     async def bootstrap(self) -> None:
         if self._bootstrapped:
             return
@@ -131,6 +143,7 @@ class RunStore:
             async with conn.cursor() as cur:
                 await cur.execute(_SCHEMA)
             await conn.commit()
+            await self._ensure_token_columns(conn)
         self._bootstrapped = True
 
     # ── CRUD ───────────────────────────────────────────────────────────
@@ -354,6 +367,32 @@ class RunStore:
             return False
         task.cancel()
         return True
+
+    # ── token tracking ──────────────────────────────────────────────────
+    async def record_tokens(self, request_id: str, input_tokens: int, output_tokens: int) -> None:
+        """Update token usage for a completed run."""
+        async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "UPDATE agent_runs SET input_tokens = %s, output_tokens = %s WHERE request_id = %s",
+                    (input_tokens, output_tokens, request_id),
+                )
+            await conn.commit()
+
+    # ── usage / prompt counting ─────────────────────────────────────────
+    async def count_user_runs_today(self, user_id: str) -> int:
+        await self.bootstrap()
+        async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """SELECT COUNT(*) FROM agent_runs
+                       WHERE user_id = %s
+                         AND created_at >= CURRENT_DATE
+                         AND status != 'failed'""",
+                    (user_id,),
+                )
+                row = await cur.fetchone()
+                return int(row[0]) if row else 0
 
     # ── messages (history) ─────────────────────────────────────────────
     async def list_messages(

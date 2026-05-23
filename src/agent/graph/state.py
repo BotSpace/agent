@@ -36,3 +36,7 @@ class AgentState(TypedDict, total=False):
 
     # ── budget snapshot (mirrors runtime.Budget) ────────────────────────
     budget: dict[str, Any] | None
+
+    # ── token accounting ────────────────────────────────────────────────
+    total_input_tokens: int
+    total_output_tokens: int
