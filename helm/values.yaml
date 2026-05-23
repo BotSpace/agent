@@ -1,0 +1,115 @@
+replicaCount: 1
+
+image:
+  repository: registry.iprogrammer.uz/botspace/agent
+  tag: "1.0.1-prod"
+  pullPolicy: Always
+
+imagePullSecrets:
+  - name: iprogrammer-registry
+
+fullnameOverride: "agent"
+
+serviceAccount:
+  create: false
+  name: ""
+
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+service:
+  enabled: true
+  type: ClusterIP
+  port: 8100
+  targetPort: 8100
+
+# ConfigMap managed by this chart — will be named agent-config
+configMaps:
+  config:
+    AGENT_HOST: "0.0.0.0"
+    AGENT_PORT: "8100"
+    AGENT_LOG_LEVEL: "INFO"
+    AGENT_CORS_ORIGINS: "https://botspace.uz,https://botmother.uz,https://beta.botmother.uz"
+    AGENT_LLM_PROVIDER: "bedrock"
+    AGENT_MODEL_PLANNER: "claude-opus-4-7"
+    AGENT_MODEL_EXECUTOR: "claude-sonnet-4-6"
+    AGENT_MODEL_CRITIC: "claude-haiku-4-5"
+    AGENT_MODEL_EMBEDDING: "text-embedding-3-small"
+    AWS_REGION: "us-east-1"
+    AGENT_MAX_INPUT_TOKENS: "200000"
+    AGENT_MAX_OUTPUT_TOKENS: "16384"
+    AGENT_MAX_TOOL_CALLS: "80"
+    AGENT_MAX_WALL_SECONDS: "900"
+    BACKEND_BASE_URL: "http://web:8000"
+    MONGO_BASE_URL: "mongodb://mongodb:27017"
+    ENGINE_BASE_URL: "http://engine-plugin:8090"
+    AGENT_RAG_ENABLED: "false"
+    AGENT_RAG_TOP_K: "6"
+    JWT_ALGORITHM: "HS256"
+
+# References to EXISTING secrets NOT managed by this chart
+envFrom:
+  - secretRef:
+      name: agent-runtime-secret
+  - secretRef:
+      name: agent-secret
+      optional: true
+
+probes:
+  startup:
+    enabled: true
+    type: httpGet
+    httpGet:
+      path: /health
+      port: 8100
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 24
+  readiness:
+    enabled: true
+    type: httpGet
+    httpGet:
+      path: /health
+      port: 8100
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  liveness:
+    enabled: true
+    type: httpGet
+    httpGet:
+      path: /health
+      port: 8100
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 384Mi
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: name
+              operator: NotIn
+              values:
+                - base
+
+prometheus:
+  scrape: false
+  port: 8100
+
+terminationGracePeriodSeconds: 30
