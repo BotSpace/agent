@@ -379,21 +379,6 @@ class RunStore:
                 )
             await conn.commit()
 
-    # ── usage / prompt counting ─────────────────────────────────────────
-    async def count_user_runs_today(self, user_id: str) -> int:
-        await self.bootstrap()
-        async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """SELECT COUNT(*) FROM agent_runs
-                       WHERE user_id = %s
-                         AND created_at >= CURRENT_DATE
-                         AND status != 'failed'""",
-                    (user_id,),
-                )
-                row = await cur.fetchone()
-                return int(row[0]) if row else 0
-
     # ── messages (history) ─────────────────────────────────────────────
     async def list_messages(
         self, *, project_id: str | None, user_id: str | None, limit: int, offset: int

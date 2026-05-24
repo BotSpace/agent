@@ -83,7 +83,6 @@ class Settings(BaseSettings):
     internal_api_token: str | None = Field(
         default=None, alias="AGENT_INTERNAL_API_TOKEN"
     )
-    default_prompt_limit: int = Field(default=5, alias="AGENT_DEFAULT_PROMPT_LIMIT")
 
     # ── memory / rag ────────────────────────────────────────────────────
     rag_enabled: bool = Field(default=True, alias="AGENT_RAG_ENABLED")

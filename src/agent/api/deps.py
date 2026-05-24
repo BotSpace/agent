@@ -37,7 +37,6 @@ def _load_public_key(path: str) -> str:
 class CurrentUser:
     user_id: str
     claims: dict
-    prompt_limit: int = 5
 
 
 async def get_current_user(
@@ -47,7 +46,7 @@ async def get_current_user(
 ) -> CurrentUser:
     internal = request.headers.get("X-Internal-Token")
     if internal and settings.internal_api_token and internal == settings.internal_api_token:
-        return CurrentUser(user_id="__internal__", claims={"role": "internal"}, prompt_limit=999_999)
+        return CurrentUser(user_id="__internal__", claims={"role": "internal"})
 
     if creds is None or not creds.credentials:
         raise HTTPException(status_code=401, detail="Missing bearer token")
@@ -80,18 +79,11 @@ async def get_current_user(
     if not user_id:
         raise HTTPException(status_code=401, detail="Token missing user id")
 
-    prompt_limit = (
-        user_block.get("prompt_limit")
-        or claims.get("prompt_limit")
-        or settings.default_prompt_limit
-    )
-
     access_token = claims.get("access") or creds.credentials
     refresh_token = claims.get("refresh")
     return CurrentUser(
         user_id=user_id,
         claims={**claims, "access_token": access_token, "refresh_token": refresh_token},
-        prompt_limit=int(prompt_limit),
     )
 
 

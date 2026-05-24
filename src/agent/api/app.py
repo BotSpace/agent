@@ -13,7 +13,7 @@ from ..runtime.store import get_run_store
 from ..tools import build_default_registry
 from fastapi import Depends
 
-from .deps import CurrentUser, get_current_user, get_store
+from .deps import CurrentUser, get_current_user
 from .routes.runs import router as runs_router
 
 
@@ -70,14 +70,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/usage")
     async def usage(
         user: CurrentUser = Depends(get_current_user),
-        store=Depends(get_store),
     ) -> dict:
-        used = await store.count_user_runs_today(user.user_id)
+        from ..integrations.backend import get_backend_client
+
+        backend = get_backend_client()
+        me = await backend.get_me(auth_claims=user.claims)
+        usage = me.get("ai_token_usage") or {}
         return {
             "user_id": user.user_id,
-            "used_today": used,
-            "limit": user.prompt_limit,
-            "remaining": max(0, user.prompt_limit - used),
+            "limit": usage.get("limit", 0),
+            "used": usage.get("used", 0),
+            "remaining": usage.get("remaining", 0),
+            "input_used": usage.get("input_used", 0),
+            "output_used": usage.get("output_used", 0),
+            "plan": usage.get("plan"),
+            "status": usage.get("status"),
+            "token_reset_at": usage.get("token_reset_at"),
         }
 
     return app
