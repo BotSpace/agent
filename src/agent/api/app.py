@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from ..config import Settings, get_settings
@@ -69,17 +69,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/usage")
     async def usage(
-        project_id: str = Query(...),
         user: CurrentUser = Depends(get_current_user),
     ) -> dict:
         from ..integrations.backend import get_backend_client
 
         backend = get_backend_client()
-        plan_usage = await backend.project_plan_usage(project_id, auth_claims=user.claims)
+        plan_usage = await backend.subscription_usage(auth_claims=user.claims)
         usage = plan_usage.get("ai_token_usage") or {}
         return {
             "user_id": user.user_id,
-            "project_id": project_id,
             "limit": usage.get("limit", 0),
             "used": usage.get("used", 0),
             "remaining": usage.get("remaining", 0),

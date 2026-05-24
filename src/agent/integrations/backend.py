@@ -6,7 +6,7 @@ Backend endpoint pattern (dashboard `services.ts`'dan olingan):
 - /api/enviroment/                GET (?project=), POST  /  /:id/  DELETE
 - /api/file/                      GET (?project=)  /  /:id/  DELETE
 - /api/collection/                GET (?project=)  /  /:id/  GET (metadata; data is in MongoDB)
-- /api/project/:id/plan/          GET (current plan), /upgrade/ POST, /usage/ GET
+- /api/subscription/usage/        GET (current user token usage)
 - /api/chat/users/:project        GET
 - /api/chat/messages/:project/:chat  GET
 - /api/message/                   GET, POST, DELETE (broadcast)
@@ -432,17 +432,9 @@ class BackendClient:
     async def delete_message(self, message_id: str | int, *, auth_claims: dict | None = None) -> None:
         await self._request("DELETE", f"/api/message/{message_id}/", **_auth_kw(auth_claims))
 
-    # ── plan ───────────────────────────────────────────────────────────
-    async def project_plan(
-        self, project_id: str | int, *, auth_claims: dict | None = None
-    ) -> dict[str, Any]:
-        d = await self._request("GET", f"/api/project/{project_id}/plan/", **_auth_kw(auth_claims))
-        return _unwrap_item(d)
-
-    async def project_plan_usage(
-        self, project_id: str | int, *, auth_claims: dict | None = None
-    ) -> dict[str, Any]:
-        d = await self._request("GET", f"/api/project/{project_id}/plan/usage/", **_auth_kw(auth_claims))
+    # ── subscription usage ────────────────────────────────────────────
+    async def subscription_usage(self, *, auth_claims: dict | None = None) -> dict[str, Any]:
+        d = await self._request("GET", "/api/subscription/usage/", **_auth_kw(auth_claims))
         return _unwrap_item(d)
 
     # ── cms ──────────────────────────────────────────────────────────

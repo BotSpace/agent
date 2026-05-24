@@ -59,7 +59,7 @@ async def create_run(
     try:
         from ...integrations.backend import get_backend_client
         backend = get_backend_client()
-        plan_usage = await backend.project_plan_usage(project_id, auth_claims=user.claims)
+        plan_usage = await backend.subscription_usage(auth_claims=user.claims)
         usage = plan_usage.get("ai_token_usage") or {}
         remaining = usage.get("remaining")
         if remaining is None:
