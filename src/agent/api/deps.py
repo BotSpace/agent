@@ -74,7 +74,9 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail=f"Invalid token: {exc}") from exc
 
     user_block = claims.get("user") or {}
-    user_id = str(user_block.get("id") or claims.get("sub") or "")
+    user_id = str(
+        user_block.get("id") or claims.get("sub") or claims.get("user_id") or ""
+    )
     if not user_id:
         raise HTTPException(status_code=401, detail="Token missing user id")
 
