@@ -59,8 +59,8 @@ async def create_run(
     try:
         from ...integrations.backend import get_backend_client
         backend = get_backend_client()
-        me = await backend.get_me(auth_claims=user.claims)
-        usage = me.get("ai_token_usage") or {}
+        plan_usage = await backend.project_plan_usage(project_id, auth_claims=user.claims)
+        usage = plan_usage.get("ai_token_usage") or {}
         remaining = usage.get("remaining")
         if remaining is None:
             raise HTTPException(

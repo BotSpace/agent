@@ -439,6 +439,12 @@ class BackendClient:
         d = await self._request("GET", f"/api/project/{project_id}/plan/", **_auth_kw(auth_claims))
         return _unwrap_item(d)
 
+    async def project_plan_usage(
+        self, project_id: str | int, *, auth_claims: dict | None = None
+    ) -> dict[str, Any]:
+        d = await self._request("GET", f"/api/project/{project_id}/plan/usage/", **_auth_kw(auth_claims))
+        return _unwrap_item(d)
+
     # ── cms ──────────────────────────────────────────────────────────
     def _cms(self, path: str) -> str:
         return f"/api/cms{path}"
@@ -676,12 +682,6 @@ class BackendClient:
             **_auth_kw(auth_claims),
         )
         return d if isinstance(d, list) else _unwrap_list(d)
-
-    # ── user / subscription token usage ─────────────────────────────────
-    async def get_me(self, *, auth_claims: dict | None = None) -> dict[str, Any]:
-        """Return authenticated backend user profile, including ai_token_usage."""
-        d = await self._request("GET", "/api/v1/auth/me/", **_auth_kw(auth_claims))
-        return _unwrap_item(d)
 
     async def report_token_usage(
         self,
