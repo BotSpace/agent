@@ -21,10 +21,16 @@ bearer = HTTPBearer(auto_error=False)
 
 @lru_cache(maxsize=1)
 def _load_public_key(path: str) -> str:
+    import os
+    env_key = os.getenv("JWT_PUBLIC_KEY")
+    if env_key:
+        return env_key
     p = Path(path)
     if not p.is_absolute():
         p = Path(__file__).resolve().parents[3] / path
-    return p.read_text()
+    if p.exists():
+        return p.read_text()
+    raise FileNotFoundError(f"Public key not found at {p} and JWT_PUBLIC_KEY env var not set")
 
 
 @dataclass
