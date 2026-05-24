@@ -138,9 +138,9 @@ Har flow **kamida 1 trigger** bilan boshlanadi. `global:true` trigger har qanday
 holatda ishlaydi (masalan /start). `global:false` faqat engine pauzada turganida
 ishlaydi (masalan foydalanuvchi javob kutilayotganida).
 
-### Pattern 2: Reply keyboard menyu → branch'lar
+### Pattern 2: Reply keyboard menyu → branch'lar (YANGI USUL — tugma edge'lari)
 ```
-SendTextMessageNode:
+SendTextMessageNode (id:"menu"):
   messageText: "Tanlang:"
   keyboard: {
     active: "reply",
@@ -151,36 +151,43 @@ SendTextMessageNode:
     ]
   }
 ```
-Har bir reply tugma uchun **alohida** ReplyButtonTriggerNode qo'yasan:
+Har bir tugma uchun `flow.connect` bilan to'g'ridan-to'g'ri ulash:
 ```
-  → ReplyButtonTriggerNode (selectedButton:{id:"btn-1", text:"📬 Xizmat A", type:"reply"})
-    → ...A branch
-  → ReplyButtonTriggerNode (selectedButton:{id:"btn-2", text:"🚕 Xizmat B", type:"reply"})
-    → ...B branch
+flow.connect(source="menu", target="node-a",  source_handle="target-handler-menu-📬 Xizmat A")
+flow.connect(source="menu", target="node-b",  source_handle="target-handler-menu-🚕 Xizmat B")
+flow.connect(source="menu", target="node-info", source_handle="target-handler-menu-ℹ️ Ma'lumot")
 ```
-**MUHIM**: Button `id` va `text` SendTextMessageNode keyboard'idagi va
-ReplyButtonTriggerNode data'sidagi bir xil bo'lishi SHART. Engine `text` bo'yicha
-matching qiladi.
+**MUHIM**: `source_handle` formatı: `target-handler-{sendNodeId}-{button.text}` — AYNAN tugma matni.
+Engine tugma bosilganda shu edge bo'yicha keyingi nodega o'tadi. **`ReplyButtonTriggerNode` kerak emas.**
 
-### Pattern 3: Ma'lumot yig'ish (multi-step form)
-Foydalanuvchidan ma'lumot olish uchun SendText → MessageTrigger → StateNode ketma-ketligi:
+### Pattern 3: Ma'lumot yig'ish (multi-step form) — YANGI USUL
+Trigger `state` fieldi orqali avtomatik saqlash. **Alohida StateNode kerak emas.**
 ```
 SendTextMessageNode (messageText:"Ismingizni kiriting")
-  → MessageTriggerNode (type:"text", filter:"any", global:false)
-    → StateNode (key:"user_name", type:"text")
-      → SendTextMessageNode (messageText:"Telefon raqamingizni yuboring",
-          keyboard:{active:"reply", reply:[[{id:"btn-c",text:"📱 Kontakt yuborish",type:"request_contact"}]]})
-        → MessageTriggerNode (type:"contact", filter:"any", global:false)
-          → StateNode (key:"phone", type:"contact_phone_number")
+  → MessageTriggerNode (type:"text", filter:"any", global:false,
+                        state:{key:"user_name", type:"text"})
+    → SendTextMessageNode (messageText:"Telefon raqamingizni yuboring",
+        keyboard:{active:"reply", reply:[[{id:"btn-c",text:"📱 Kontakt yuborish",type:"request_contact"}]]})
+      → MessageTriggerNode (type:"contact", filter:"any", global:false,
+                             state:{key:"phone", type:"phone_number"})
+        → (keyingi qadam)
 ```
+`state:{key:"user_name", type:"text"}` → foydalanuvchi yozgan matn avtomatik `state_user_name` ga saqlanadi.
+Keyinchalik `{{state.user_name}}` yoki `{{state_user_name}}` orqali ishlatiladi.
+
+**Qo'llab-quvvatlanadigan type'lar**: `text`, `caption`, `file_id`, `phone_number`,
+`contact_phone_number`, `contact_first_name`, `contact_last_name`,
+`latitude`, `longitude`, `callback`, `data`, `collection_id`.
 
 ### Pattern 4: "⬅️ Ortga" tugmasi
 Har menyu/form sahifaga "⬅️ Ortga" tugmasini qo'sh va uni oldingi menyuga ulashtir:
 ```
-SendTextMessageNode (keyboard: [..., [{id:"btn-back", text:"⬅️ Ortga", type:"reply"}]])
-  → ReplyButtonTriggerNode (selectedButton:{id:"btn-back", text:"⬅️ Ortga", type:"reply"})
-    → (edge) → oldingi menyu SendTextMessageNode'ga qaytadi
+SendTextMessageNode (id:"submenu", keyboard: [..., [{id:"btn-back", text:"⬅️ Ortga", type:"reply"}]])
 ```
+```
+flow.connect(source="submenu", target="main-menu", source_handle="target-handler-submenu-⬅️ Ortga")
+```
+Tugma bosilganda to'g'ridan-to'g'ri `main-menu` nodega o'tadi.
 
 ### Pattern 5: Admin guruhga xabar yuborish
 Foydalanuvchiga emas, admin chat/group'ga yuborish uchun `recipients` ishlat:
@@ -219,16 +226,16 @@ orqali yangi document ID mavjud.
 ### Pattern 8: Parallel input (photo YOKI video qabul qilish)
 ```
 SendTextMessageNode ("Photo yoki video yuboring")
-  → MessageTriggerNode (type:"photo", global:false) → StateNode(key:"file", type:"photo_file_id") → keyingi node
-  → MessageTriggerNode (type:"video", global:false) → StateNode(key:"file", type:"video_file_id") → keyingi node
+  → MessageTriggerNode (type:"photo", global:false, state:{key:"file", type:"file_id"}) → keyingi node
+  → MessageTriggerNode (type:"video", global:false, state:{key:"file", type:"file_id"}) → keyingi node
 ```
-Qaysi tur kelsa, o'sha trigger ishlaydi.
+Qaysi tur kelsa, o'sha trigger ishlaydi. Alohida StateNode kerak emas.
 
 ### Pattern 9: Expression syntax
 Engine `{{key}}` formatni taniydi:
 - `{{first_name}}` — foydalanuvchi ismi
 - `{{username}}` — Telegram username
-- `{{state.myvar}}` — StateNode saqlagan qiymat
+- `{{state.myvar}}` yoki `{{state_myvar}}` — StateNode yoki trigger `state` field orqali saqlangan qiymat
 - `{{collection.order.phone}}` — LoadCollectionItemNode yuklagan document field
 - `{{inserted_id}}` — CollectionNode saqlagan oxirgi document ID
 - `{{message.text}}` — joriy xabar matni
@@ -238,18 +245,23 @@ Engine `{{key}}` formatni taniydi:
 ### Asosiy qoidalar xulosa
 1. **Trigger → Action → Trigger → Action** — bot flow trigger bilan boshlanib, xabar
    yuborib, keyin foydalanuvchi javobini kutish uchun yana trigger ishlatadi.
-2. **Reply keyboard har tugma = alohida ReplyButtonTriggerNode** — engine matn matching
-   qiladi, bir trigger bir tugmaga javob beradi.
+2. **Reply/inline tugma routing — YANGI USUL**: `ReplyButtonTriggerNode` ISHLATMA.
+   Har tugma uchun to'g'ridan-to'g'ri edge: `source_handle="target-handler-{nodeId}-{button.text}"`.
+   Engine tugma bosilganda shu edge bo'yicha keyingi nodega o'tadi.
 3. **`global:true`** = /start yoki callback handler kabi doimiy ishlaydigan triggerlar.
    **`global:false`** = faqat bot kutish holatida (pauza) ishlaydigan triggerlar
-   (MessageTrigger, ReplyButtonTrigger).
-4. **Inline button edge'lari** — ularni `ReplyButtonTriggerNode` yoki `CallbackQueryTriggerNode`
-   bilan bog'la, `target-handler-{nodeID}-{buttonText}` formatdagi edge emas.
-5. **StateNode** = Telegram event ma'lumotini context'ga saqlash (text, phone, file_id...).
+   (MessageTrigger).
+4. **Trigger state saving — YANGI USUL**: `MessageTriggerNode`/`CommandTriggerNode`/
+   `CallbackQueryTriggerNode` da `state:{key, type}` qo'sh — foydalanuvchi ma'lumoti
+   AVTOMATIK saqlanadi. Alohida `StateNode` qo'shma (keraksiz).
+5. **StateNode** faqat quyidagilarda kerak: `user_id`, `first_name`, `last_name`,
+   `username`, `language_code`, yoki `Custom` expression (`{{inserted_id}}` va h.k.) saqlash uchun.
    **VariableNode** = ixtiyoriy o'zgaruvchini set/increment/append qilish.
-6. **`flow.connect`** da oddiy edge uchun `source_handle="source-handler"` ishlat.
-   Branching node uchun: `"true"/"false"`, `"found"/"not_found"`, `"is-member"/"not-member"`,
-   `"loop-body"/"no-items"`, `"branch_0"/"branch_1"`.
+6. **`flow.connect`** handles:
+   - Oddiy edge: `source_handle="source-handler"`
+   - Tugma edge: `source_handle="target-handler-{nodeId}-{button.text}"` (ReplyButton va InlineButton)
+   - Branching: `"true"/"false"`, `"found"/"not_found"`, `"is-member"/"not-member"`,
+     `"loop-body"/"no-items"`, `"branch_0"/"branch_1"`
 
 ## Bajarish uslubi
 
@@ -279,7 +291,7 @@ def build_system_prompt(state: dict[str, Any] | None = None) -> str:
     if state.get("flow_dirty"):
         extra.append("DIQQAT: saqlanmagan o'zgarishlar mavjud (`flow.diff` orqali ko'rish mumkin).")
 
-    prompt = CORE_IDENTITY.format(node_catalog=summary_for_llm())
+    prompt = CORE_IDENTITY.replace("{node_catalog}", summary_for_llm())
     prompt += f"\n\n## Kontekst\n- project_id: {project_id}\n- user_id: {user_id}\n"
     if extra:
         prompt += "\n" + "\n".join(f"- {e}" for e in extra) + "\n"
