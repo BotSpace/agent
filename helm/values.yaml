@@ -56,6 +56,9 @@ envFrom:
   - secretRef:
       name: agent-runtime-secret
   - secretRef:
+      name: agent-openai-secret
+      optional: true
+  - secretRef:
       name: agent-secret
       optional: true
 
