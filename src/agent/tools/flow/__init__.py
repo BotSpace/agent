@@ -14,6 +14,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from ...botbuilder_ai import AIBuildRequest, AIConfigurationError, build_bot_with_ai_stream
 from ...flow import (
     FlowDocument,
     FlowEdge,
@@ -26,7 +27,6 @@ from ...flow import (
     validate,
 )
 from ..base import Tool, ToolContext, ToolResult, tool
-
 
 # ── State helpers ────────────────────────────────────────────────────────────
 
@@ -324,6 +324,94 @@ async def flow_list_node_types(input: FlowListNodeTypesInput, ctx: ToolContext) 
     return ToolResult.ok(f"{len(payload)} node type(s)", data={"types": payload})
 
 
+# ── flow.ai_build ────────────────────────────────────────────────────────────
+
+
+class FlowAiBuildInput(BaseModel):
+    prompt: str = Field(
+        min_length=3,
+        max_length=4000,
+        description="Natural-language bot-building request. Usually pass the user's original request.",
+    )
+    language: str = Field(default="uz", min_length=2, max_length=12)
+    max_repair_attempts: int = Field(default=2, ge=0, le=3)
+    apply_layout: bool = Field(default=True, description="Auto-layout the compiled flow before storing it.")
+
+
+@tool(
+    name="flow.ai_build",
+    description=(
+        "Build a complete bot flow from natural language using the BotBuilder command compiler. "
+        "Use this first for full-bot creation requests, then call flow.validate and flow.save."
+    ),
+    input_model=FlowAiBuildInput,
+)
+async def flow_ai_build(input: FlowAiBuildInput, ctx: ToolContext) -> ToolResult:
+    async def emit_delta(delta: str) -> None:
+        if ctx.emit and delta:
+            result = ctx.emit("botbuilder_delta", {"delta": delta})
+            if hasattr(result, "__await__"):
+                await result
+
+    try:
+        result = await build_bot_with_ai_stream(
+            AIBuildRequest(
+                prompt=input.prompt,
+                language=input.language,
+                max_repair_attempts=input.max_repair_attempts,
+            ),
+            on_delta=emit_delta,
+        )
+    except AIConfigurationError as exc:
+        return ToolResult.error(str(exc))
+    except Exception as exc:
+        return ToolResult.error(f"BotBuilder failed: {exc}")
+
+    if result.result.flow is None:
+        issues = [issue.model_dump(mode="json") for issue in result.result.issues]
+        return ToolResult.error(
+            "BotBuilder did not compile a valid flow.",
+            data={
+                "ok": result.ok,
+                "attempts": result.attempts,
+                "commands": result.commands,
+                "issues": issues,
+                "input_tokens": result.input_tokens,
+                "output_tokens": result.output_tokens,
+            },
+        )
+
+    flow = FlowDocument.model_validate(result.result.flow.model_dump(mode="json"))
+    if input.apply_layout:
+        auto_layout(flow)
+    flow_dict = flow.model_dump()
+    issues = [issue.model_dump(mode="json") for issue in result.result.issues]
+    return ToolResult.ok(
+        "BotBuilder compiled a flow. Validate and save it next.",
+        state_updates={
+            "working_flow": flow_dict,
+            "flow_dirty": True,
+            "botbuilder_last_result": {
+                "ok": result.ok,
+                "attempts": result.attempts,
+                "commands": result.commands,
+                "issues": issues,
+                "input_tokens": result.input_tokens,
+                "output_tokens": result.output_tokens,
+            },
+        },
+        data={
+            "ok": result.ok,
+            "attempts": result.attempts,
+            "commands": result.commands,
+            "flow": flow_dict,
+            "issues": issues,
+            "input_tokens": result.input_tokens,
+            "output_tokens": result.output_tokens,
+        },
+    )
+
+
 # ── flow.diff ────────────────────────────────────────────────────────────────
 
 
@@ -422,6 +510,7 @@ def build_flow_tools() -> list[Tool]:
         flow_validate,
         flow_layout_auto,
         flow_list_node_types,
+        flow_ai_build,
         flow_diff,
         flow_save,
     ]

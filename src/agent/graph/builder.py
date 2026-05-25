@@ -25,11 +25,10 @@ try:
 except ImportError:  # pragma: no cover
     from langgraph.checkpoint.memory import MemorySaver  # type: ignore[misc]
 
-from ..llm import GenerateOptions, LLMClient, Message, TextPart, ToolUsePart
+from ..llm import GenerateOptions, LLMClient, Message, TextPart
 from ..prompts import build_system_prompt
 from ..tools import ToolContext, ToolRegistry, has_incomplete_plan
 from .state import AgentState
-
 
 EventEmitter = Callable[[str, dict[str, Any]], Awaitable[None] | None]
 
@@ -150,6 +149,14 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
                 services=cfg.services or {},
             )
             result = await cfg.registry.execute(call.name, call.arguments, ctx)
+            if isinstance(result.data, dict):
+                input_tokens = int(result.data.get("input_tokens") or 0)
+                output_tokens = int(result.data.get("output_tokens") or 0)
+                if input_tokens or output_tokens:
+                    current_state["total_input_tokens"] = current_state.get("total_input_tokens", 0) + input_tokens
+                    current_state["total_output_tokens"] = current_state.get("total_output_tokens", 0) + output_tokens
+                    updates["total_input_tokens"] = current_state["total_input_tokens"]
+                    updates["total_output_tokens"] = current_state["total_output_tokens"]
             await _emit(
                 cfg.emit,
                 "tool_result",

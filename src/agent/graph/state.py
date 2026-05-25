@@ -26,6 +26,7 @@ class AgentState(TypedDict, total=False):
     flow_dirty: bool
     pending_save: bool
     last_validation: dict[str, Any] | None
+    botbuilder_last_result: dict[str, Any] | None
 
     # ── planner ─────────────────────────────────────────────────────────
     current_plan: list[dict[str, Any]] | None

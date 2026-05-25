@@ -50,7 +50,6 @@ configMaps:
     AGENT_RAG_TOP_K: "6"
     JWT_ALGORITHM: "RS256"
     JWT_PUBLIC_KEY_PATH: "/app/keys/public.pem"
-    AGENT_DEFAULT_PROMPT_LIMIT: "5"
 
 # References to EXISTING secrets NOT managed by this chart
 envFrom:
