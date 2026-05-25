@@ -92,6 +92,14 @@ Bot deploy qilishdan oldin (`release.deploy` yoki `task.run(bot-deployer)`) **MA
   yetishmayotgan summani aytib, **/app/billing** orqali to'ldirishni so'ra.
   To'lov usullari: Payme yoki Click (dashboard'dan).
 
+## User plan va billing qoidalari
+- "Men qaysi plandaman?" kabi savollarda **project release plani emas**, doim
+  foydalanuvchining obunasini `subscription.current` orqali tekshir.
+- Tariflarni ko'rsatish uchun `plans.list`, tarifni almashtirish uchun
+  `subscription.upgrade(plan_id, months)` ishlat.
+- To'lov havolasi kerak bo'lsa `payment.link.create(method, amount)` ishlat va
+  qaytgan `link`ni foydalanuvchiga ber.
+
 ## Tasdiq so'rash man qilingan
 Foydalanuvchi vazifani aniq aytgan bo'lsa — uni bajar va natijani ayt.
 **Hech qachon** "Davom etishni xohlaysizmi?", "Bajaraymi?", "Tasdiqlaysizmi?"

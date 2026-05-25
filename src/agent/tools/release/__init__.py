@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -204,6 +205,95 @@ async def plans_list(_: PlansListInput, ctx: ToolContext) -> ToolResult:
     return ToolResult.ok(f"{len(rows)} plan(s): {summary}", data={"plans": rows})
 
 
+class SubscriptionCurrentInput(BaseModel):
+    pass
+
+
+@tool(
+    name="subscription.current",
+    description="Get the current user's active subscription/plan.",
+    input_model=SubscriptionCurrentInput,
+)
+async def subscription_current(_: SubscriptionCurrentInput, ctx: ToolContext) -> ToolResult:
+    try:
+        sub = await _backend(ctx).subscription_current(auth_claims=ctx.state.get("auth_claims"))
+    except BackendError as e:
+        return ToolResult.error(_wrap_backend_err("Joriy tarifni olish", e))
+
+    plan = sub.get("plan") if isinstance(sub, dict) else {}
+    plan_name = (
+        plan.get("name")
+        or plan.get("display")
+        or sub.get("plan_name")
+        or "unknown"
+    )
+    status = sub.get("status", "unknown")
+    return ToolResult.ok(
+        f"Current plan: {plan_name} (status={status}).",
+        data={"subscription": sub},
+    )
+
+
+class SubscriptionUpgradeInput(BaseModel):
+    plan_id: int = Field(description="Target plan id (from plans.list).")
+    months: int = Field(default=1, description="Billing months: 1, 3, 6, or 12.")
+
+
+@tool(
+    name="subscription.upgrade",
+    description="Upgrade or change the current user's subscription plan.",
+    input_model=SubscriptionUpgradeInput,
+    destructive=True,
+)
+async def subscription_upgrade(input: SubscriptionUpgradeInput, ctx: ToolContext) -> ToolResult:
+    try:
+        res = await _backend(ctx).subscription_upgrade(
+            plan_id=input.plan_id,
+            months=input.months,
+            auth_claims=ctx.state.get("auth_claims"),
+        )
+    except BackendError as e:
+        return ToolResult.error(_wrap_backend_err("Tarifni o'zgartirish", e))
+
+    new_plan = res.get("new_plan") or res.get("plan_name") or "unknown"
+    return ToolResult.ok(
+        f"Subscription updated to `{new_plan}`.",
+        data={"subscription_upgrade": res},
+    )
+
+
+class PaymentLinkCreateInput(BaseModel):
+    method: Literal["click", "payme"] = Field(
+        description="Payment provider."
+    )
+    amount: int = Field(ge=1, description="Top-up amount in UZS.")
+
+
+@tool(
+    name="payment.link.create",
+    description="Create a payment top-up link for the current user.",
+    input_model=PaymentLinkCreateInput,
+)
+async def payment_link_create(input: PaymentLinkCreateInput, ctx: ToolContext) -> ToolResult:
+    try:
+        res = await _backend(ctx).create_payment_link(
+            method=input.method,
+            amount=input.amount,
+            auth_claims=ctx.state.get("auth_claims"),
+        )
+    except BackendError as e:
+        return ToolResult.error(_wrap_backend_err("To'lov havolasini yaratish", e))
+
+    link = res.get("link")
+    if not isinstance(link, str) or not link.strip():
+        return ToolResult.error("Payment link yaratildi, lekin bo'sh link qaytdi.")
+
+    return ToolResult.ok(
+        f"Payment link created via {input.method}: {link}",
+        data={"payment": {"method": input.method, "amount": input.amount, "link": link}},
+    )
+
+
 class ReleaseStatusInput(BaseModel):
     release_id: str | int
 
@@ -229,4 +319,12 @@ async def release_status(input: ReleaseStatusInput, ctx: ToolContext) -> ToolRes
 
 
 def build_release_tools() -> list[Tool]:
-    return [release_list, release_deploy, release_status, plans_list]
+    return [
+        release_list,
+        release_deploy,
+        release_status,
+        plans_list,
+        subscription_current,
+        subscription_upgrade,
+        payment_link_create,
+    ]

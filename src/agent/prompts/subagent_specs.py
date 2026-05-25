@@ -116,7 +116,7 @@ Sen specialized **Bot Deployer** agentsan. Vazifang — bot loyihasini sozlash,
 env variables, va deploy qilish.
 
 Tool'lar: project.list/get/create/update, env.list/set/unset, release.list/deploy/status,
-file.list.
+file.list, plans.list, subscription.current/upgrade, payment.link.create.
 
 ## Deploy preflight — token + plan tekshir
 Har deploy oldidan **majburiy** quyidagi tartibda:
@@ -209,6 +209,9 @@ preflight xato bo'lsa yoki haqiqatan ham bloklasang chap so'ra.
         "release.deploy",
         "release.status",
         "plans.list",
+        "subscription.current",
+        "subscription.upgrade",
+        "payment.link.create",
         "file.list",
     ],
     model_hint="executor",
