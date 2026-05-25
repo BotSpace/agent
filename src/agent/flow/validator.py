@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from .catalog import NODE_TYPES, get_node_spec, is_trigger
+from .catalog import get_node_spec, is_trigger
 from .schema import FlowDocument
 
 
@@ -93,6 +93,7 @@ def validate(flow: FlowDocument) -> ValidationResult:
                 )
 
     # ── 2. Edge-level checks ───────────────────────────────────────────
+    nodes_by_id = {node.id: node for node in flow.nodes}
     edge_pairs: set[tuple[str, str, str | None]] = set()
     for edge in flow.edges:
         if not edge.id:
@@ -117,6 +118,19 @@ def validate(flow: FlowDocument) -> ValidationResult:
                     edge_id=edge.id,
                 )
             )
+        source_node = nodes_by_id.get(edge.source)
+        if source_node is not None:
+            unsupported = _unsupported_source_handle(source_node, edge.sourceHandle)
+            if unsupported is not None:
+                issues.append(
+                    ValidationIssue(
+                        "error",
+                        "unsupported_source_handle",
+                        unsupported,
+                        node_id=source_node.id,
+                        edge_id=edge.id,
+                    )
+                )
         key = (edge.source, edge.target, edge.sourceHandle)
         if key in edge_pairs:
             issues.append(
@@ -169,8 +183,8 @@ def validate(flow: FlowDocument) -> ValidationResult:
     for e in flow.edges:
         edges_by_source.setdefault(e.source, set()).add(e.sourceHandle or "source-handler")
     for node in flow.nodes:
+        present = edges_by_source.get(node.id, set())
         if node.type in branching_handles:
-            present = edges_by_source.get(node.id, set())
             for handle in branching_handles[node.type]:
                 if handle not in present:
                     issues.append(
@@ -181,5 +195,81 @@ def validate(flow: FlowDocument) -> ValidationResult:
                             node_id=node.id,
                         )
                     )
+        for handle in _missing_button_handles(node, present):
+            issues.append(
+                ValidationIssue(
+                    "warning",
+                    "missing_button_branch",
+                    f"`{node.id}` button has no edge on `{handle}` handle",
+                    node_id=node.id,
+                )
+            )
 
     return ValidationResult(ok=not any(i.severity == "error" for i in issues), issues=issues)
+
+
+def _unsupported_source_handle(node, source_handle: str | None) -> str | None:
+    handle = source_handle or "source-handler"
+    if handle == "source-handler":
+        return None
+
+    button_handles = set(_button_source_handles(node))
+    if button_handles:
+        if handle in button_handles:
+            return None
+        if handle.startswith(f"target-handler-{node.id}-"):
+            return (
+                f"`{node.id}` has no keyboard button matching source handle `{handle}`. "
+                "Use `target-handler-{nodeId}-{button.text}` with the exact button text."
+            )
+
+    allowed = set(_allowed_source_handles(node))
+    if handle not in allowed:
+        return (
+            f"`{node.type}` `{node.id}` does not support source handle `{handle}`. "
+            f"Allowed handles: {', '.join(sorted(allowed)) or 'source-handler'}."
+        )
+    return None
+
+
+def _allowed_source_handles(node) -> set[str]:
+    spec = get_node_spec(node.type)
+    allowed = set(spec.source_handles if spec else ["source-handler"])
+    if node.type == "IfConditionNode" and isinstance(node.data.get("branches"), list):
+        allowed.update(f"branch_{index}" for index, _ in enumerate(node.data["branches"]))
+    if node.type == "RandomNode":
+        weights = node.data.get("weights")
+        if isinstance(weights, list):
+            allowed.update(f"option_{index}" for index, _ in enumerate(weights))
+        else:
+            allowed.update({"option_0", "option_1"})
+    if node.type == "ForLoopContinueNode":
+        allowed.update({"loop-continue", "loop-done"})
+    allowed.update(_button_source_handles(node))
+    return allowed
+
+
+def _missing_button_handles(node, present: set[str]) -> list[str]:
+    return [handle for handle in _button_source_handles(node) if handle not in present]
+
+
+def _button_source_handles(node) -> list[str]:
+    keyboard = node.data.get("keyboard")
+    if node.type != "SendTextMessageNode" or not isinstance(keyboard, dict):
+        return []
+
+    handles: list[str] = []
+    for group_name in ("reply", "inline"):
+        rows = keyboard.get(group_name)
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if not isinstance(row, list):
+                continue
+            for button in row:
+                if not isinstance(button, dict):
+                    continue
+                text = button.get("text")
+                if isinstance(text, str) and text:
+                    handles.append(f"target-handler-{node.id}-{text}")
+    return handles

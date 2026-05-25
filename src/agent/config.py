@@ -39,9 +39,6 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
-    openai_model: str = Field(default="gpt-5.2", alias="AGENT_OPENAI_MODEL")
-    openai_timeout: float = Field(default=45.0, alias="AGENT_OPENAI_TIMEOUT")
-    openai_max_tokens: int = Field(default=1800, alias="AGENT_OPENAI_MAX_TOKENS")
     aws_access_key_id: str | None = Field(default=None, alias="AWS_ACCESS_KEY_ID")
     aws_secret_access_key: str | None = Field(default=None, alias="AWS_SECRET_ACCESS_KEY")
     aws_region: str = Field(default="us-east-1", alias="AWS_REGION")
