@@ -309,15 +309,13 @@ class ReleaseStatusInput(BaseModel):
     input_model=ReleaseStatusInput,
 )
 async def release_status(input: ReleaseStatusInput, ctx: ToolContext) -> ToolResult:
-    # Backend exposes status on the list view; we approximate by re-listing.
-    pid = _project_id(ctx, None)
-    if pid is None:
-        return ToolResult.error("No project_id available.")
     try:
-        items = await _backend(ctx).list_releases(pid, auth_claims=ctx.state.get("auth_claims"))
+        target = await _backend(ctx).get_release(
+            input.release_id,
+            auth_claims=ctx.state.get("auth_claims"),
+        )
     except BackendError as e:
         return ToolResult.error(_wrap_backend_err("Release statusini olish", e))
-    target = next((r for r in items if str(r.get("id")) == str(input.release_id)), None)
     if target is None:
         return ToolResult.error(f"Release `{input.release_id}` not found.")
     return ToolResult.ok(f"Release `{input.release_id}` status: {target.get('status')}", data={"release": target})

@@ -7,10 +7,15 @@ from agent.tools.release import build_release_tools
 class _FakeBackend:
     def __init__(self):
         self.list_release_project_ids: list[str | int] = []
+        self.get_release_ids: list[str | int] = []
 
     async def list_releases(self, project_id, *, auth_claims=None):
         self.list_release_project_ids.append(project_id)
         return [{"id": 7, "version": 1, "status": "running"}]
+
+    async def get_release(self, release_id, *, auth_claims=None):
+        self.get_release_ids.append(release_id)
+        return {"id": release_id, "version": 1, "status": "running"}
 
     async def subscription_current(self, *, auth_claims=None):
         return {"plan": {"id": 1, "name": "free"}, "status": "active"}
@@ -91,12 +96,12 @@ async def test_release_list_rejects_global_project_context():
 
 
 @pytest.mark.asyncio
-async def test_release_status_uses_context_project_id():
+async def test_release_status_uses_release_id_without_project_context():
     tools = _tools()
     backend = _FakeBackend()
     ctx = ToolContext(
         run_id="r",
-        project_id="986",
+        project_id=None,
         user_id="u",
         services={"backend": backend},
     )
@@ -105,4 +110,5 @@ async def test_release_status_uses_context_project_id():
 
     assert not res.is_error
     assert "running" in res.content
-    assert backend.list_release_project_ids == ["986"]
+    assert backend.get_release_ids == [7]
+    assert backend.list_release_project_ids == []

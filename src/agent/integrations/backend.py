@@ -23,7 +23,7 @@ from typing import Any
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from ..config import Settings, get_settings
+from ..config import get_settings
 
 
 class BackendError(RuntimeError):
@@ -363,6 +363,12 @@ class BackendClient:
         if months is not None:
             body["months"] = months
         d = await self._request("POST", "/api/relase/", json=body, **_auth_kw(auth_claims))
+        return _unwrap_item(d)
+
+    async def get_release(
+        self, release_id: str | int, *, auth_claims: dict | None = None
+    ) -> dict[str, Any]:
+        d = await self._request("GET", f"/api/relase/{release_id}/", **_auth_kw(auth_claims))
         return _unwrap_item(d)
 
     # ── plans (billing) ───────────────────────────────────────────────
