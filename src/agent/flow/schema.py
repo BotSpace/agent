@@ -44,7 +44,7 @@ class FlowDocument(BaseModel):
     edges: list[FlowEdge] = Field(default_factory=list)
 
     @classmethod
-    def from_json(cls, raw: str | dict[str, Any]) -> "FlowDocument":
+    def from_json(cls, raw: str | dict[str, Any]) -> FlowDocument:
         if isinstance(raw, str):
             payload = json.loads(raw or "{}")
         else:
@@ -73,7 +73,12 @@ class FlowDocument(BaseModel):
             if existing.id == edge.id:
                 self.edges[i] = edge
                 return
-            if existing.source == edge.source and existing.target == edge.target:
+            if (
+                existing.source == edge.source
+                and existing.target == edge.target
+                and existing.sourceHandle == edge.sourceHandle
+                and existing.targetHandle == edge.targetHandle
+            ):
                 self.edges[i] = edge
                 return
         self.edges.append(edge)

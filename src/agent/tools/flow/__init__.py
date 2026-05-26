@@ -26,6 +26,7 @@ from ...flow import (
     validate,
 )
 from ..base import Tool, ToolContext, ToolResult, tool
+from .actions import build_flow_action_tools
 
 # ── State helpers ────────────────────────────────────────────────────────────
 
@@ -413,6 +414,7 @@ async def flow_save(input: FlowSaveInput, ctx: ToolContext) -> ToolResult:
 def build_flow_tools() -> list[Tool]:
     return [
         flow_get,
+        *build_flow_action_tools(),
         flow_upsert_node,
         flow_remove_node,
         flow_patch,
