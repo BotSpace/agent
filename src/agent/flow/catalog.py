@@ -40,7 +40,10 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
     "CommandTriggerNode": NodeTypeSpec(
         type="CommandTriggerNode",
         category="trigger",
-        description="Telegram /command trigger. global:true har yerda ishlaydi. withArgs:true bo'lsa argument qabul qiladi.",
+        description=(
+            "Telegram /command trigger. global:true har yerda ishlaydi. withArgs:true bo'lsa argument qabul qiladi. "
+            "state: {key, type:'text'} — komanda argumentini saqlaydi."
+        ),
         required_data=["command"],
         optional_data=["global", "withArgs", "state"],
         is_trigger=True,
@@ -51,7 +54,9 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         description=(
             "Xabar turini kutib trigger. type: text/photo/video/audio/document/contact/location/any. "
             "filter: any/equals/contains/starts_with/regex. context.value: filter qiymati. "
-            "global:false bo'lsa faqat pauzada ishlaydi (foydalanuvchi javobini kutish)."
+            "global:false bo'lsa faqat pauzada ishlaydi (foydalanuvchi javobini kutish). "
+            "state: {key, type} — kelgan ma'lumotni AVTOMATIK saqlaydi, alohida StateNode KERAK EMAS. "
+            "Misol: state:{key:'user_name', type:'text'} → {{state.user_name}} orqali foydalaniladi."
         ),
         required_data=["type"],
         optional_data=["filter", "context", "global", "state"],
@@ -62,7 +67,8 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         category="trigger",
         description=(
             "Inline button callback trigger. filter: any/equals/contains/starts_with/regex. "
-            "context.value: mos keladigan callback_data. global:true bo'lsa har yerda ishlaydi."
+            "context.value: mos keladigan callback_data. global:true bo'lsa har yerda ishlaydi. "
+            "state: {key, type} — callback data'ni saqlaydi (type: 'callback'/'data'/'collection_id')."
         ),
         required_data=["filter"],
         optional_data=["context", "global", "state"],
@@ -105,7 +111,10 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "keyboard.inline: [[{text,type:'callback'/'url',value}]]. "
             "keyboard.reply: [[{id:'btn-xxx',text,type:'reply'/'request_contact'/'request_location'}]]. "
             "recipients: {sendToSender:bool, additionalIds:[chatId]}. "
-            "{{state.key}} — saqlangan qiymat, {{first_name}} — user ismi."
+            "{{state.key}} — saqlangan qiymat, {{first_name}} — user ismi. "
+            "TUGMA ROUTING (yangi usul): har reply/inline tugma o'zidan edge chiqaradi. "
+            "flow.connect da source_handle='target-handler-{nodeId}-{buttonText}' formatidan foydalaniladi. "
+            "Alohida ReplyButtonTriggerNode KERAK EMAS."
         ),
         required_data=["messageText"],
         optional_data=["parseMode", "keyboard", "recipients", "disableWebPagePreview"],
