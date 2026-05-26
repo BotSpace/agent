@@ -10,7 +10,6 @@ from pydantic import BaseModel, Field
 from ...integrations.backend import BackendClient, BackendError, get_backend_client
 from ..base import Tool, ToolContext, ToolResult, tool
 
-
 _HINTS_BY_CODE = {
     "paid_plan_required": (
         "Bu loyihaga PULLI tarif kerak (siz boshqa loyihangizda FREE'ni ishlatgansiz). "
@@ -75,7 +74,7 @@ def _wrap_backend_err(action: str, err: BackendError) -> str:
 
 def _backend(ctx: ToolContext) -> BackendClient:
     backend = ctx.services.get("backend")
-    if isinstance(backend, BackendClient):
+    if backend is not None:
         return backend
     return get_backend_client()
 
@@ -86,7 +85,12 @@ def _bearer(ctx: ToolContext) -> str | None:
 
 
 def _project_id(ctx: ToolContext, override: str | int | None) -> str | int | None:
-    return override or ctx.state.get("project_id")
+    value = override or ctx.state.get("project_id") or ctx.project_id
+    if value is None:
+        return None
+    if str(value).strip().lower() in {"", "global", "none", "null"}:
+        return None
+    return value
 
 
 class ReleaseListInput(BaseModel):
@@ -305,9 +309,9 @@ class ReleaseStatusInput(BaseModel):
 )
 async def release_status(input: ReleaseStatusInput, ctx: ToolContext) -> ToolResult:
     # Backend exposes status on the list view; we approximate by re-listing.
-    pid = ctx.state.get("project_id")
+    pid = _project_id(ctx, None)
     if pid is None:
-        return ToolResult.error("No project_id in context.")
+        return ToolResult.error("No project_id available.")
     try:
         items = await _backend(ctx).list_releases(pid, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:

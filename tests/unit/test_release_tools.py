@@ -5,6 +5,13 @@ from agent.tools.release import build_release_tools
 
 
 class _FakeBackend:
+    def __init__(self):
+        self.list_release_project_ids: list[str | int] = []
+
+    async def list_releases(self, project_id, *, auth_claims=None):
+        self.list_release_project_ids.append(project_id)
+        return [{"id": 7, "version": 1, "status": "running"}]
+
     async def subscription_current(self, *, auth_claims=None):
         return {"plan": {"id": 1, "name": "free"}, "status": "active"}
 
@@ -63,3 +70,39 @@ async def test_payment_link_create_tool():
     assert "https://pay.local/click/50000" in res.content
     assert res.data and res.data["payment"]["method"] == "click"
 
+
+@pytest.mark.asyncio
+async def test_release_list_rejects_global_project_context():
+    tools = _tools()
+    backend = _FakeBackend()
+    ctx = ToolContext(
+        run_id="r",
+        project_id="global",
+        user_id="u",
+        state={"project_id": "global"},
+        services={"backend": backend},
+    )
+
+    res = await tools["release.list"].run({}, ctx)
+
+    assert res.is_error
+    assert "No project_id available" in res.content
+    assert backend.list_release_project_ids == []
+
+
+@pytest.mark.asyncio
+async def test_release_status_uses_context_project_id():
+    tools = _tools()
+    backend = _FakeBackend()
+    ctx = ToolContext(
+        run_id="r",
+        project_id="986",
+        user_id="u",
+        services={"backend": backend},
+    )
+
+    res = await tools["release.status"].run({"release_id": 7}, ctx)
+
+    assert not res.is_error
+    assert "running" in res.content
+    assert backend.list_release_project_ids == ["986"]
