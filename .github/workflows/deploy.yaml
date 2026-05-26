@@ -1,6 +1,7 @@
 name: Build and Push Docker Image (tag + latest)
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
