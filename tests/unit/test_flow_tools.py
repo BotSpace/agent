@@ -1,6 +1,7 @@
 import pytest
 
 from agent.flow.catalog import NODE_TYPES
+from agent.integrations.backend import BackendClient
 from agent.tools.base import ToolContext
 from agent.tools.flow import build_flow_tools
 
@@ -154,3 +155,73 @@ async def test_safe_form_actions_build_valid_training_center_flow():
         if edge["source"] == "course-ask" and edge["target"] == "course-capture"
     ]
     assert len(course_edges) == 4
+
+
+class _FakeBackend(BackendClient):
+    def __init__(self):
+        self.updated: list[tuple[str, dict]] = []
+
+    async def update_project(self, project_id, body, *, auth_claims=None):
+        self.updated.append((str(project_id), body))
+        return {"id": project_id, **body}
+
+
+async def _build_minimal_valid_flow(tools, ctx):
+    for tool_name, payload in [
+        (
+            "flow.upsert_node",
+            {"id": "start", "type": "CommandTriggerNode", "data": {"command": "/start"}},
+        ),
+        (
+            "flow.upsert_node",
+            {
+                "id": "hello",
+                "type": "SendTextMessageNode",
+                "data": {"messageText": "Salom!"},
+            },
+        ),
+        ("flow.connect", {"source": "start", "target": "hello"}),
+    ]:
+        res = await tools[tool_name].run(payload, ctx)
+        assert not res.is_error, res.content
+        ctx.state.update(res.state_updates)
+
+
+@pytest.mark.asyncio
+async def test_flow_save_uses_state_project_when_context_is_global():
+    tools = _tools()
+    backend = _FakeBackend()
+    ctx = ToolContext(
+        run_id="r",
+        project_id="global",
+        user_id="u",
+        state={"project_id": "987"},
+        services={"backend": backend},
+    )
+    await _build_minimal_valid_flow(tools, ctx)
+
+    res = await tools["flow.save"].run({"apply_layout": False}, ctx)
+
+    assert not res.is_error, res.content
+    assert backend.updated
+    assert backend.updated[0][0] == "987"
+    assert "/global/" not in res.content
+
+
+@pytest.mark.asyncio
+async def test_flow_save_rejects_global_project_without_selected_project():
+    tools = _tools()
+    backend = _FakeBackend()
+    ctx = ToolContext(
+        run_id="r",
+        project_id="global",
+        user_id="u",
+        services={"backend": backend},
+    )
+    await _build_minimal_valid_flow(tools, ctx)
+
+    res = await tools["flow.save"].run({"apply_layout": False}, ctx)
+
+    assert res.is_error
+    assert "no concrete project_id" in res.content
+    assert backend.updated == []

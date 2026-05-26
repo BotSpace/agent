@@ -44,6 +44,23 @@ def _set_working_flow(flow: FlowDocument) -> dict[str, Any]:
     return {"working_flow": flow.model_dump(), "flow_dirty": True}
 
 
+def _concrete_project_id(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if text.lower() in {"", "global", "none", "null"}:
+        return None
+    return text
+
+
+def _project_id(ctx: ToolContext) -> str | None:
+    # Chat sessions may start in a global context, then select/create a project
+    # via tools. Save must use that concrete state project, never `/global/`.
+    return _concrete_project_id(ctx.state.get("project_id")) or _concrete_project_id(
+        ctx.project_id
+    )
+
+
 # ── flow.get ─────────────────────────────────────────────────────────────────
 
 
@@ -380,11 +397,11 @@ async def flow_save(input: FlowSaveInput, ctx: ToolContext) -> ToolResult:
     if input.apply_layout:
         auto_layout(flow)
 
-    project_id = ctx.project_id
+    project_id = _project_id(ctx)
     if not project_id:
         return ToolResult.error(
-            "Cannot save flow: no project_id is set. "
-            "Use project.create or project.get first."
+            "Cannot save flow: no concrete project_id is set. "
+            "Use project.create, project.get, or choose a project first."
         )
 
     from ...integrations.backend import BackendClient, BackendError, get_backend_client
