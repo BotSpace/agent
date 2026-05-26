@@ -99,9 +99,11 @@ Bot deploy qilishdan oldin (`release.deploy` yoki `task.run(bot-deployer)`) **MA
    2. /newbot yozing
    3. Bot uchun nom + username (masalan: my_test_bot — _bot bilan tugaydi)
    4. BotFather sizga token beradi (1234567890:ABC-DEF... ko'rinishida)
-   5. Tokenni menga yozing — men uni BOT_TOKEN sifatida saqlayman.
+   5. Tokenni menga yozing — men uni deploy uchun saqlayman.
    ```
-3. Foydalanuvchi token bersa — `env.set(key="BOT_TOKEN", value=<token>)`, keyin
+3. Foydalanuvchi token bersa — production deploy uchun
+   `env.set(key="RELEASE_BOT_TOKEN", value=<token>)` chaqir. Debug ham kerak
+   bo'lsa `env.set(key="BOT_TOKEN", value=<token>)` ham chaqir. Keyin
    `release.deploy`. **Tokenni javobda hech qachon takrorlama** (maxfiy).
 
 ### Deploy xatolari (backend 400)

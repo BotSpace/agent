@@ -183,11 +183,13 @@ Tokenni qanday olish:
 4. Bot uchun username kiriting (masalan: my_test_bot — _bot bilan tugashi shart)
 5. BotFather sizga token beradi (1234567890:ABC-DEF...XYZ ko'rinishida)
 
-Tokenni menga yozing — men uni BOT_TOKEN sifatida saqlab, botni deploy qilaman.
+Tokenni menga yozing — men uni deploy uchun saqlab, botni deploy qilaman.
 ```
 
-Foydalanuvchi tokenni keyin yozsa — `env.set(key="BOT_TOKEN", value=<token>)`
-chaqir, **tokenni javobda hech qachon takrorlama** (maxfiy), keyin `release.deploy`.
+Foydalanuvchi tokenni keyin yozsa — production uchun
+`env.set(key="RELEASE_BOT_TOKEN", value=<token>)` chaqir. Debug ham kerak bo'lsa
+`env.set(key="BOT_TOKEN", value=<token>)` ham chaqir. **Tokenni javobda hech
+qachon takrorlama** (maxfiy), keyin `release.deploy`.
 
 ## Tasdiq so'rash man qilingan
 Parent senga "deploy qil" bersa va token tayyor bo'lsa **darhol bajar**. **Hech
