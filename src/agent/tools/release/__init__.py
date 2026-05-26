@@ -85,6 +85,7 @@ def _bearer(ctx: ToolContext) -> str | None:
 
 
 def _project_id(ctx: ToolContext, override: str | int | None) -> str | int | None:
+    # Release calls must be scoped to a concrete project, never global context.
     value = override or ctx.state.get("project_id") or ctx.project_id
     if value is None:
         return None
