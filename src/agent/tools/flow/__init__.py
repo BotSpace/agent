@@ -374,6 +374,10 @@ async def flow_diff(_: FlowDiffInput, ctx: ToolContext) -> ToolResult:
 
 
 class FlowSaveInput(BaseModel):
+    project_id: str | int | None = Field(
+        default=None,
+        description="Optional project id override. Useful if the run started in global context.",
+    )
     apply_layout: bool = Field(default=True, description="Run auto-layout before saving.")
 
 
@@ -397,7 +401,7 @@ async def flow_save(input: FlowSaveInput, ctx: ToolContext) -> ToolResult:
     if input.apply_layout:
         auto_layout(flow)
 
-    project_id = _project_id(ctx)
+    project_id = _concrete_project_id(input.project_id) or _project_id(ctx)
     if not project_id:
         return ToolResult.error(
             "Cannot save flow: no concrete project_id is set. "

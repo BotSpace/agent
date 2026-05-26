@@ -69,12 +69,11 @@ async def project_get(input: ProjectGetInput, ctx: ToolContext) -> ToolResult:
     except BackendError as e:
         return ToolResult.error(f"Backend error: {e}")
 
-    updates: dict[str, Any] = {}
+    updates: dict[str, Any] = {"project_id": str(input.id)}
     if input.include_flow and isinstance(project.get("flow"), dict):
         updates["baseline_flow"] = project["flow"]
         updates["working_flow"] = project["flow"]
         updates["flow_dirty"] = False
-        updates["project_id"] = str(input.id)
 
     return ToolResult.ok(
         f"Project `{project.get('name', input.id)}` loaded.",

@@ -4,10 +4,18 @@ from agent.flow.catalog import NODE_TYPES
 from agent.integrations.backend import BackendClient
 from agent.tools.base import ToolContext
 from agent.tools.flow import build_flow_tools
+from agent.tools.project import build_project_tools
 
 
 def _tools():
     return {t.name: t for t in build_flow_tools()}
+
+
+def _all_tools():
+    tools = {}
+    for item in [*build_flow_tools(), *build_project_tools()]:
+        tools[item.name] = item
+    return tools
 
 
 @pytest.mark.asyncio
@@ -160,10 +168,16 @@ async def test_safe_form_actions_build_valid_training_center_flow():
 class _FakeBackend(BackendClient):
     def __init__(self):
         self.updated: list[tuple[str, dict]] = []
+        self.projects: dict[str, dict] = {
+            "987": {"id": 987, "name": "Demo", "flow": {"nodes": [], "edges": []}}
+        }
 
     async def update_project(self, project_id, body, *, auth_claims=None):
         self.updated.append((str(project_id), body))
         return {"id": project_id, **body}
+
+    async def get_project(self, project_id, *, auth_claims=None):
+        return self.projects[str(project_id)]
 
 
 async def _build_minimal_valid_flow(tools, ctx):
@@ -225,3 +239,44 @@ async def test_flow_save_rejects_global_project_without_selected_project():
     assert res.is_error
     assert "no concrete project_id" in res.content
     assert backend.updated == []
+
+
+@pytest.mark.asyncio
+async def test_project_get_sets_project_context_for_following_flow_save():
+    tools = _all_tools()
+    backend = _FakeBackend()
+    ctx = ToolContext(
+        run_id="r",
+        project_id="global",
+        user_id="u",
+        services={"backend": backend},
+    )
+
+    res = await tools["project.get"].run({"id": "987", "include_flow": False}, ctx)
+    assert not res.is_error, res.content
+    ctx.state.update(res.state_updates)
+    assert ctx.state["project_id"] == "987"
+
+    await _build_minimal_valid_flow(tools, ctx)
+    res = await tools["flow.save"].run({"apply_layout": False}, ctx)
+
+    assert not res.is_error, res.content
+    assert backend.updated[0][0] == "987"
+
+
+@pytest.mark.asyncio
+async def test_flow_save_accepts_explicit_project_override():
+    tools = _tools()
+    backend = _FakeBackend()
+    ctx = ToolContext(
+        run_id="r",
+        project_id="global",
+        user_id="u",
+        services={"backend": backend},
+    )
+
+    await _build_minimal_valid_flow(tools, ctx)
+    res = await tools["flow.save"].run({"apply_layout": False, "project_id": "987"}, ctx)
+
+    assert not res.is_error, res.content
+    assert backend.updated[0][0] == "987"
