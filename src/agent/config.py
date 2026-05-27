@@ -27,12 +27,10 @@ class Settings(BaseSettings):
     )
 
     # ── llm ─────────────────────────────────────────────────────────────
-    llm_provider: LLMProvider = Field(default="anthropic", alias="AGENT_LLM_PROVIDER")
-    model_planner: str = Field(default="claude-opus-4-7", alias="AGENT_MODEL_PLANNER")
-    model_executor: str = Field(default="claude-sonnet-4-6", alias="AGENT_MODEL_EXECUTOR")
-    model_critic: str = Field(
-        default="claude-haiku-4-5-20251001", alias="AGENT_MODEL_CRITIC"
-    )
+    llm_provider: LLMProvider = Field(default="openai", alias="AGENT_LLM_PROVIDER")
+    model_planner: str = Field(default="gpt-5.2", alias="AGENT_MODEL_PLANNER")
+    model_executor: str = Field(default="gpt-5.2", alias="AGENT_MODEL_EXECUTOR")
+    model_critic: str = Field(default="gpt-5.2", alias="AGENT_MODEL_CRITIC")
     model_embedding: str = Field(
         default="text-embedding-3-small", alias="AGENT_MODEL_EMBEDDING"
     )
