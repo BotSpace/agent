@@ -22,7 +22,7 @@ from langgraph.types import Command
 
 from ..config import get_settings
 from ..graph import GraphConfig, build_graph, initial_state
-from ..llm import build_client
+from ..llm import ModelRoles, build_client
 from ..memory import close_async_checkpointer, create_async_checkpointer
 from ..tools import build_default_registry
 from .store import RunStore
@@ -73,7 +73,7 @@ async def run_agent(
         cfg = GraphConfig(
             llm=build_client(s.llm_provider, s),
             registry=registry,
-            model=s.model_executor,
+            models=ModelRoles.from_settings(s),
             max_tokens=s.max_output_tokens,
             emit=emit,
             services={},

@@ -53,7 +53,7 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
 
     # Lazy import to avoid circular dep at module load time.
     from ...graph import GraphConfig, build_graph, initial_state
-    from ...llm import build_client
+    from ...llm import ModelRoles, build_client
     from ...config import get_settings
     from ...tools import build_default_registry
     from ...tools.registry import ToolRegistry
@@ -66,16 +66,24 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
         if t.name in allowed:
             sub_registry.register(t)
 
-    model = {
-        "planner": s.model_planner,
-        "executor": s.model_executor,
-        "critic": s.model_critic,
-    }.get(spec.model_hint, s.model_executor)
+    base_roles = ModelRoles.from_settings(s)
+    hint_model = {
+        "planner": base_roles.planner,
+        "executor": base_roles.executor,
+        "critic": base_roles.critic,
+    }.get(spec.model_hint, base_roles.executor)
+    sub_roles = ModelRoles(
+        chat=hint_model,
+        planner=hint_model,
+        executor=hint_model,
+        critic=hint_model,
+        embedding=base_roles.embedding,
+    )
 
     cfg = GraphConfig(
         llm=build_client(s.llm_provider, s),
         registry=sub_registry,
-        model=model,
+        models=sub_roles,
         max_tokens=s.max_output_tokens,
         emit=ctx.emit,
         services=ctx.services,

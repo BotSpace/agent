@@ -35,10 +35,19 @@ def get_client(provider: str | None = None) -> LLMClient:
 class ModelRoles:
     """Bir LLM run-da rol bo'yicha turli modellar ishlatilishi mumkin.
 
-    Misol: planner — opus, executor — sonnet, critic — haiku.
+    Misol: chat — gpt-4o-mini, planner — gpt-5.2, executor — gpt-5.2, critic — gpt-5.2.
     """
 
-    def __init__(self, planner: str, executor: str, critic: str, embedding: str) -> None:
+    def __init__(
+        self,
+        *,
+        chat: str,
+        planner: str,
+        executor: str,
+        critic: str,
+        embedding: str,
+    ) -> None:
+        self.chat = chat
         self.planner = planner
         self.executor = executor
         self.critic = critic
@@ -48,6 +57,7 @@ class ModelRoles:
     def from_settings(cls, settings: Settings | None = None) -> "ModelRoles":
         s = settings or get_settings()
         return cls(
+            chat=s.model_chat,
             planner=s.model_planner,
             executor=s.model_executor,
             critic=s.model_critic,

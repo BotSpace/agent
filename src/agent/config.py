@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     model_planner: str = Field(default="gpt-5.2", alias="AGENT_MODEL_PLANNER")
     model_executor: str = Field(default="gpt-5.2", alias="AGENT_MODEL_EXECUTOR")
     model_critic: str = Field(default="gpt-5.2", alias="AGENT_MODEL_CRITIC")
+    model_chat: str = Field(default="gpt-4o-mini", alias="AGENT_MODEL_CHAT")
     model_embedding: str = Field(
         default="text-embedding-3-small", alias="AGENT_MODEL_EMBEDDING"
     )

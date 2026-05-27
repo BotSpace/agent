@@ -25,7 +25,7 @@ try:
 except ImportError:  # pragma: no cover
     from langgraph.checkpoint.memory import MemorySaver  # type: ignore[misc]
 
-from ..llm import GenerateOptions, LLMClient, Message, TextPart
+from ..llm import GenerateOptions, LLMClient, Message, ModelRoles, TextPart
 from ..prompts import build_system_prompt
 from ..tools import ToolContext, ToolRegistry, has_incomplete_plan
 from .state import AgentState
@@ -37,7 +37,7 @@ EventEmitter = Callable[[str, dict[str, Any]], Awaitable[None] | None]
 class GraphConfig:
     llm: LLMClient
     registry: ToolRegistry
-    model: str
+    models: ModelRoles
     max_tokens: int = 4096
     temperature: float = 0.7
     thinking_budget: int | None = None
@@ -54,14 +54,29 @@ async def _emit(emit: EventEmitter | None, name: str, payload: dict[str, Any]) -
         await res  # type: ignore[func-returns-value]
 
 
+def _pick_model(state: AgentState, models: ModelRoles) -> str:
+    """State'ga qarab eng mos modelni tanlash.
+
+    - Flow bilan ish (working_flow mavjud yoki flow_dirty) → executor (kuchli)
+    - Plan bajarilmoqda (current_plan mavjud) → planner (kuchli)
+    - Oddiy suhbat → chat (tezkor, arzon)
+    """
+    if state.get("working_flow") is not None or state.get("flow_dirty"):
+        return models.executor
+    if has_incomplete_plan(state.get("current_plan")):
+        return models.planner
+    return models.chat
+
+
 def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
     # ── nodes ───────────────────────────────────────────────────────────
 
     async def llm_call(state: AgentState) -> dict[str, Any]:
         system = Message.system_text(build_system_prompt(state))
         history = state.get("messages") or []
+        model = _pick_model(state, cfg.models)
         options = GenerateOptions(
-            model=cfg.model,
+            model=model,
             max_tokens=cfg.max_tokens,
             temperature=cfg.temperature,
             tools=cfg.registry.specs(),
@@ -71,7 +86,7 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
         await _emit(
             cfg.emit,
             "assistant_message",
-            {"text": result.message.text, "usage": result.usage.__dict__},
+            {"text": result.message.text, "model": model, "usage": result.usage.__dict__},
         )
         return {
             "messages": [result.message],

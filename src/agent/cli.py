@@ -16,7 +16,7 @@ import uvicorn
 
 from .config import get_settings
 from .graph import GraphConfig, build_graph, initial_state
-from .llm import get_client
+from .llm import ModelRoles, get_client
 from .tools import build_default_registry
 
 
@@ -63,7 +63,7 @@ def chat(
         cfg = GraphConfig(
             llm=get_client(),
             registry=build_default_registry(),
-            model=s.model_executor,
+            models=ModelRoles.from_settings(s),
         )
         graph = build_graph(cfg)
         state = initial_state(
