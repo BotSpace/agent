@@ -43,4 +43,4 @@ def test_openai_splits_tool_messages():
     assert roles == ["system", "user", "assistant", "tool"]
     assistant_msg = out[2]
     assert "tool_calls" in assistant_msg
-    assert assistant_msg["tool_calls"][0]["function"]["name"] == "x.do"
+    assert assistant_msg["tool_calls"][0]["function"]["name"] == "x--do"

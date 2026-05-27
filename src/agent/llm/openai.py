@@ -29,6 +29,16 @@ from .base import (
 )
 
 
+# OpenAI function names must match ^[a-zA-Z0-9_-]+$, while internal tool
+# names use dotted namespaces like "flow.get".
+def _sanitize_tool_name(name: str) -> str:
+    return name.replace(".", "--")
+
+
+def _restore_tool_name(name: str) -> str:
+    return name.replace("--", ".")
+
+
 class OpenAIClient(LLMClient):
     provider = "openai"
 
@@ -72,7 +82,7 @@ class OpenAIClient(LLMClient):
                             "id": part.id,
                             "type": "function",
                             "function": {
-                                "name": part.name,
+                                "name": _sanitize_tool_name(part.name),
                                 "arguments": json.dumps(part.arguments),
                             },
                         }
@@ -92,7 +102,7 @@ class OpenAIClient(LLMClient):
             {
                 "type": "function",
                 "function": {
-                    "name": t.name,
+                    "name": _sanitize_tool_name(t.name),
                     "description": t.description,
                     "parameters": t.input_schema,
                 },
@@ -144,7 +154,13 @@ class OpenAIClient(LLMClient):
                 args = json.loads(tc.function.arguments or "{}")
             except json.JSONDecodeError:
                 args = {}
-            parts.append(ToolUsePart(id=tc.id, name=tc.function.name, arguments=args))
+            parts.append(
+                ToolUsePart(
+                    id=tc.id,
+                    name=_restore_tool_name(tc.function.name),
+                    arguments=args,
+                )
+            )
 
         usage = Usage(
             input_tokens=response.usage.prompt_tokens if response.usage else 0,
@@ -199,7 +215,7 @@ class OpenAIClient(LLMClient):
                     if tc_delta.id:
                         buf["id"] = tc_delta.id
                     if tc_delta.function and tc_delta.function.name:
-                        buf["name"] = tc_delta.function.name
+                        buf["name"] = _restore_tool_name(tc_delta.function.name)
                         yield ToolUseStart(id=buf["id"], name=buf["name"])
                     if tc_delta.function and tc_delta.function.arguments:
                         buf["arguments"] += tc_delta.function.arguments
