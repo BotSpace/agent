@@ -120,13 +120,23 @@ class OpenAIClient(LLMClient):
             return options.tool_choice
         return "auto"
 
+    @staticmethod
+    def _uses_max_completion_tokens(model: str) -> bool:
+        for prefix in ("o1", "o3", "o4", "gpt-4o", "gpt-5"):
+            if model.startswith(prefix):
+                return True
+        return False
+
     def _build_request(self, messages: list[Message], options: GenerateOptions) -> dict[str, Any]:
         req: dict[str, Any] = {
             "model": options.model,
             "messages": self._to_openai_messages(messages),
-            "max_tokens": options.max_tokens,
             "temperature": options.temperature,
         }
+        if self._uses_max_completion_tokens(options.model):
+            req["max_completion_tokens"] = options.max_tokens
+        else:
+            req["max_tokens"] = options.max_tokens
         if options.tools:
             req["tools"] = self._tool_spec_for_api(options)
             req["tool_choice"] = self._resolve_tool_choice(options)

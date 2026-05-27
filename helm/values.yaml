@@ -34,6 +34,7 @@ configMaps:
     AGENT_LOG_LEVEL: "INFO"
     AGENT_CORS_ORIGINS: "https://botspace.uz,https://botmother.uz,https://beta.botmother.uz"
     AGENT_LLM_PROVIDER: "openai"
+    AGENT_MODEL_CHAT: "gpt-4o-mini"
     AGENT_MODEL_PLANNER: "gpt-5.2"
     AGENT_MODEL_EXECUTOR: "gpt-5.2"
     AGENT_MODEL_CRITIC: "gpt-5.2"
