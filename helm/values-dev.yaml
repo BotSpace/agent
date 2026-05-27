@@ -1,6 +1,6 @@
 # Dev environment overrides — merged on top of values.yaml
 image:
-  tag: "1.0.1-dev"
+  tag: "bda3933"
 
 configMaps:
   config:
