@@ -88,7 +88,6 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
         "critic": base_roles.critic,
     }.get(spec.model_hint, base_roles.executor)
     sub_roles = ModelRoles(
-        chat=hint_model,
         planner=hint_model,
         executor=hint_model,
         critic=hint_model,
