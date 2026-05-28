@@ -55,32 +55,21 @@ async def _emit(emit: EventEmitter | None, name: str, payload: dict[str, Any]) -
 
 
 def _pick_model(state: AgentState, models: ModelRoles) -> str:
-    """State'ga qarab eng mos modelni tanlash.
+    """State'ga qarab mos modelni tanlash.
 
-    - Flow bilan ish → executor (eng kuchli)
-    - Plan bajarilmoqda → planner (kuchli)
-    - Tool ishlatilgan suhbat → executor
-    - Birinchi xabar → executor (vazifani to'g'ri baholash uchun)
-    - Oddiy savol-javob (tool'siz, faqat matn) → chat (tezkor, arzon)
+    - Plan to'liq emas (qadamlar bajarilmoqda) → `planner`
+    - Boshqa barcha holatlarda → `executor`
+
+    Eslatma: avval chat (arzon) modeli ham tanlanardi — `assistant_response bor +
+    tool ishlatilmagan` deganda. Lekin bu noto'g'ri tashxis edi: "menga bot
+    qil" kabi murakkab so'rov chat-mode'da boshlanardi, chunki LLM hali tool
+    chaqirmagan bo'lardi. Endi chat mode olib tashlandi — main agent har doim
+    kuchli `executor` modelga ega. Sub-agentlar o'z scope'i ichida o'z
+    modelini tanlaydi.
     """
-    if state.get("working_flow") is not None or state.get("flow_dirty"):
-        return models.executor
     if has_incomplete_plan(state.get("current_plan")):
         return models.planner
-    messages = state.get("messages") or []
-    has_tool_usage = any(
-        isinstance(m, Message) and (m.tool_calls or m.role == "tool")
-        for m in messages
-    )
-    if has_tool_usage:
-        return models.executor
-    has_assistant_response = any(
-        isinstance(m, Message) and m.role == "assistant"
-        for m in messages
-    )
-    if not has_assistant_response:
-        return models.executor
-    return models.chat
+    return models.executor
 
 
 def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
