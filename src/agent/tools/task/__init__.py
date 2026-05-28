@@ -169,7 +169,14 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
 
     try:
         result = await graph.ainvoke(
-            base, config={"configurable": {"thread_id": thread_id}}
+            base,
+            config={
+                "configurable": {"thread_id": thread_id},
+                # LangGraph default = 25; flow-builder ko'pincha 30+ qadam
+                # bajaradi (har node uchun add+connect+validate). Main agent
+                # bilan teng — 500.
+                "recursion_limit": 500,
+            },
         )
     except Exception as e:  # noqa: BLE001
         # To'liq traceback'ni log'ga yozamiz — UI'ga faqat qisqa xulosa boradi,

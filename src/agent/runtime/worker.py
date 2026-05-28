@@ -99,7 +99,7 @@ async def run_agent(
 
         config = {
             "configurable": {"thread_id": rec.thread_id},
-            "recursion_limit": 200,
+            "recursion_limit": 500,
         }
         loop = asyncio.get_running_loop()
         result = await graph.ainvoke(state, config=config)
