@@ -537,10 +537,10 @@ async def flow_save(input: FlowSaveInput, ctx: ToolContext) -> ToolResult:
     )
 
 
-# ── flow.plan + flow.bulk_apply (planner→executor split) ────────────────────
+# ── flow.design + flow.bulk_apply (planner→executor split) ────────────────────
 
 
-class FlowPlanInput(BaseModel):
+class FlowDesignInput(BaseModel):
     task: str = Field(
         description=(
             "User-facing task: what the bot should do. Be specific (commands, "
@@ -550,7 +550,7 @@ class FlowPlanInput(BaseModel):
 
 
 @tool(
-    name="flow.plan",
+    name="flow.design",
     description=(
         "Strong planner LLM (planner role) bilan to'liq flow blueprint tuzadi: "
         "nodes + edges ro'yxati JSON tarzida. Bitta LLM chaqiruvi — recursion "
@@ -558,9 +558,9 @@ class FlowPlanInput(BaseModel):
         "bilan bir chaqiruvda qo'llanadi. Bittadan `flow.add_node` chaqirishdan "
         "OLDIN birinchi shu tool'ni chaqir."
     ),
-    input_model=FlowPlanInput,
+    input_model=FlowDesignInput,
 )
-async def flow_plan(input: FlowPlanInput, ctx: ToolContext) -> ToolResult:
+async def flow_design(input: FlowDesignInput, ctx: ToolContext) -> ToolResult:
     from ...config import get_settings
     from ...llm import GenerateOptions, Message, get_client
     from .blueprint import FlowBlueprint, parse_blueprint
@@ -656,7 +656,7 @@ class FlowBulkApplyInput(BaseModel):
         default=None,
         description=(
             "Nodes ro'yxati [{id, type, data}, ...]. Berilmasa, "
-            "state.flow_blueprint dan olinadi (`flow.plan` natijasi)."
+            "state.flow_blueprint dan olinadi (`flow.design` natijasi)."
         ),
     )
     edges: list[dict[str, Any]] | None = Field(
@@ -679,7 +679,7 @@ class FlowBulkApplyInput(BaseModel):
     description=(
         "Bir chaqiruvda barcha nodes/edges ni working flow'ga qo'llaydi: "
         "per-type Pydantic validatorlar bilan, ixtiyoriy validate + layout + save. "
-        "Argumentlar berilmasa state.flow_blueprint dan o'qiydi (flow.plan natijasi). "
+        "Argumentlar berilmasa state.flow_blueprint dan o'qiydi (flow.design natijasi). "
         "Bittadan `flow.add_node` o'rniga shu tool'ni ishlat — 30+ qadam bitta "
         "chaqiruvga aylanadi."
     ),
@@ -705,7 +705,7 @@ async def flow_bulk_apply(input: FlowBulkApplyInput, ctx: ToolContext) -> ToolRe
 
     if not nodes_raw:
         return ToolResult.error(
-            "Hech qanday node yo'q. Avval `flow.plan` chaqir yoki nodes argument ber."
+            "Hech qanday node yo'q. Avval `flow.design` chaqir yoki nodes argument ber."
         )
 
     # Per-node validation
@@ -843,6 +843,6 @@ def build_flow_tools() -> list[Tool]:
         flow_list_node_types,
         flow_diff,
         flow_save,
-        flow_plan,
+        flow_design,
         flow_bulk_apply,
     ]

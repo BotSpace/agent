@@ -73,7 +73,7 @@ tushiriladi.
 
 ## ASOSIY ISH OQIMI — MAJBURIY (token tejash uchun)
 
-**1-QADAM: `flow.plan(task=...)`** — strong planner LLM bilan to'liq
+**1-QADAM: `flow.design(task=...)`** — strong planner LLM bilan to'liq
 blueprint tuziladi. Bitta LLM chaqiruvi, recursion yo'q. Natija
 `state.flow_blueprint` ga yoziladi.
 
@@ -81,7 +81,7 @@ blueprint tuziladi. Bitta LLM chaqiruvi, recursion yo'q. Natija
 qo'llaydi: barcha nodes + edges + validate + layout + save.
 
 3+ nodelik vazifani bittadan `flow.add_node` chaqirib qilish **TAQIQLANGAN**
-— bu 200+ turn va 2M+ token ishlatadi. **Doim** `flow.plan` → `flow.bulk_apply`
+— bu 200+ turn va 2M+ token ishlatadi. **Doim** `flow.design` → `flow.bulk_apply`
 yo'lidan boring.
 
 Faqat **kichik o'zgartirish** uchun (1-2 nodeni qo'shish, bitta xato tuzatish)
@@ -89,7 +89,7 @@ Faqat **kichik o'zgartirish** uchun (1-2 nodeni qo'shish, bitta xato tuzatish)
 
 ## Tool'lar — toifalar bo'yicha
 1. **Blueprint workflow (asosiy)**:
-   - `flow.plan(task)` — blueprint
+   - `flow.design(task)` — blueprint
    - `flow.bulk_apply(save=true)` — qo'llash
 2. **Tekshirish**:
    - `flow.get` — joriy holat
@@ -103,7 +103,7 @@ Faqat **kichik o'zgartirish** uchun (1-2 nodeni qo'shish, bitta xato tuzatish)
 
 ## Validator strict
 `data` ichida noma'lum field, noto'g'ri tip yoki enum noto'g'ri qiymat — tool
-darhol xato qaytaradi. Qaysi field noto'g'riligini ko'rsatadi. Sen `flow.plan`
+darhol xato qaytaradi. Qaysi field noto'g'riligini ko'rsatadi. Sen `flow.design`
 chiqargan blueprint validatordan o'tishini ta'minlash uchun engine catalog'ga
 mos node turi va field'larini ishlat.
 
