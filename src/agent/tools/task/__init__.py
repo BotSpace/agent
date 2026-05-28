@@ -16,6 +16,8 @@ ketmaydi. Dashboard UI sub-agent qadamlarini accordion'da ko'rsata oladi
 from __future__ import annotations
 
 import inspect
+import logging
+import traceback
 import uuid
 from typing import Any
 
@@ -23,6 +25,8 @@ from pydantic import BaseModel, Field
 
 from ...prompts.subagent_specs import REGISTRY, list_subagents, tool_allowed
 from ..base import Tool, ToolContext, ToolResult, tool
+
+logger = logging.getLogger(__name__)
 
 
 class TaskRunInput(BaseModel):
@@ -168,6 +172,15 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
             base, config={"configurable": {"thread_id": thread_id}}
         )
     except Exception as e:  # noqa: BLE001
+        # To'liq traceback'ni log'ga yozamiz — UI'ga faqat qisqa xulosa boradi,
+        # lekin debug uchun stack pod log'larida bo'lishi shart.
+        tb = traceback.format_exc()
+        logger.error(
+            "Sub-agent %s crashed: %s\n%s",
+            spec.name,
+            type(e).__name__,
+            tb,
+        )
         await _emit_to_parent(
             "sub_agent_finished",
             {
@@ -175,10 +188,12 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
                 "name": spec.name,
                 "ok": False,
                 "tool_calls": tool_call_count,
-                "summary": f"Sub-agent xatoligi: {e}",
+                "summary": f"Sub-agent xatoligi ({type(e).__name__}): {e}",
             },
         )
-        return ToolResult.error(f"[sub-agent {spec.name}] failed: {e}")
+        return ToolResult.error(
+            f"[sub-agent {spec.name}] crashed: {type(e).__name__}: {e}"
+        )
 
     messages = result.get("messages") or []
     final_text = ""
