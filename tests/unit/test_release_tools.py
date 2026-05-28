@@ -46,6 +46,27 @@ async def test_subscription_current_tool():
     assert res.data and res.data["subscription"]["plan"]["name"] == "free"
 
 
+class _BackendWithIntPlan(_FakeBackend):
+    async def subscription_current(self, *, auth_claims=None):
+        # Real prod response sometimes returns plan as an int (plan_id)
+        return {"plan": 7, "plan_name": "pro", "status": "active"}
+
+
+@pytest.mark.asyncio
+async def test_subscription_current_handles_int_plan():
+    tools = _tools()
+    ctx = ToolContext(
+        run_id="r",
+        project_id=None,
+        user_id="u",
+        services={"backend": _BackendWithIntPlan()},
+    )
+    res = await tools["subscription.current"].run({}, ctx)
+    assert not res.is_error
+    assert "pro" in res.content
+    assert res.data and res.data["subscription"]["plan"] == 7
+
+
 @pytest.mark.asyncio
 async def test_subscription_upgrade_tool():
     tools = _tools()

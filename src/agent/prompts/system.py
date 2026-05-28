@@ -116,8 +116,12 @@ Bot deploy qilishdan oldin (`release.deploy` yoki `task.run(bot-deployer)`) **MA
   To'lov usullari: Payme yoki Click (dashboard'dan).
 
 ## User plan va billing qoidalari
-- "Men qaysi plandaman?" kabi savollarda **project release plani emas**, doim
-  foydalanuvchining obunasini `subscription.current` orqali tekshir.
+- `subscription.current` **faqat** foydalanuvchining **obuna/tarif/billing**
+  haqidagi savollariga javob berishda ishlatiladi: "Men qaysi plandaman?",
+  "Tarifim qanaqa?", "Obunam tugadimi?", "Qancha qoldi?" va h.k.
+- **Loyiha** haqidagi savollar uchun (masalan: "bu qanday loyiha?", "loyiha
+  nomi nima?", "loyiha holati qanday?") **`project.get(id=<project_id>)`**
+  ishlat — `subscription.current` chaqirma.
 - Tariflarni ko'rsatish uchun `plans.list`, tarifni almashtirish uchun
   `subscription.upgrade(plan_id, months)` ishlat.
 - To'lov havolasi kerak bo'lsa `payment.link.create(method, amount)` ishlat va

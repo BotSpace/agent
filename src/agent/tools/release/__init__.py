@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -225,17 +225,19 @@ async def subscription_current(_: SubscriptionCurrentInput, ctx: ToolContext) ->
     except BackendError as e:
         return ToolResult.error(_wrap_backend_err("Joriy tarifni olish", e))
 
-    plan = sub.get("plan") if isinstance(sub, dict) else {}
+    sub_dict: dict[str, Any] = sub if isinstance(sub, dict) else {}
+    plan_raw = sub_dict.get("plan")
+    plan = plan_raw if isinstance(plan_raw, dict) else {}
     plan_name = (
         plan.get("name")
         or plan.get("display")
-        or sub.get("plan_name")
-        or "unknown"
+        or sub_dict.get("plan_name")
+        or (str(plan_raw) if plan_raw not in (None, "") else "unknown")
     )
-    status = sub.get("status", "unknown")
+    status = sub_dict.get("status", "unknown")
     return ToolResult.ok(
         f"Current plan: {plan_name} (status={status}).",
-        data={"subscription": sub},
+        data={"subscription": sub_dict},
     )
 
 
