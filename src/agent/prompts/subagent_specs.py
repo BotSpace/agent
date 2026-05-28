@@ -93,9 +93,13 @@ Tugadi. Boshqa hech qanday tool kerak emas.
 - `flow.bulk_apply` **qisman muvaffaqiyatli** bo'lishi mumkin: to'g'ri node'lar
   darhol qo'llaniladi, faqat xato'lar `failed_nodes` data'sida qaytadi. **Ushbu
   holatda butun blueprint'ni qayta yubormang** — faqat tuzatilgan node'larni
-  va ularga bog'liq edge'larni alohida `flow.bulk_apply(nodes=[FIXED_NODES],
+  va ularga bog'liq edge'larni (jumladan natijadagi "tushib qolgan edge'lar"
+  ro'yxatidagilarni) alohida `flow.bulk_apply(nodes=[FIXED_NODES],
   edges=[RELATED_EDGES], save=true)` bilan jo'nating. Boshqa node'lar
-  allaqachon working_flow'da.
+  allaqachon working_flow'da. **Eslatma:** qisman holatda `save` ishlamaydi —
+  flow faqat barcha node'lar to'g'ri bo'lgandagina saqlanadi. **Maksimum 2
+  marta** urinib ko'r; agar node hali ham xato bersa, qayta-qayta yuborma —
+  foydalanuvchiga muammoni tushuntir.
 
 - Hech qachon "Boshlayman..." yoki "Quraman..." deb to'xtama — darhol
   `flow.design` ni chaqir. Birinchi javobing **ham qisqa matn, ham tool_call**

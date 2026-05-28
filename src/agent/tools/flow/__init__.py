@@ -125,22 +125,15 @@ def _render_flow_tree(flow: FlowDocument) -> str:
     nodes_by_id = {n.id: n for n in flow.nodes}
     # source_id → [(target_id, source_handle)]
     out_edges: dict[str, list[tuple[str, str | None]]] = {}
-    in_edges_count: dict[str, int] = {}
     for e in flow.edges:
         out_edges.setdefault(e.source, []).append((e.target, e.sourceHandle))
-        in_edges_count[e.target] = in_edges_count.get(e.target, 0) + 1
 
     triggers = list(flow.triggers())
-    counts = {
-        "nodes": len(flow.nodes),
-        "edges": len(flow.edges),
-        "triggers": len(triggers),
-    }
 
     lines: list[str] = [
-        f"# Flow arxitekturasi",
-        f"Statistika: {counts['nodes']} node, {counts['edges']} edge, "
-        f"{counts['triggers']} trigger (entry point).",
+        "# Flow arxitekturasi",
+        f"Statistika: {len(flow.nodes)} node, {len(flow.edges)} edge, "
+        f"{len(triggers)} trigger (entry point).",
         "",
     ]
 
@@ -167,55 +160,63 @@ def _render_flow_tree(flow: FlowDocument) -> str:
             kind = " [TRIGGER]"
         return f"`{n_id}` ({n.type}){kind}{hint}"
 
-    visited: set[str] = set()
+    def _handle_label(handle: str | None, source_id: str | None) -> str:
+        """Edge handle'idan o'qiladigan branch yorlig'i (true/false/button)."""
+        if not handle or handle == "source-handler":
+            return ""
+        if handle.startswith("target-handler-"):
+            # Format: target-handler-{sourceId}-{buttonText}. Source id'ning
+            # o'zida `-` bo'lishi mumkin (kebab-case), shuning uchun aniq
+            # prefiksni olib tashlaymiz — naive split emas.
+            if source_id and handle.startswith(f"target-handler-{source_id}-"):
+                btn = handle.removeprefix(f"target-handler-{source_id}-")
+            else:
+                btn = handle.removeprefix("target-handler-")
+            return f' [button: "{btn}"]'
+        return f" [{handle}]"
 
-    def _walk(node_id: str, prefix: str, is_last: bool) -> None:
+    visited: set[str] = set()
+    path: set[str] = set()  # joriy rekursiya zanjiri — haqiqiy sikllarni topish
+
+    def _walk(
+        node_id: str,
+        prefix: str,
+        is_last: bool,
+        in_handle: str | None = None,
+        source_id: str | None = None,
+    ) -> None:
+        connector = "└─" if is_last else "├─"
+        arrow = f"→{_handle_label(in_handle, source_id)} " if source_id is not None else ""
+        if node_id in path:
+            lines.append(f"{prefix}{connector} {arrow}↻ `{node_id}` (loop)")
+            return
         if node_id in visited:
-            lines.append(f"{prefix}{'└─' if is_last else '├─'} ↻ `{node_id}` (loop)")
+            # DAG merge nuqtasi — sikl emas, yuqorida to'liq ko'rsatilgan
+            lines.append(f"{prefix}{connector} {arrow}↗ `{node_id}` (yuqorida ko'rsatilgan)")
             return
         visited.add(node_id)
-        connector = "└─" if is_last else "├─"
-        lines.append(f"{prefix}{connector} {_node_label(node_id)}")
+        path.add(node_id)
+        lines.append(f"{prefix}{connector} {arrow}{_node_label(node_id)}")
         new_prefix = prefix + ("   " if is_last else "│  ")
         children = out_edges.get(node_id) or []
-        # Branching: bir nechta turli source_handle bo'lsa, har birini alohida
         for i, (target, handle) in enumerate(children):
-            child_is_last = i == len(children) - 1
-            handle_text = ""
-            if handle and handle != "source-handler":
-                # Branching label (true/false/found/...)
-                if handle.startswith("target-handler-"):
-                    btn = handle.split("-", 3)[-1] if "-" in handle else handle
-                    handle_text = f' [button: "{btn}"]'
-                else:
-                    handle_text = f" [{handle}]"
-            lines.append(
-                f"{new_prefix}{'└─' if child_is_last else '├─'} →{handle_text} {_node_label(target)}"
-            )
-            grandchildren = out_edges.get(target) or []
-            if grandchildren:
-                visited.add(target)
-                gprefix = new_prefix + ("   " if child_is_last else "│  ")
-                for j, (gt, gh) in enumerate(grandchildren):
-                    _walk(gt, gprefix, j == len(grandchildren) - 1)
+            _walk(target, new_prefix, i == len(children) - 1, handle, node_id)
+        path.discard(node_id)
 
     # Trigger'lardan tushib chiqamiz
     for i, t in enumerate(triggers):
         lines.append(f"\n## Trigger #{i + 1}")
         _walk(t.id, "", True)
 
-    # Bog'lanmagan / orphan node'lar
-    orphans = [
-        n.id for n in flow.nodes
-        if n.id not in visited and in_edges_count.get(n.id, 0) == 0
-        and not n.type.endswith("TriggerNode")
-    ]
-    if orphans:
-        lines.append("\n## Orphan node'lar (kirish yo'q)")
-        for oid in orphans[:20]:
+    # Hech qaysi trigger'dan yetib bo'lmaydigan node'lar (kirish nuqtasiz
+    # izolyatsiyalangan sikllar ham shu yerga tushadi — jim yo'qolib qolmasin).
+    unreached = [n.id for n in flow.nodes if n.id not in visited]
+    if unreached:
+        lines.append("\n## Yetib bo'lmaydigan node'lar (trigger'dan ulanmagan)")
+        for oid in unreached[:20]:
             lines.append(f"  - {_node_label(oid)}")
-        if len(orphans) > 20:
-            lines.append(f"  ...va yana {len(orphans) - 20}")
+        if len(unreached) > 20:
+            lines.append(f"  ...va yana {len(unreached) - 20}")
 
     return "\n".join(lines)
 
@@ -958,7 +959,7 @@ async def flow_bulk_apply(input: FlowBulkApplyInput, ctx: ToolContext) -> ToolRe
             )
         val_status = " · validate OK"
 
-    if input.layout:
+    if input.layout and not failed_nodes:
         auto_layout(flow)
         updates = _set_working_flow(flow)
 
@@ -976,18 +977,31 @@ async def flow_bulk_apply(input: FlowBulkApplyInput, ctx: ToolContext) -> ToolRe
 
     # Xulosa
     if failed_nodes:
+        save_note = ""
+        if input.save:
+            save_note = (
+                " ⚠️ DIQQAT: save=true so'ralgan edi, lekin chala flow "
+                "SAQLANMADI (faqat working_flow'da, backend'ga yozilmadi). "
+                "Saqlash uchun avval barcha node'larni tuzating."
+            )
         msg = (
             f"Qisman apply: {len(validated_nodes)} node muvaffaqiyatli, "
             f"{applied_edges} edge qo'shildi. "
             f"{len(failed_nodes)} node xato — fix qilingani(lari)ni keyingi "
             f"`flow.bulk_apply(nodes=[FAQAT tuzatilgan node'lar], "
             f"edges=[bog'liq edge'lar], save=true)` bilan yuboring. "
-            f"Boshidan butun blueprint yubormang.\n\n"
+            f"Boshidan butun blueprint yubormang."
+            f"{save_note}\n\n"
             f"Xato node'lar:\n" + _format_failures(failed_nodes)
         )
         if edge_errors:
-            msg += f"\nEdge ogohlantirishlari ({len(edge_errors)}):\n  - " + \
-                   "\n  - ".join(edge_errors[:5])
+            # Tushib qolgan edge'larni TO'LIQ ko'rsatamiz — fix round'da
+            # ularni ham qayta yuborish shart, aks holda node ulanmay qoladi.
+            msg += (
+                f"\n\nTushib qolgan edge'lar ({len(edge_errors)}) — tegishli "
+                f"node'lar bilan birga qayta yuboring:\n  - "
+                + "\n  - ".join(edge_errors)
+            )
         return ToolResult.ok(
             msg,
             data={
