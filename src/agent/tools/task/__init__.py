@@ -131,6 +131,13 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
         max_tokens=s.max_output_tokens,
         emit=_wrap_emit,
         services=ctx.services,
+        # Sub-agent ichida destructive tool'lar (release.deploy, flow.save,
+        # cms.delete, ...) approval-interrupt orqali to'xtatilmaydi: foydalanuvchi
+        # main agent'ga vazifa berganida (masalan "deploy qil") allaqachon
+        # niyatini tasdiqlagan. Approval bo'lsa sub-agent yarim yo'lda tugab
+        # qoladi va main agent uchun "no final text" qaytaradi — bu noto'g'ri
+        # "muvaffaqiyat" xulosaga olib keladi (release-985-4 bug case).
+        approve_destructive=False,
     )
     graph = build_graph(cfg)
     seeded_prompt = f"[Sub-agent: {spec.name}]\n{spec.full_prompt}\n\nTask: {input.prompt}"
@@ -175,7 +182,26 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
         if getattr(m, "role", None) == "assistant":
             final_text = m.text
             break
-    final_text = (final_text or "(no final text)").strip()
+    final_text = (final_text or "").strip()
+    # Agar sub-agent yakuniy assistant matnsiz tugagan bo'lsa — bu o'zining
+    # vazifasini bajara olmagani belgisi (masalan max_tool_calls limit, yoki
+    # ichki xato, yoki tool real bajarilmadi). Main agent uchun bu xato.
+    if not final_text:
+        if parent_emit is not None:
+            parent_emit(
+                "sub_agent_finished",
+                {
+                    "sub_agent_id": sub_id,
+                    "name": spec.name,
+                    "ok": False,
+                    "tool_calls": tool_call_count,
+                    "summary": "Sub-agent yakuniy javobsiz tugadi — vazifa to'liq bajarilmagan bo'lishi mumkin.",
+                },
+            )
+        return ToolResult.error(
+            f"[{spec.name}] terminated without a final answer after {tool_call_count} tool call(s). "
+            "Task may be incomplete — verify state before reporting success to the user."
+        )
 
     # Flow o'zgargan bo'lsa — working_flow'ni qaytarish (UI panel uchun)
     state_updates: dict[str, Any] = {}
