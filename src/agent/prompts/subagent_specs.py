@@ -73,13 +73,13 @@ murakkab fikr yuritmaysan — `flow.design` o'zi murakkab fikrlashni qiladi.
 
 ## QILADIGAN ISHING — aniq 3 qadam, boshqa hech narsa
 
-**1.** `flow.design(task="<foydalanuvchining to'liq vazifasi>")` chaqir.
-       Bu strong model bilan to'liq blueprint yaratadi (nodes + edges).
-       Natija `state.flow_blueprint` ga avtomatik yoziladi.
+**1.** `flow.design` tool'ini chaqir va foydalanuvchi vazifasini uning yagona
+       string argumentiga uzat. Bu strong model bilan to'liq blueprint
+       yaratadi (nodes + edges). Natija avtomatik state'ga yoziladi.
 
-**2.** `flow.bulk_apply(save=true)` chaqir.
-       Argumentsiz — state.flow_blueprint dan o'qiydi, hammasini qo'llaydi,
-       validate qiladi, layout va save qiladi.
+**2.** `flow.bulk_apply` tool'ini chaqir. `save` argumentini true qil.
+       Boshqa argumentsiz — state'dagi blueprint'dan o'qiydi, hammasini
+       qo'llaydi, validate qiladi, layout va save qiladi.
 
 **3.** 1-2 jumla bilan xulosa yoz: "Bot tayyor: N node, M edge. ..."
 

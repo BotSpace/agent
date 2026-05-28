@@ -49,5 +49,20 @@ class ToolRegistry:
     ) -> ToolResult:
         tool = self.get(name)
         if tool is None:
-            return ToolResult.error(f"Unknown tool `{name}`")
+            # LLM ba'zan o'zining training data'sidan tool nomini hallutsinatsiya
+            # qiladi (masalan sub-agent ichida `task.run`). Mavjud tool'larni
+            # ko'rsatish modelga darhol to'g'ri tool'ni tanlash imkonini beradi.
+            available = ", ".join(sorted(self._tools.keys()))
+            # Eng yaqin to'g'ri tool'ni topishga harakat (masalan 'task.run'
+            # → namespace 'task' yo'q bo'lsa, prefiks bo'yicha taklif)
+            ns = name.split(".")[0] if "." in name else name
+            same_ns = [n for n in self._tools if n.startswith(ns + ".")]
+            hint = (
+                f"\nMavjud `{ns}.*` tool'lari: {same_ns}" if same_ns
+                else f"\nUshbu scope'da `{ns}` namespace'i umuman yo'q."
+            )
+            return ToolResult.error(
+                f"Unknown tool `{name}` — bu scope'da mavjud emas.{hint}"
+                f"\nBarcha mavjud tool'lar: {available}"
+            )
         return await tool.run(args, ctx)
