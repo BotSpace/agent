@@ -55,21 +55,18 @@ async def _emit(emit: EventEmitter | None, name: str, payload: dict[str, Any]) -
 
 
 def _pick_model(state: AgentState, models: ModelRoles) -> str:
-    """State'ga qarab mos modelni tanlash.
+    """Main agent har doim `planner` (kuchli) modelni ishlatadi.
 
-    - Plan to'liq emas (qadamlar bajarilmoqda) → `planner`
-    - Boshqa barcha holatlarda → `executor`
+    Main agent — dispatcher: har bir qadam muhim (qaysi sub-agent, qanday
+    prompt, project.list/get ni darhol chaqirish, va h.k.). Arzon model
+    (executor=gpt-5.4-mini) bu rolda "men buni qilaman..." deb gap qilib,
+    aslida tool chaqirmasdi — foydalanuvchi natija ko'rmasdi.
 
-    Eslatma: avval chat (arzon) modeli ham tanlanardi — `assistant_response bor +
-    tool ishlatilmagan` deganda. Lekin bu noto'g'ri tashxis edi: "menga bot
-    qil" kabi murakkab so'rov chat-mode'da boshlanardi, chunki LLM hali tool
-    chaqirmagan bo'lardi. Endi chat mode olib tashlandi — main agent har doim
-    kuchli `executor` modelga ega. Sub-agentlar o'z scope'i ichida o'z
-    modelini tanlaydi.
+    Sub-agentlar `task.run` ichida `ModelRoles(planner=executor=critic=hint_model)`
+    qilib collapse qilingani uchun, ular o'z hint'idagi (odatda arzon executor)
+    modelni ishlatishda davom etadi.
     """
-    if has_incomplete_plan(state.get("current_plan")):
-        return models.planner
-    return models.executor
+    return models.planner
 
 
 def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
