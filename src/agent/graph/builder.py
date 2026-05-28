@@ -170,12 +170,19 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
                 )
                 continue
 
+            # ToolContext.emit — async wrapper. Tool'lar `await ctx.emit(...)`
+            # qilib o'z event'larini chiqarishi mumkin (task.run sub_agent_started
+            # / sub_agent_finished uchun ishlatadi). Sync lambda ishlatish
+            # noto'g'ri edi — cfg.emit async bo'lganida coroutine yo'qotilardi.
+            async def _ctx_emit(name: str, payload: dict[str, Any]) -> None:
+                await _emit(cfg.emit, name, payload)
+
             ctx = ToolContext(
                 run_id=state.get("run_id") or "",
                 project_id=state.get("project_id"),
                 user_id=state.get("user_id"),
                 state=current_state,
-                emit=lambda n, p: cfg.emit and cfg.emit(n, p),  # type: ignore[func-returns-value]
+                emit=_ctx_emit,
                 services=cfg.services or {},
             )
             result = await cfg.registry.execute(call.name, call.arguments, ctx)

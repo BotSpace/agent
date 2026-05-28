@@ -15,6 +15,7 @@ ketmaydi. Dashboard UI sub-agent qadamlarini accordion'da ko'rsata oladi
 
 from __future__ import annotations
 
+import inspect
 import uuid
 from typing import Any
 
@@ -101,28 +102,33 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
 
     tool_call_count = 0
 
-    def _wrap_emit(name: str, payload: dict[str, Any]):
+    async def _emit_to_parent(name: str, payload: dict[str, Any]) -> None:
+        """Parent emit'ni xavfsiz await qilish — sync yoki async farqsiz."""
+        if parent_emit is None:
+            return
+        result = parent_emit(name, payload)
+        if inspect.isawaitable(result):
+            await result
+
+    async def _wrap_emit(name: str, payload: dict[str, Any]) -> None:
         """Sub-agent event'larini sub_agent_id bilan markirovka qilamiz."""
         nonlocal tool_call_count
         if name == "tool_call":
             tool_call_count += 1
         if isinstance(payload, dict):
             payload = {**payload, "sub_agent_id": sub_id, "sub_agent_name": spec.name}
-        if parent_emit is None:
-            return None
-        return parent_emit(name, payload)
+        await _emit_to_parent(name, payload)
 
-    # Sub-agent boshlanishini bildirish
-    if parent_emit is not None:
-        parent_emit(
-            "sub_agent_started",
-            {
-                "sub_agent_id": sub_id,
-                "name": spec.name,
-                "description": spec.description,
-                "prompt": input.prompt,
-            },
-        )
+    # Sub-agent boshlanishini bildirish — dashboard SubAgentAccordion yaratadi
+    await _emit_to_parent(
+        "sub_agent_started",
+        {
+            "sub_agent_id": sub_id,
+            "name": spec.name,
+            "description": spec.description,
+            "prompt": input.prompt,
+        },
+    )
 
     cfg = GraphConfig(
         llm=build_client(s.llm_provider, s),
@@ -163,17 +169,16 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
             base, config={"configurable": {"thread_id": thread_id}}
         )
     except Exception as e:  # noqa: BLE001
-        if parent_emit is not None:
-            parent_emit(
-                "sub_agent_finished",
-                {
-                    "sub_agent_id": sub_id,
-                    "name": spec.name,
-                    "ok": False,
-                    "tool_calls": tool_call_count,
-                    "summary": f"Sub-agent xatoligi: {e}",
-                },
-            )
+        await _emit_to_parent(
+            "sub_agent_finished",
+            {
+                "sub_agent_id": sub_id,
+                "name": spec.name,
+                "ok": False,
+                "tool_calls": tool_call_count,
+                "summary": f"Sub-agent xatoligi: {e}",
+            },
+        )
         return ToolResult.error(f"[sub-agent {spec.name}] failed: {e}")
 
     messages = result.get("messages") or []
@@ -187,17 +192,16 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
     # vazifasini bajara olmagani belgisi (masalan max_tool_calls limit, yoki
     # ichki xato, yoki tool real bajarilmadi). Main agent uchun bu xato.
     if not final_text:
-        if parent_emit is not None:
-            parent_emit(
-                "sub_agent_finished",
-                {
-                    "sub_agent_id": sub_id,
-                    "name": spec.name,
-                    "ok": False,
-                    "tool_calls": tool_call_count,
-                    "summary": "Sub-agent yakuniy javobsiz tugadi — vazifa to'liq bajarilmagan bo'lishi mumkin.",
-                },
-            )
+        await _emit_to_parent(
+            "sub_agent_finished",
+            {
+                "sub_agent_id": sub_id,
+                "name": spec.name,
+                "ok": False,
+                "tool_calls": tool_call_count,
+                "summary": "Sub-agent yakuniy javobsiz tugadi — vazifa to'liq bajarilmagan bo'lishi mumkin.",
+            },
+        )
         return ToolResult.error(
             f"[{spec.name}] terminated without a final answer after {tool_call_count} tool call(s). "
             "Task may be incomplete — verify state before reporting success to the user."
@@ -210,17 +214,16 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
         state_updates["working_flow"] = sub_working
         state_updates["flow_dirty"] = bool(result.get("flow_dirty"))
 
-    if parent_emit is not None:
-        parent_emit(
-            "sub_agent_finished",
-            {
-                "sub_agent_id": sub_id,
-                "name": spec.name,
-                "ok": True,
-                "tool_calls": tool_call_count,
-                "summary": final_text[:500],
-            },
-        )
+    await _emit_to_parent(
+        "sub_agent_finished",
+        {
+            "sub_agent_id": sub_id,
+            "name": spec.name,
+            "ok": True,
+            "tool_calls": tool_call_count,
+            "summary": final_text[:500],
+        },
+    )
 
     # Main agent uchun MINIMAL content — qisqa xulosa.
     # Oraliq tool call'lar main history'ga kirmaydi (ular faqat sub_agent_step
