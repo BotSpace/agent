@@ -9,6 +9,7 @@ from .anthropic import AnthropicClient
 from .base import LLMClient, LLMError
 from .bedrock import BedrockClient
 from .openai import OpenAIClient
+from .openrouter import OpenRouterClient
 
 
 def build_client(provider: str, settings: Settings | None = None) -> LLMClient:
@@ -17,6 +18,12 @@ def build_client(provider: str, settings: Settings | None = None) -> LLMClient:
         return AnthropicClient(api_key=s.anthropic_api_key)
     if provider == "openai":
         return OpenAIClient(api_key=s.openai_api_key)
+    if provider == "openrouter":
+        return OpenRouterClient(
+            api_key=s.openrouter_api_key,
+            site_url=s.openrouter_site_url,
+            app_name=s.openrouter_app_name,
+        )
     if provider == "bedrock":
         return BedrockClient(
             region=s.aws_region,

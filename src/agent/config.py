@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-LLMProvider = Literal["anthropic", "openai", "bedrock"]
+LLMProvider = Literal["anthropic", "openai", "bedrock", "openrouter"]
 
 
 class Settings(BaseSettings):
@@ -38,6 +38,15 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
+    openrouter_api_key: str | None = Field(default=None, alias="OPENROUTER_API_KEY")
+    openrouter_site_url: str | None = Field(
+        default="https://botspace.uz", alias="OPENROUTER_SITE_URL",
+        description="HTTP-Referer header for OpenRouter rankings/attribution.",
+    )
+    openrouter_app_name: str | None = Field(
+        default="Botmother Agent", alias="OPENROUTER_APP_NAME",
+        description="X-Title header for OpenRouter dashboard display.",
+    )
     aws_access_key_id: str | None = Field(default=None, alias="AWS_ACCESS_KEY_ID")
     aws_secret_access_key: str | None = Field(default=None, alias="AWS_SECRET_ACCESS_KEY")
     aws_region: str = Field(default="us-east-1", alias="AWS_REGION")
