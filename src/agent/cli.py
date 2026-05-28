@@ -17,7 +17,7 @@ import uvicorn
 from .config import get_settings
 from .graph import GraphConfig, build_graph, initial_state
 from .llm import ModelRoles, get_client
-from .tools import build_default_registry
+from .tools import build_default_registry, build_main_registry
 
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -62,7 +62,7 @@ def chat(
         s = get_settings()
         cfg = GraphConfig(
             llm=get_client(),
-            registry=build_default_registry(),
+            registry=build_main_registry(),
             models=ModelRoles.from_settings(s),
         )
         graph = build_graph(cfg)

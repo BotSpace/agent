@@ -24,7 +24,7 @@ from ..config import get_settings
 from ..graph import GraphConfig, build_graph, initial_state
 from ..llm import ModelRoles, build_client
 from ..memory import close_async_checkpointer, create_async_checkpointer
-from ..tools import build_default_registry
+from ..tools import build_main_registry
 from .store import RunStore
 
 
@@ -69,7 +69,7 @@ async def run_agent(
 
     checkpointer = None
     try:
-        registry = build_default_registry()
+        registry = build_main_registry()
         cfg = GraphConfig(
             llm=build_client(s.llm_provider, s),
             registry=registry,

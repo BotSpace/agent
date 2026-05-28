@@ -19,7 +19,12 @@ from .task import build_task_tools
 
 
 def build_default_registry() -> ToolRegistry:
-    """Full registry — Phase 0-7 inclusive."""
+    """Full registry — barcha domen tool'larini o'z ichiga oladi.
+
+    Bu registry sub-agent'lar uchun manba sifatida ishlatiladi (`task.run` ichida).
+    Main agent BU registry'ni TO'G'RIDAN-TO'G'RI ishlatmaydi — u `build_main_registry()`
+    orqali yaratilgan dispatcher-only registry'ni oladi.
+    """
     reg = ToolRegistry()
     reg.extend(build_plan_tools())
     reg.extend(build_flow_tools())
@@ -36,12 +41,31 @@ def build_default_registry() -> ToolRegistry:
     return reg
 
 
+def build_main_registry() -> ToolRegistry:
+    """Main (dispatcher) agent uchun minimal registry.
+
+    Main agent o'zi domen ishini bajarmaydi — `task.run` orqali sub-agent'ga
+    uzatadi. Shuning uchun unda faqat:
+    - plan.*       — TodoWrite ekvivalenti
+    - project.*    — loyiha boshqaruvi (CRUD), task.run uchun project_id bilish kerak
+    - search.docs  — Botmother dokumentatsiyasini qidirish
+    - task.run     — sub-agent'ga uzatish
+    """
+    reg = ToolRegistry()
+    reg.extend(build_plan_tools())
+    reg.extend(build_project_tools())
+    reg.extend(build_search_tools())
+    reg.extend(build_task_tools())
+    return reg
+
+
 __all__ = [
     "Tool",
     "ToolContext",
     "ToolRegistry",
     "ToolResult",
     "build_default_registry",
+    "build_main_registry",
     "has_incomplete_plan",
     "tool",
 ]
