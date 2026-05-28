@@ -158,6 +158,7 @@ async def run_agent(
                 input_tokens=total_in,
                 output_tokens=total_out,
                 project_id=rec.project_id,
+                auth_claims=auth_claims,
             )
         except Exception:
             logger.warning("Failed to report token usage to backend", exc_info=True)

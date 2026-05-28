@@ -741,17 +741,25 @@ class BackendClient:
         input_tokens: int,
         output_tokens: int,
         project_id: str | int | None = None,
+        *,
+        auth_claims: dict | None = None,
     ) -> None:
-        """Report AI token usage to backend for subscription tracking."""
+        """Report AI token usage to backend for subscription tracking.
+
+        Run-ni boshlagan foydalanuvchi JWT auth_claims orqali yuboriladi —
+        DRF endpoint IsAuthenticated talab qiladi va internal_token holida
+        ham endpoint user-scoped logikani topa olmaydi.
+        """
         await self._request(
             "POST",
             "/api/subscription/usage/report/",
             json={
-                "user_id": int(user_id),
+                "user_id": int(user_id) if str(user_id).strip().isdigit() else user_id,
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
                 "project_id": str(project_id) if project_id else None,
             },
+            **_auth_kw(auth_claims),
         )
 
 @lru_cache(maxsize=2)
