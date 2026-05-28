@@ -149,7 +149,19 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
         approve_destructive=False,
     )
     graph = build_graph(cfg)
-    seeded_prompt = f"[Sub-agent: {spec.name}]\n{spec.full_prompt}\n\nTask: {input.prompt}"
+    # flow-builder uchun seeded prompt'ga qat'iy nudge — birinchi javobda
+    # darhol flow.design chaqirish kerak, gap aytib to'xtab qolmaslik.
+    nudge = ""
+    if spec.name == "flow-builder":
+        nudge = (
+            "\n\nBIRINCHI JAVOBINGDA `flow.design(task=\"...\")` ni chaqir. "
+            "Hech qanday 'Boshlayman' yoki 'Quraman' tipidagi gap aytib to'xtama — "
+            "tool_call DARHOL bo'lishi shart."
+        )
+    seeded_prompt = (
+        f"[Sub-agent: {spec.name}]\n{spec.full_prompt}\n\n"
+        f"Task: {input.prompt}{nudge}"
+    )
 
     thread_id = f"{ctx.run_id}-{spec.name}-{sub_id}"
     base = initial_state(

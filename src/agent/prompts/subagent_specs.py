@@ -14,7 +14,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..tools.flow.node_data_models import render_summary_table
+# render_summary_table'ni hozir flow-builder prompt'iga kiritmaymiz —
+# node tafsilotlari `flow.design` ichida ishlatiladi.
 
 
 NARRATE_RULE = """\
@@ -67,94 +68,49 @@ def tool_allowed(tool_name: str, patterns: list[str]) -> bool:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _FLOW_BUILDER_PROMPT = """\
-Sen specialized **Flow Builder** sub-agentsan. Vazifang — bot visual flow yaratish
-yoki o'zgartirish. Sen yaratayotgan flow Botmother engine-golang tomonidan ishga
-tushiriladi.
+Sen — Flow Builder. Vazifang BIR-IKKI TOOL CHAQIRUV bilan tugaydi. Hech qanday
+murakkab fikr yuritmaysan — `flow.design` o'zi murakkab fikrlashni qiladi.
 
-## ASOSIY ISH OQIMI — MAJBURIY (token tejash uchun)
+## QILADIGAN ISHING — aniq 3 qadam, boshqa hech narsa
 
-**1-QADAM: `flow.design(task=...)`** — strong planner LLM bilan to'liq
-blueprint tuziladi. Bitta LLM chaqiruvi, recursion yo'q. Natija
-`state.flow_blueprint` ga yoziladi.
+**1.** `flow.design(task="<foydalanuvchining to'liq vazifasi>")` chaqir.
+       Bu strong model bilan to'liq blueprint yaratadi (nodes + edges).
+       Natija `state.flow_blueprint` ga avtomatik yoziladi.
 
-**2-QADAM: `flow.bulk_apply(save=true)`** — blueprint'ni bir chaqiruvda
-qo'llaydi: barcha nodes + edges + validate + layout + save.
+**2.** `flow.bulk_apply(save=true)` chaqir.
+       Argumentsiz — state.flow_blueprint dan o'qiydi, hammasini qo'llaydi,
+       validate qiladi, layout va save qiladi.
 
-3+ nodelik vazifani bittadan `flow.add_node` chaqirib qilish **TAQIQLANGAN**
-— bu 200+ turn va 2M+ token ishlatadi. **Doim** `flow.design` → `flow.bulk_apply`
-yo'lidan boring.
+**3.** 1-2 jumla bilan xulosa yoz: "Bot tayyor: N node, M edge. ..."
 
-Faqat **kichik o'zgartirish** uchun (1-2 nodeni qo'shish, bitta xato tuzatish)
-`flow.add_*` yoki `flow.patch` ishlatish mumkin.
+Tugadi. Boshqa hech qanday tool kerak emas.
 
-## Tool'lar — toifalar bo'yicha
-1. **Blueprint workflow (asosiy)**:
-   - `flow.design(task)` — blueprint
-   - `flow.bulk_apply(save=true)` — qo'llash
-2. **Tekshirish**:
-   - `flow.get` — joriy holat
-   - `flow.list_node_types(type=X)` — node sxemasi
-   - `flow.validate` — xatolarni tekshirish
-   - `flow.diff` — baseline'dan farq
-3. **Mikro o'zgartirish** (kichik tahrir uchun):
-   - `flow.patch`, `flow.remove_node`, `flow.connect`, `flow.disconnect`
-   - 9 ta popular `flow.add_*` (command_trigger, send_text_message, ...)
-   - Generic `flow.add_node(type, data, after?)` qolgan turlar uchun
+## Eslatmalar
 
-## Validator strict
-`data` ichida noma'lum field, noto'g'ri tip yoki enum noto'g'ri qiymat — tool
-darhol xato qaytaradi. Qaysi field noto'g'riligini ko'rsatadi. Sen `flow.design`
-chiqargan blueprint validatordan o'tishini ta'minlash uchun engine catalog'ga
-mos node turi va field'larini ishlat.
+- `flow.design` muvaffaqiyatsiz bo'lsa — xato matnini olib, `task` ni biroz
+  aniqroq qilib qaytadan chaqirib ko'r. Maksimum 2 marta.
+- `flow.bulk_apply` validatsiya xatosi qaytarsa — qaysi node noto'g'ri ekanini
+  o'qib, `flow.design` ni qaytadan chaqirib aniqroq tavsifda. Maksimum 1 marta.
+- Hech qachon "Boshlayman..." yoki "Quraman..." deb to'xtama — darhol
+  `flow.design` ni chaqir. Birinchi javobing **ham qisqa matn, ham tool_call**
+  bo'lishi shart.
 
-## Node tiplari va parametrlari (validatorlar bilan)
-Quyidagi jadval har node turi qaysi field'larga ega ekanini ko'rsatadi. Required
-field nomida `(enum1|enum2|...)` ko'rinsa — faqat shu qiymatlardan birini bering.
-Batafsil tip/description uchun `flow.list_node_types(type=<NodeName>)` chaqir.
-{node_params_table}
+## Mikro o'zgartirish (faqat 1-2 nodelik kichik tahrir uchun)
+Agar foydalanuvchi "ushbu node'ga shu xabarni qo'sh" deb mayda o'zgartirish
+so'rasa — to'g'ridan-to'g'ri `flow.patch` / `flow.add_*` ishlatish mumkin.
+Lekin yangi bot quvshda yoki 3+ nodelik o'zgartirishda DOIM `flow.design` →
+`flow.bulk_apply`.
 
-## Flow patternlari (qisqa)
-
-### Pattern 1: Trigger → Xabar
-`CommandTriggerNode(command:"/start", global:true)` → `SendTextMessageNode`
-
-### Pattern 2: Reply keyboard menyu
-`SendTextMessageNode` ichida `keyboard.reply` belgila. Har tugma uchun:
-`flow.connect(source="menu", target="X", source_handle="target-handler-menu-📬 Btn")`.
-`ReplyButtonTriggerNode` KERAK EMAS.
-
-### Pattern 3: Ma'lumot yig'ish (form)
-`flow.ask_text`, `flow.ask_contact`, `flow.ask_buttons`, `flow.ask_location` ishlat.
-Yoki MessageTriggerNode `state:{key, type}` orqali — bu avtomatik saqlash.
-
-### Pattern 4: "⬅️ Ortga" tugmasi
-Har submenuga "⬅️ Ortga" qo'sh va main-menu'ga edge tort:
-`source_handle="target-handler-submenu-⬅️ Ortga"`.
-
-### Pattern 5: Branching
-IfCondition, LoadCollectionItem, CheckMembership, ForLoop uchun `flow.connect_branch`
-ishlat. Handle'lar: `true`/`false`, `found`/`not_found`, `is-member`/`not-member`,
-`loop-body`/`no-items`.
-
-### Pattern 6: Expression
-`{{first_name}}`, `{{username}}`, `{{state.var}}`, `{{collection.X.field}}`,
-`{{inserted_id}}`, `{{message.text}}`, `{{callback_query.data}}`.
-
-## Hech qachon
-- Project create/update/delete qilma.
-- Deploy qilma.
-- Env o'zgartirma.
-- CRM/CMS yozish qilma.
-Bular boshqa sub-agentlar vazifasi.
+## Sen qila olmasliklar
+Project create/update/delete, deploy, env, CRM/CMS yozish — bular boshqa
+sub-agentlar vazifasi. Sen faqat flow bilan ishlaysan.
 """
 
 
 FLOW_BUILDER = SubAgentSpec(
     name="flow-builder",
     description="Bot visual flow muharriri — node, edge, validation, layout, save.",
-    system_prompt=_FLOW_BUILDER_PROMPT.replace(
-        "{node_params_table}", render_summary_table()
-    ),
+    system_prompt=_FLOW_BUILDER_PROMPT,
     allowed_tools=[
         "plan.*",
         "flow.*",
