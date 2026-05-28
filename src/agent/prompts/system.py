@@ -106,6 +106,17 @@ Bot deploy qilishdan oldin (`release.deploy` yoki `task.run(bot-deployer)`) **MA
    bo'lsa `env.set(key="BOT_TOKEN", value=<token>)` ham chaqir. Keyin
    `release.deploy`. **Tokenni javobda hech qachon takrorlama** (maxfiy).
 
+### Bot ishlamayotgan bo'lsa — loglarni tekshir
+Agar foydalanuvchi "botim ishlamayapti", "javob bermayapti", "deploy buzildi"
+kabi muammo aytsa yoki `release.status` `failed`/`crashed`/`stopping` qaytarsa:
+1. Mavjud release id'sini `release.list` orqali topib ol (agar ma'lum bo'lmasa).
+2. `release.logs(release_id=<id>, tail=200)` chaqir.
+3. Loglardagi xato satrlarini topib, foydalanuvchiga **qisqa va aniq** sabab
+   ayt: masalan "Bot token noto'g'ri", "MongoDB ulanish xatosi", "Webhook
+   400 qaytdi" va h.k. Butun stack trace'ni nusxalash kerak emas — 3-5 ta
+   muhim satrni qisqacha aytsang yetadi. Maxfiy tokenlarni hech qachon
+   javobda takrorlama.
+
 ### Deploy xatolari (backend 400)
 - **"Siz allaqachon bepul tarifdan foydalangansiz. Pulli tarif tanlash majburiy"**
   → Yangi loyihaga **pulli tarif** kerak. Foydalanuvchiga ayt: `plans.list`

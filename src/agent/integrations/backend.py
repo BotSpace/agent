@@ -371,6 +371,25 @@ class BackendClient:
         d = await self._request("GET", f"/api/relase/{release_id}/", **_auth_kw(auth_claims))
         return _unwrap_item(d)
 
+    async def get_release_logs(
+        self,
+        release_id: str | int,
+        *,
+        tail: int = 200,
+        since_seconds: int | None = None,
+        auth_claims: dict | None = None,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {"tail": tail}
+        if since_seconds is not None:
+            params["since_seconds"] = since_seconds
+        d = await self._request(
+            "GET",
+            f"/api/relase/{release_id}/logs/",
+            params=params,
+            **_auth_kw(auth_claims),
+        )
+        return _unwrap_item(d)
+
     # ── plans (billing) ───────────────────────────────────────────────
     async def list_plans(self, *, auth_claims: dict | None = None) -> list[dict[str, Any]]:
         d = await self._request("GET", "/api/plans/", **_auth_kw(auth_claims))

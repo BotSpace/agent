@@ -17,6 +17,16 @@ class _FakeBackend:
         self.get_release_ids.append(release_id)
         return {"id": release_id, "version": 1, "status": "running"}
 
+    async def get_release_logs(self, release_id, *, tail=200, since_seconds=None, auth_claims=None):
+        return {
+            "pod_name": "engine-test-pod",
+            "lines": [
+                "2026-05-28T10:00:00Z starting bot",
+                "2026-05-28T10:00:01Z connected to mongo",
+            ],
+            "truncated": False,
+        }
+
     async def subscription_current(self, *, auth_claims=None):
         return {"plan": {"id": 1, "name": "free"}, "status": "active"}
 
@@ -95,6 +105,40 @@ async def test_payment_link_create_tool():
     assert not res.is_error
     assert "https://pay.local/click/50000" in res.content
     assert res.data and res.data["payment"]["method"] == "click"
+
+
+@pytest.mark.asyncio
+async def test_release_logs_tool_returns_snapshot():
+    tools = _tools()
+    backend = _FakeBackend()
+    ctx = ToolContext(
+        run_id="r",
+        project_id=None,
+        user_id="u",
+        services={"backend": backend},
+    )
+    res = await tools["release.logs"].run({"release_id": 42, "tail": 100}, ctx)
+    assert not res.is_error
+    assert "engine-test-pod" in res.content
+    assert res.data and res.data["logs"]["lines"][0].startswith("2026-05-28")
+
+
+@pytest.mark.asyncio
+async def test_release_logs_empty():
+    class _EmptyBackend(_FakeBackend):
+        async def get_release_logs(self, release_id, *, tail=200, since_seconds=None, auth_claims=None):
+            return {"pod_name": None, "lines": [], "truncated": False, "detail": "Service is not deployed"}
+
+    tools = _tools()
+    ctx = ToolContext(
+        run_id="r",
+        project_id=None,
+        user_id="u",
+        services={"backend": _EmptyBackend()},
+    )
+    res = await tools["release.logs"].run({"release_id": 1}, ctx)
+    assert not res.is_error
+    assert "not deployed" in res.content.lower() or "no log" in res.content.lower()
 
 
 @pytest.mark.asyncio

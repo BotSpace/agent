@@ -323,11 +323,65 @@ async def release_status(input: ReleaseStatusInput, ctx: ToolContext) -> ToolRes
     return ToolResult.ok(f"Release `{input.release_id}` status: {target.get('status')}", data={"release": target})
 
 
+class ReleaseLogsInput(BaseModel):
+    release_id: str | int = Field(description="Release id (from release.list).")
+    tail: int = Field(
+        default=200,
+        ge=1,
+        le=2000,
+        description="Number of trailing log lines to return.",
+    )
+    since_seconds: int | None = Field(
+        default=None,
+        description="Only return lines from the last N seconds (optional).",
+    )
+
+
+@tool(
+    name="release.logs",
+    description=(
+        "Fetch a snapshot of the deployed bot's recent pod logs. Use this when a "
+        "release status is failed/crashed or the user asks 'why isn't my bot "
+        "working'. Returns the last N lines (default 200) — NOT a live stream."
+    ),
+    input_model=ReleaseLogsInput,
+)
+async def release_logs(input: ReleaseLogsInput, ctx: ToolContext) -> ToolResult:
+    try:
+        snap = await _backend(ctx).get_release_logs(
+            input.release_id,
+            tail=input.tail,
+            since_seconds=input.since_seconds,
+            auth_claims=ctx.state.get("auth_claims"),
+        )
+    except BackendError as e:
+        return ToolResult.error(_wrap_backend_err("Release loglarini olish", e))
+
+    lines = snap.get("lines") if isinstance(snap, dict) else None
+    if not isinstance(lines, list):
+        lines = []
+    pod = snap.get("pod_name") if isinstance(snap, dict) else None
+    truncated = bool(snap.get("truncated")) if isinstance(snap, dict) else False
+
+    if not lines:
+        detail = snap.get("detail") if isinstance(snap, dict) else None
+        msg = detail or "No log lines available (pod may not be running yet)."
+        return ToolResult.ok(msg, data={"logs": snap})
+
+    head = "\n".join(lines[-50:])
+    summary = (
+        f"{len(lines)} line(s) from pod `{pod or '?'}`"
+        f"{' (truncated to tail)' if truncated else ''}.\n```\n{head}\n```"
+    )
+    return ToolResult.ok(summary, data={"logs": snap})
+
+
 def build_release_tools() -> list[Tool]:
     return [
         release_list,
         release_deploy,
         release_status,
+        release_logs,
         plans_list,
         subscription_current,
         subscription_upgrade,
