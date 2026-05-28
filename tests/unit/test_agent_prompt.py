@@ -17,6 +17,7 @@ def test_main_agent_prompt_is_dispatcher():
     assert "plan.set" in prompt
     assert "project.list" in prompt
     # Domain tools must NOT be advertised on the main agent.
+    assert "flow.add_node" not in prompt
     assert "flow.upsert_node" not in prompt
     assert "flow.connect_button" not in prompt
     assert "crm.find" not in prompt

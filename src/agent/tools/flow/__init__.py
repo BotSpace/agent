@@ -14,6 +14,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from pydantic import ValidationError
+
 from ...flow import (
     FlowDocument,
     FlowEdge,
@@ -27,6 +29,7 @@ from ...flow import (
 )
 from ..base import Tool, ToolContext, ToolResult, tool
 from .actions import build_flow_action_tools
+from .node_data_models import NODE_DATA_MODELS, get_data_model
 
 # ── State helpers ────────────────────────────────────────────────────────────
 
@@ -96,46 +99,137 @@ async def flow_get(input: FlowGetInput, ctx: ToolContext) -> ToolResult:
     return ToolResult.ok(flow.to_json(indent=2), data=payload)
 
 
-# ── flow.upsert_node ─────────────────────────────────────────────────────────
+# ── flow.add_node (generic, replaces 53 per-type tools) ─────────────────────
 
 
-class FlowUpsertNodeInput(BaseModel):
-    id: str = Field(description="Node id (stable, kebab-case)")
-    type: str = Field(description="Node type from the catalog (see flow.list_node_types)")
-    data: dict[str, Any] = Field(default_factory=dict, description="Node configuration")
+class FlowAddNodeInput(BaseModel):
+    id: str = Field(description="Stable kebab-case node id. Same id replaces existing node (idempotent).")
+    type: str = Field(
+        description=(
+            "Engine node type from flow.list_node_types. Generic fallback — for the 9 "
+            "most-used types use the named tools (flow.add_send_text_message, "
+            "flow.add_command_trigger, etc.) which have strict typed data validation."
+        )
+    )
+    data: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Type-specific configuration. See flow.list_node_types for required/optional fields per type.",
+    )
+    after: str | None = Field(
+        default=None,
+        description="Optional previous node id. If set, auto-create an edge from `after` to this node.",
+    )
+    source_handle: str | None = Field(
+        default="source-handler",
+        description=(
+            "Source handle on the `after` node. 'source-handler' (default) for normal flow; "
+            "branch handles like 'true'/'false', 'found'/'not_found', 'is-member'/'not-member', "
+            "'loop-body'/'no-items', 'option_0' for branching nodes; "
+            "'target-handler-{nodeId}-{button.text}' for keyboard buttons."
+        ),
+    )
+    target_handle: str | None = Field(default="target-handler")
+    edge_id: str | None = Field(
+        default=None,
+        description="Optional explicit edge id (auto-generated if omitted).",
+    )
     position: dict[str, float] | None = Field(
-        default=None, description="Optional {x,y}. If omitted, auto-layout will assign."
+        default=None,
+        description="Optional {x,y}. Omit and call flow.layout_auto at the end.",
     )
 
 
+def _edge_id(source: str, target: str, source_handle: str | None = None) -> str:
+    handle = (source_handle or "source-handler").replace(" ", "_")
+    return f"e-{source}-{target}-{handle}"
+
+
 @tool(
-    name="flow.upsert_node",
+    name="flow.add_node",
     description=(
-        "Create or replace a node. Use this for every node you add to the flow. "
-        "`type` must come from flow.list_node_types. Provide all required `data` fields. "
-        "Skip `position` to let auto-layout place it."
+        "Generic add-or-replace node for ANY engine type that does not have its own "
+        "named flow.add_* tool. Use the named tools first (they have strict typed "
+        "validation). Use this generic tool for rare types like send_photo, send_audio, "
+        "delay, cron, for_loop, edit_message, etc. Call flow.list_node_types(category) "
+        "to discover required `data` fields."
     ),
-    input_model=FlowUpsertNodeInput,
+    input_model=FlowAddNodeInput,
 )
-async def flow_upsert_node(input: FlowUpsertNodeInput, ctx: ToolContext) -> ToolResult:
+async def flow_add_node(input: FlowAddNodeInput, ctx: ToolContext) -> ToolResult:
     spec = get_node_spec(input.type)
     if spec is None:
         return ToolResult.error(
             f"Unknown node type `{input.type}`. Use flow.list_node_types to discover types."
         )
-    missing = [r for r in spec.required_data if r not in input.data]
-    if missing:
-        return ToolResult.error(
-            f"`{input.type}` requires data fields: {', '.join(missing)}. Provided: {list(input.data)}"
-        )
+
+    # Per-type strict Pydantic validation (rejects unknown fields, type errors,
+    # enum mismatches). Falls back to catalog-based check if no model is registered.
+    data_model = get_data_model(input.type)
+    if data_model is not None:
+        try:
+            validated = data_model.model_validate(input.data)
+        except ValidationError as e:
+            errs = e.errors()
+            lines: list[str] = []
+            for err in errs[:5]:
+                loc = ".".join(str(p) for p in err["loc"]) or "(root)"
+                lines.append(f"  - `{loc}` — {err['msg']}")
+            extra = f"\n  ...and {len(errs) - 5} more" if len(errs) > 5 else ""
+            return ToolResult.error(
+                f"Invalid data for `{input.type}`:\n" + "\n".join(lines) + extra
+                + f"\nSchema: {sorted(data_model.model_fields.keys())}."
+            )
+        # Convert back to dict for storage in the flow (drop None, use aliases).
+        data_dict = validated.model_dump(by_alias=True, exclude_none=True)
+    else:
+        # Fallback: catalog-based required + unknown-field check.
+        missing = [r for r in spec.required_data if r not in input.data]
+        if missing:
+            return ToolResult.error(
+                f"`{input.type}` requires data fields: {', '.join(missing)}. Provided: {list(input.data)}"
+            )
+        known = set(spec.required_data) | set(spec.optional_data)
+        unknown = [k for k in input.data if k not in known]
+        if unknown:
+            return ToolResult.error(
+                f"Unknown data fields for `{input.type}`: {unknown}. "
+                f"Allowed: {sorted(known)}."
+            )
+        data_dict = dict(input.data)
 
     flow = _load_working_flow(ctx)
+
+    if input.after and flow.get_node(input.after) is None:
+        return ToolResult.error(f"`after` node `{input.after}` does not exist.")
+
     pos = Position(**input.position) if input.position else Position()
-    flow.upsert_node(FlowNode(id=input.id, type=input.type, data=input.data, position=pos))
+    flow.upsert_node(FlowNode(id=input.id, type=input.type, data=data_dict, position=pos))
+
+    connected_from: str | None = None
+    if input.after:
+        flow.upsert_edge(
+            FlowEdge(
+                id=input.edge_id or _edge_id(input.after, input.id, input.source_handle),
+                source=input.after,
+                target=input.id,
+                sourceHandle=input.source_handle,
+                targetHandle=input.target_handle,
+            )
+        )
+        connected_from = input.after
+
+    msg = (
+        f"Node `{input.id}` ({input.type}) saved"
+        + (f", connected from `{connected_from}`." if connected_from else ".")
+    )
     return ToolResult.ok(
-        f"Node `{input.id}` ({input.type}) saved.",
+        msg,
         state_updates=_set_working_flow(flow),
-        data={"node_id": input.id, "type": input.type},
+        data={
+            "node_id": input.id,
+            "type": input.type,
+            "connected_from": connected_from,
+        },
     )
 
 
@@ -312,32 +406,43 @@ class FlowListNodeTypesInput(BaseModel):
         default=None,
         description="Optional filter: trigger | send | edit | flow_control | data | integration | interaction | subflow",
     )
+    type: str | None = Field(
+        default=None,
+        description="If set, return only that single node type with full field schema.",
+    )
 
 
 @tool(
     name="flow.list_node_types",
     description=(
-        "List available node types from the engine catalog. Returns each type's name, "
-        "category, description, and required data fields."
+        "Return engine node catalog with strict per-type field schemas (types, enums, "
+        "required vs optional). Use `type=<NodeName>` to get the full schema for a "
+        "single type (recommended when adding a node). `category=<name>` filters."
     ),
     input_model=FlowListNodeTypesInput,
 )
 async def flow_list_node_types(input: FlowListNodeTypesInput, ctx: ToolContext) -> ToolResult:
+    from .node_data_models import render_node_schema
+
     specs = all_node_types()
-    if input.category:
+    if input.type:
+        specs = [s for s in specs if s.type == input.type]
+    elif input.category:
         specs = [s for s in specs if s.category == input.category]
-    payload = [
-        {
-            "type": s.type,
-            "category": s.category,
-            "description": s.description,
-            "required_data": s.required_data,
-            "optional_data": s.optional_data,
-            "source_handles": s.source_handles,
-            "is_trigger": s.is_trigger,
-        }
-        for s in specs
-    ]
+    payload = []
+    for s in specs:
+        schema = render_node_schema(s.type)
+        payload.append(
+            {
+                "type": s.type,
+                "category": s.category,
+                "description": s.description,
+                "source_handles": s.source_handles,
+                "is_trigger": s.is_trigger,
+                "fields": schema["fields"],
+                "validator": schema["validator"],
+            }
+        )
     return ToolResult.ok(f"{len(payload)} node type(s)", data={"types": payload})
 
 
@@ -436,7 +541,7 @@ def build_flow_tools() -> list[Tool]:
     return [
         flow_get,
         *build_flow_action_tools(),
-        flow_upsert_node,
+        flow_add_node,
         flow_remove_node,
         flow_patch,
         flow_connect,

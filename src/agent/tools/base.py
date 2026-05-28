@@ -1,18 +1,18 @@
 """Tool framework — decorator, ToolContext, ToolResult, JSON-schema auto.
 
 Har tool Pydantic input modeli orqali aniqlanadi:
-    class FlowUpsertNodeInput(BaseModel):
-        node_id: str
+    class FlowAddNodeInput(BaseModel):
+        id: str
         type: str
         data: dict[str, Any] = {}
 
     @tool(
-        name="flow.upsert_node",
+        name="flow.add_node",
         description="...",
-        input_model=FlowUpsertNodeInput,
+        input_model=FlowAddNodeInput,
         destructive=False,
     )
-    async def upsert_node(input: FlowUpsertNodeInput, ctx: ToolContext) -> ToolResult:
+    async def add_node(input: FlowAddNodeInput, ctx: ToolContext) -> ToolResult:
         ...
 """
 

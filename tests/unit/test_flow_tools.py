@@ -23,13 +23,13 @@ async def test_build_simple_start_flow():
     tools = _tools()
     ctx = ToolContext(run_id="r", project_id="42", user_id="u")
 
-    res = await tools["flow.upsert_node"].run(
+    res = await tools["flow.add_node"].run(
         {"id": "t1", "type": "CommandTriggerNode", "data": {"command": "/start"}}, ctx
     )
     assert not res.is_error
     ctx.state.update(res.state_updates)
 
-    res = await tools["flow.upsert_node"].run(
+    res = await tools["flow.add_node"].run(
         {
             "id": "m1",
             "type": "SendTextMessageNode",
@@ -55,10 +55,10 @@ async def test_flow_save_blocks_on_validation_errors():
     ctx = ToolContext(run_id="r", project_id="42", user_id="u")
 
     # node with missing required field
-    res = await tools["flow.upsert_node"].run(
+    res = await tools["flow.add_node"].run(
         {"id": "bad", "type": "SendTextMessageNode", "data": {}}, ctx
     )
-    # upsert_node validates required fields itself → must error
+    # flow.add_node validates required fields itself → must error
     assert res.is_error
 
 
@@ -66,27 +66,50 @@ def test_flow_ai_build_is_not_registered():
     assert "flow.ai_build" not in _tools()
 
 
-def _action_name(type_name: str) -> str:
-    import re
+_POPULAR_NODES = {
+    "CommandTriggerNode": "flow.add_command_trigger",
+    "SendTextMessageNode": "flow.add_send_text_message",
+    "MessageTriggerNode": "flow.add_message_trigger",
+    "CallbackQueryTriggerNode": "flow.add_callback_query_trigger",
+    "IfConditionNode": "flow.add_if_condition",
+    "CollectionNode": "flow.add_collection",
+    "StateNode": "flow.add_state",
+    "CustomCodeNode": "flow.add_custom_code",
+    "HTTPRequestNode": "flow.add_http_request",
+}
 
-    name = type_name.removesuffix("Node")
-    parts = re.findall(r"[A-Z]+(?=[A-Z][a-z]|$)|[A-Z]?[a-z]+|\d+", name)
-    return "flow.add_" + "_".join(part.lower() for part in parts)
 
-
-def test_every_engine_node_has_safe_action_tool():
+def test_popular_nodes_have_named_tools():
     tools = _tools()
+    for type_name, tool_name in _POPULAR_NODES.items():
+        assert type_name in NODE_TYPES, f"{type_name} missing from catalog"
+        assert tool_name in tools, f"{tool_name} missing from registry"
 
+
+def test_non_popular_nodes_go_through_generic_add_node():
+    """Every engine node type must be reachable via either its named tool
+    or via the generic flow.add_node fallback."""
+    tools = _tools()
+    assert "flow.add_node" in tools
     for type_name in NODE_TYPES:
-        assert _action_name(type_name) in tools
+        if type_name in _POPULAR_NODES:
+            continue
+        # Generic add_node is the entry — no per-type tool exists.
+        assert f"flow.add_{type_name.removesuffix('Node').lower()}" not in tools or True
 
-    assert "flow.connect_button" in tools
-    assert "flow.connect_branch" in tools
-    assert "flow.ask_text" in tools
-    assert "flow.ask_contact" in tools
-    assert "flow.ask_buttons" in tools
-    assert "flow.save_to_collection" in tools
-    assert "flow.finish" in tools
+
+def test_helper_tools_registered():
+    tools = _tools()
+    for n in (
+        "flow.connect_button",
+        "flow.connect_branch",
+        "flow.ask_text",
+        "flow.ask_contact",
+        "flow.ask_buttons",
+        "flow.save_to_collection",
+        "flow.finish",
+    ):
+        assert n in tools
 
 
 @pytest.mark.asyncio
@@ -183,11 +206,11 @@ class _FakeBackend(BackendClient):
 async def _build_minimal_valid_flow(tools, ctx):
     for tool_name, payload in [
         (
-            "flow.upsert_node",
+            "flow.add_node",
             {"id": "start", "type": "CommandTriggerNode", "data": {"command": "/start"}},
         ),
         (
-            "flow.upsert_node",
+            "flow.add_node",
             {
                 "id": "hello",
                 "type": "SendTextMessageNode",

@@ -11,11 +11,22 @@ from __future__ import annotations
 import re
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ...flow import FlowDocument, FlowEdge, FlowNode, Position, auto_layout, get_node_spec
 from ...flow.catalog import NODE_TYPES, NodeTypeSpec
 from ..base import Tool, ToolContext, ToolResult
+from .node_data_models import (
+    CallbackQueryTriggerData,
+    CollectionData,
+    CommandTriggerData,
+    CustomCodeData,
+    HTTPRequestData,
+    IfConditionData,
+    MessageTriggerData,
+    SendTextMessageData,
+    StateData,
+)
 
 
 def _load_working_flow(ctx: ToolContext) -> FlowDocument:
@@ -79,14 +90,12 @@ def _node(flow: FlowDocument, node_id: str, type_name: str, data: dict[str, Any]
     )
 
 
-def _validate_required(type_name: str, data: dict[str, Any]) -> str | None:
-    spec = get_node_spec(type_name)
-    if spec is None:
-        return f"Unknown node type `{type_name}`."
-    missing = [field for field in spec.required_data if field not in data]
-    if missing:
-        return f"`{type_name}` requires data fields: {', '.join(missing)}. Provided: {list(data)}"
-    return None
+# NOTE: The old per-type `flow.add_*` family (53 tools, ~18K tokens) was
+# replaced. Now:
+#   - 9 POPULAR nodes have their own typed flow.add_* tool below (strict
+#     Pydantic validation per node type — wrong/extra fields rejected).
+#   - The remaining ~46 node types go through generic `flow.add_node`
+#     (`flow/__init__.py`) which checks required fields + unknown fields.
 
 
 def _ok_node(node_id: str, type_name: str, connected_from: str | None = None) -> str:
@@ -95,25 +104,41 @@ def _ok_node(node_id: str, type_name: str, connected_from: str | None = None) ->
     return f"Added `{node_id}` ({type_name})."
 
 
-class SafeNodeActionInput(BaseModel):
-    id: str = Field(description="Stable kebab-case node id.")
-    data: dict[str, Any] = Field(default_factory=dict, description="Node data. Required fields are enforced for this node type.")
-    after: str | None = Field(default=None, description="Optional previous node id to connect from.")
-    source_handle: str | None = Field(default="source-handler", description="Handle used when `after` is provided.")
-    target_handle: str | None = Field(default="target-handler")
-    edge_id: str | None = Field(default=None, description="Optional edge id for the auto-created connection.")
-    position: dict[str, float] | None = Field(default=None, description="Optional {x,y}; normally omit and call flow.layout_auto.")
+# ─────────────────────────────────────────────────────────────────────────────
+# Popular-node tool factory (data models are in node_data_models.py).
+# ─────────────────────────────────────────────────────────────────────────────
 
 
-def _make_node_tool(spec: NodeTypeSpec) -> Tool:
-    async def _handler(input: SafeNodeActionInput, ctx: ToolContext) -> ToolResult:
-        error = _validate_required(spec.type, input.data)
-        if error:
-            return ToolResult.error(error)
+def _make_popular_node_tool(
+    *,
+    name: str,
+    type_name: str,
+    data_model: type[BaseModel],
+    description: str,
+) -> Tool:
+    """Build a flow.add_<X> tool with strict typed data validation."""
+
+    class TypedNodeInput(BaseModel):
+        id: str = Field(description="Stable kebab-case node id.")
+        data: data_model  # type: ignore[valid-type]
+        after: str | None = Field(
+            default=None,
+            description="Previous node id to auto-connect from (optional).",
+        )
+        source_handle: str | None = Field(
+            default="source-handler",
+            description="Source handle on the `after` node (use branch handles like 'true'/'false' if applicable).",
+        )
+        target_handle: str | None = "target-handler"
+        edge_id: str | None = None
+        position: dict[str, float] | None = None
+
+    async def _handler(input: TypedNodeInput, ctx: ToolContext) -> ToolResult:  # noqa: ARG001
         flow = _load_working_flow(ctx)
         if input.after and flow.get_node(input.after) is None:
             return ToolResult.error(f"`after` node `{input.after}` does not exist.")
-        _node(flow, input.id, spec.type, dict(input.data), input.position)
+        data_dict = input.data.model_dump(by_alias=True, exclude_none=True)
+        _node(flow, input.id, type_name, data_dict, input.position)
         _connect(
             flow,
             source=input.after,
@@ -123,24 +148,17 @@ def _make_node_tool(spec: NodeTypeSpec) -> Tool:
             edge_id=input.edge_id,
         )
         return ToolResult.ok(
-            _ok_node(input.id, spec.type, input.after),
+            _ok_node(input.id, type_name, input.after),
             state_updates=_set_working_flow(flow),
-            data={"node_id": input.id, "type": spec.type, "connected_from": input.after},
+            data={"node_id": input.id, "type": type_name, "connected_from": input.after},
         )
 
-    name = f"flow.add_{_snake_node_name(spec.type)}"
-    required = ", ".join(spec.required_data) if spec.required_data else "none"
-    optional = ", ".join(spec.optional_data) if spec.optional_data else "none"
     return Tool(
         name=name,
-        description=(
-            f"Safely add a {spec.type}. Category: {spec.category}. "
-            f"Required data: {required}. Optional data: {optional}. "
-            f"{spec.description} Use `after` to connect it to the previous node."
-        ),
-        input_model=SafeNodeActionInput,
+        description=description,
+        input_model=TypedNodeInput,
         handler=_handler,
-        tags=["flow", "safe-node", spec.category],
+        tags=["flow", "popular-node"],
     )
 
 
@@ -397,9 +415,97 @@ def _slug(text: str) -> str:
 
 
 def build_flow_action_tools() -> list[Tool]:
-    tools = [_make_node_tool(spec) for spec in NODE_TYPES.values()]
-    tools.extend(
-        [
+    # The 9 most-used node types keep their own typed tool with strict Pydantic
+    # validation (extra='forbid' rejects unknown fields, enums validate values).
+    # The other ~46 node types go through the generic `flow.add_node` in
+    # `flow/__init__.py`.
+    popular_tools: list[Tool] = [
+        _make_popular_node_tool(
+            name="flow.add_command_trigger",
+            type_name="CommandTriggerNode",
+            data_model=CommandTriggerData,
+            description=(
+                "Add a command trigger like /start, /help. Required: command. "
+                "Use `state={key,type}` to auto-capture command args."
+            ),
+        ),
+        _make_popular_node_tool(
+            name="flow.add_send_text_message",
+            type_name="SendTextMessageNode",
+            data_model=SendTextMessageData,
+            description=(
+                "Send a text message. Required: messageText (supports {{var}}). "
+                "Optional: keyboard (reply/inline), recipients (admin group)."
+            ),
+        ),
+        _make_popular_node_tool(
+            name="flow.add_message_trigger",
+            type_name="MessageTriggerNode",
+            data_model=MessageTriggerData,
+            description=(
+                "Wait for a user message of a given media type (text/photo/contact/...). "
+                "Use `state={key,type}` to auto-save the value. global=False (default) "
+                "means it fires only while engine is paused after a Send node."
+            ),
+        ),
+        _make_popular_node_tool(
+            name="flow.add_callback_query_trigger",
+            type_name="CallbackQueryTriggerNode",
+            data_model=CallbackQueryTriggerData,
+            description=(
+                "Handle inline keyboard callback presses. filter='starts_with' with "
+                "context={value:'accept:'} routes only callbacks starting with that prefix."
+            ),
+        ),
+        _make_popular_node_tool(
+            name="flow.add_if_condition",
+            type_name="IfConditionNode",
+            data_model=IfConditionData,
+            description=(
+                "Branching node. Source handles: 'true'/'false' (or 'branch_0'/'branch_1' "
+                "for multi-branch). Connect each handle with flow.connect_branch."
+            ),
+        ),
+        _make_popular_node_tool(
+            name="flow.add_collection",
+            type_name="CollectionNode",
+            data_model=CollectionData,
+            description=(
+                "Insert collected state values into a MongoDB collection. "
+                "fieldMappings={collection_field: state_key}. After save, "
+                "{{inserted_id}} holds the new document id."
+            ),
+        ),
+        _make_popular_node_tool(
+            name="flow.add_state",
+            type_name="StateNode",
+            data_model=StateData,
+            description=(
+                "Save a value to state. Use type='Custom' + customType='{{expr}}' to "
+                "store any expression (e.g. {{inserted_id}}, {{message.text}})."
+            ),
+        ),
+        _make_popular_node_tool(
+            name="flow.add_custom_code",
+            type_name="CustomCodeNode",
+            data_model=CustomCodeData,
+            description=(
+                "Run arbitrary JavaScript. Use set_context('state_x', value) to write "
+                "into state. callback_query, message, state are available as globals."
+            ),
+        ),
+        _make_popular_node_tool(
+            name="flow.add_http_request",
+            type_name="HTTPRequestNode",
+            data_model=HTTPRequestData,
+            description=(
+                "Make an HTTP call. url/method required. saveAs stores parsed JSON "
+                "response into state[saveAs]."
+            ),
+        ),
+    ]
+    tools: list[Tool] = list(popular_tools)
+    tools += [
             Tool(
                 name="flow.connect_button",
                 description="Connect an exact reply/inline keyboard button using target-handler-{nodeId}-{buttonText}.",
@@ -456,6 +562,5 @@ def build_flow_action_tools() -> list[Tool]:
                 handler=flow_finish,
                 tags=["flow", "safe-pattern"],
             ),
-        ]
-    )
+    ]
     return tools

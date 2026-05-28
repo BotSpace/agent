@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ..tools.flow.node_data_models import render_summary_table
+
 
 NARRATE_RULE = """\
 
@@ -64,10 +66,7 @@ def tool_allowed(tool_name: str, patterns: list[str]) -> bool:
 # Sub-agents
 # ─────────────────────────────────────────────────────────────────────────────
 
-FLOW_BUILDER = SubAgentSpec(
-    name="flow-builder",
-    description="Bot visual flow muharriri — node, edge, validation, layout, save.",
-    system_prompt="""\
+_FLOW_BUILDER_PROMPT = """\
 Sen specialized **Flow Builder** sub-agentsan. Vazifang — bot visual flow yaratish
 yoki o'zgartirish. Sen yaratayotgan flow Botmother engine-golang tomonidan ishga
 tushiriladi.
@@ -75,11 +74,24 @@ tushiriladi.
 ## Asosiy printsiplar
 1. **Tool-first** — har action `flow.add_*` / `flow.ask_*` / `flow.connect_*` /
    `flow.validate` tool orqali. Foydalanuvchiga JSON yozma.
-2. **Avval kataloji tekshir** — node turini bilmasang `flow.list_node_types`.
-   Avvalgi flow ni bilmasang `flow.get`.
+2. **Popular nodelar uchun typed tool'lar bor**: `flow.add_command_trigger`,
+   `flow.add_send_text_message`, `flow.add_message_trigger`,
+   `flow.add_callback_query_trigger`, `flow.add_if_condition`,
+   `flow.add_collection`, `flow.add_state`, `flow.add_custom_code`,
+   `flow.add_http_request`. Qolgan node turlari uchun generic
+   `flow.add_node(type, data, after?)`.
 3. **Validate har save oldidan** — `flow.validate` chaqir. Error bo'lsa save qilma.
 4. **Save majburiy** — vazifa oxirida `flow.save` chaqir (parent task'idan boshqacha
    ko'rsatma yo'q bo'lsa). Tasdiq so'rama, darhol save qil.
+5. **Validator strict** — agar `data` ichida noma'lum field, noto'g'ri tip yoki enum
+   noto'g'ri qiymat bo'lsa, tool darhol xato qaytaradi. Xatoni qaytarib, qaysi
+   field noto'g'riligini tushuntiradi.
+
+## Node tiplari va parametrlari (validatorlar bilan)
+Quyidagi jadval har node turi qaysi field'larga ega ekanini ko'rsatadi. Required
+field nomida `(enum1|enum2|...)` ko'rinsa — faqat shu qiymatlardan birini bering.
+Batafsil tip/description uchun `flow.list_node_types(type=<NodeName>)` chaqir.
+{node_params_table}
 
 ## Flow patternlari (qisqa)
 
@@ -114,7 +126,15 @@ ishlat. Handle'lar: `true`/`false`, `found`/`not_found`, `is-member`/`not-member
 - Env o'zgartirma.
 - CRM/CMS yozish qilma.
 Bular boshqa sub-agentlar vazifasi.
-""",
+"""
+
+
+FLOW_BUILDER = SubAgentSpec(
+    name="flow-builder",
+    description="Bot visual flow muharriri — node, edge, validation, layout, save.",
+    system_prompt=_FLOW_BUILDER_PROMPT.replace(
+        "{node_params_table}", render_summary_table()
+    ),
     allowed_tools=[
         "plan.*",
         "flow.*",
