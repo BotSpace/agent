@@ -34,10 +34,10 @@ configMaps:
     AGENT_LOG_LEVEL: "INFO"
     AGENT_CORS_ORIGINS: "https://botspace.uz,https://botmother.uz,https://beta.botmother.uz"
     AGENT_LLM_PROVIDER: "openrouter"
-    AGENT_MODEL_CHAT: "google/gemma-4-31b-it"
-    AGENT_MODEL_PLANNER: "google/gemma-4-31b-it"
-    AGENT_MODEL_EXECUTOR: "google/gemma-4-31b-it"
-    AGENT_MODEL_CRITIC: "google/gemma-4-31b-it"
+    AGENT_MODEL_CHAT: "openai/gpt-5.2-mini"
+    AGENT_MODEL_PLANNER: "openai/gpt-5.2"
+    AGENT_MODEL_EXECUTOR: "openai/gpt-5.2"
+    AGENT_MODEL_CRITIC: "openai/gpt-5.2-mini"
     # Embedding model'lar OpenRouter'da yo'q — text-embedding endpoint'lari
     # uchun alohida OpenAI client ishlatiladi (kerak bo'lganida).
     AGENT_MODEL_EMBEDDING: "text-embedding-3-small"
