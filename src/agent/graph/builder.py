@@ -55,18 +55,19 @@ async def _emit(emit: EventEmitter | None, name: str, payload: dict[str, Any]) -
 
 
 def _pick_model(state: AgentState, models: ModelRoles) -> str:
-    """Main agent har doim `planner` (kuchli) modelni ishlatadi.
+    """State'ga qarab mos modelni tanlash.
 
-    Main agent — dispatcher: har bir qadam muhim (qaysi sub-agent, qanday
-    prompt, project.list/get ni darhol chaqirish, va h.k.). Arzon model
-    (executor=gpt-5.4-mini) bu rolda "men buni qilaman..." deb gap qilib,
-    aslida tool chaqirmasdi — foydalanuvchi natija ko'rmasdi.
+    - Plan to'liq emas (qadamlar bajarilmoqda) → `planner`
+    - Boshqa barcha holatlarda → `executor`
 
-    Sub-agentlar `task.run` ichida `ModelRoles(planner=executor=critic=hint_model)`
-    qilib collapse qilingani uchun, ular o'z hint'idagi (odatda arzon executor)
-    modelni ishlatishda davom etadi.
+    AGENT_MODEL_EXECUTOR helm/values.yaml da gpt-5.2 — kuchli model.
+    Asosiy token tejovi sub-agent'lar ichida `flow.design` (bitta strong call)
+    + `flow.bulk_apply` (mexanik apply) orqali bo'ladi, executor'ni arzon
+    modelga o'tkazish o'rniga.
     """
-    return models.planner
+    if has_incomplete_plan(state.get("current_plan")):
+        return models.planner
+    return models.executor
 
 
 def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
