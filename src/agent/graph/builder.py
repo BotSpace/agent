@@ -54,6 +54,23 @@ async def _emit(emit: EventEmitter | None, name: str, payload: dict[str, Any]) -
         await res  # type: ignore[func-returns-value]
 
 
+def _is_flow_active(state: AgentState) -> bool:
+    """Agent flow muharrirligi rejimida ekan-yo'qligini aniqlaydi."""
+    if state.get("working_flow") is not None or state.get("flow_dirty"):
+        return True
+    if has_incomplete_plan(state.get("current_plan")):
+        return True
+    messages = state.get("messages") or []
+    # Tool tarixida flow.* chaqirilgan bo'lsa — flow aktiv
+    for m in messages:
+        if not isinstance(m, Message):
+            continue
+        for call in m.tool_calls:
+            if call.name.startswith("flow."):
+                return True
+    return False
+
+
 def _pick_model(state: AgentState, models: ModelRoles) -> str:
     """State'ga qarab eng mos modelni tanlash.
 
@@ -83,6 +100,40 @@ def _pick_model(state: AgentState, models: ModelRoles) -> str:
     return models.chat
 
 
+# Flow muharrirligi tool'lari — chat rejimida LLM'ga ko'rsatilmaydi (token tejaymiz).
+# Faqat read-only flow tool'lari (flow.get, flow.list_node_types, flow.diff,
+# flow.validate) chat rejimida ham qoladi: agent foydalanuvchining "loyihamda
+# nima bor?" kabi savoliga javob bera oladi va flow yaratish kerak bo'lsa
+# flow.list_node_types orqali avval kataloji oladi (bu turn flow aktiv qiladi).
+_FLOW_LIGHT_TOOLS: set[str] = {
+    "flow.get",
+    "flow.list_node_types",
+    "flow.diff",
+    "flow.validate",
+}
+
+
+def _pick_tool_scope(state: AgentState, all_names: list[str]) -> set[str] | None:
+    """Qaysi tool'lar LLM'ga yuborilishini state'ga qarab tanlash.
+
+    None qaytsa — barcha tool'lar yuboriladi (full scope).
+    Aks holda — qaytarilgan set'dagi tool'lar yuboriladi.
+
+    Strategy: flow aktiv (yoki noaniq) bo'lganda full scope. Aks holda
+    `flow.*` muharrirlik tool'larini (~22K token) chiqarib tashlaymiz va
+    faqat read-only flow tool'larini qoldiramiz.
+    """
+    if _is_flow_active(state):
+        return None
+    # Chat / billing / CRM / boshqa savollar — heavy flow tool'larini olib tashlaymiz
+    allowed: set[str] = set()
+    for name in all_names:
+        if name.startswith("flow.") and name not in _FLOW_LIGHT_TOOLS:
+            continue
+        allowed.add(name)
+    return allowed
+
+
 def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
     # ── nodes ───────────────────────────────────────────────────────────
 
@@ -90,18 +141,26 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
         system = Message.system_text(build_system_prompt(state))
         history = state.get("messages") or []
         model = _pick_model(state, cfg.models)
+        all_tool_names = [t.name for t in cfg.registry.all()]
+        scope = _pick_tool_scope(state, all_tool_names)
+        tool_specs = cfg.registry.filter_specs(scope)
         options = GenerateOptions(
             model=model,
             max_tokens=cfg.max_tokens,
             temperature=cfg.temperature,
-            tools=cfg.registry.specs(),
+            tools=tool_specs,
             thinking_budget=cfg.thinking_budget,
         )
         result = await cfg.llm.generate([system, *history], options)
         await _emit(
             cfg.emit,
             "assistant_message",
-            {"text": result.message.text, "model": model, "usage": result.usage.__dict__},
+            {
+                "text": result.message.text,
+                "model": model,
+                "tool_scope_size": len(tool_specs),
+                "usage": result.usage.__dict__,
+            },
         )
         return {
             "messages": [result.message],

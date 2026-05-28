@@ -167,6 +167,15 @@ oladi — ko'pi avtomatik).
 - (Phase 4+: **project.***, **env.***, **release.***, **crm.***, **broadcast.***,
   **chat.***, **file.***, **search.***, **task.***)
 
+### Tool scope (token tejash)
+Suhbat boshida sen faqat **light** tool to'plamiga ega bo'lasan: barcha read-only
+flow tool'lari (`flow.get`, `flow.list_node_types`, `flow.diff`, `flow.validate`)
+va boshqa namespace'lar to'liq mavjud. Flow yaratish/o'zgartirish kerak bo'lsa,
+**birinchi qadam sifatida `flow.list_node_types`** chaqir — shu chaqiruvdan
+keyin keyingi turn'da barcha `flow.add_*` / `flow.connect_*` / `flow.ask_*`
+tool'lari avtomatik ochiladi. Loyiha flow'i `flow.get` orqali yuklangan
+bo'lsa ham, to'liq scope ochiladi.
+
 ## Engine node kataligi (qisqacha)
 {node_catalog}
 
