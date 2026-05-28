@@ -37,7 +37,8 @@ def test_parse_blueprint_rejects_bad_json():
 
 
 @pytest.mark.asyncio
-async def test_bulk_apply_validates_each_node():
+async def test_bulk_apply_partial_recovery_for_invalid_nodes():
+    """Mix of valid + invalid nodes — apply the valid ones, report the failed."""
     tools = _tools()
     ctx = ToolContext(run_id="r", project_id="42", user_id="u")
     res = await tools["flow.bulk_apply"].run(
@@ -53,8 +54,34 @@ async def test_bulk_apply_validates_each_node():
         },
         ctx,
     )
+    # Partial mode: not a hard error — one node applied, one failed
+    assert not res.is_error
+    assert "Qisman apply" in res.content
+    assert res.data["nodes_applied"] == 1
+    assert len(res.data["failed_nodes"]) == 1
+    assert res.data["failed_nodes"][0]["id"] == "b"
+    assert res.data["save_pending"] is True
+
+
+@pytest.mark.asyncio
+async def test_bulk_apply_all_invalid_is_hard_error():
+    """If no node passes, return a hard error."""
+    tools = _tools()
+    ctx = ToolContext(run_id="r", project_id="42", user_id="u")
+    res = await tools["flow.bulk_apply"].run(
+        {
+            "nodes": [
+                {"id": "b", "type": "SendTextMessageNode", "data": {"BAD": "field"}},
+            ],
+            "edges": [],
+            "validate_flow": False,
+            "layout": False,
+            "save": False,
+        },
+        ctx,
+    )
     assert res.is_error
-    assert "BAD" in res.content or "messageText" in res.content
+    assert "Birorta ham node qo'llanmadi" in res.content
 
 
 @pytest.mark.asyncio
@@ -99,6 +126,56 @@ async def test_bulk_apply_rejects_orphan_edge():
     # Edge orphan is a warning, not a hard error — node was applied
     assert not res.is_error
     assert "Edge ogohlantirish" in res.content
+
+
+@pytest.mark.asyncio
+async def test_flow_get_returns_tree_by_default():
+    tools = _tools()
+    ctx = ToolContext(run_id="r", project_id="42", user_id="u")
+    apply_res = await tools["flow.bulk_apply"].run(
+        {
+            "nodes": [
+                {"id": "trig", "type": "CommandTriggerNode", "data": {"command": "/start"}},
+                {"id": "msg", "type": "SendTextMessageNode", "data": {"messageText": "Salom"}},
+            ],
+            "edges": [{"source": "trig", "target": "msg"}],
+            "validate_flow": False,
+            "layout": False,
+            "save": False,
+        },
+        ctx,
+    )
+    ctx.state.update(apply_res.state_updates or {})
+    res = await tools["flow.get"].run({}, ctx)
+    assert not res.is_error
+    assert "Flow arxitekturasi" in res.content
+    assert "Trigger" in res.content
+    assert "trig" in res.content and "msg" in res.content
+    # Not JSON
+    assert not res.content.lstrip().startswith("{")
+
+
+@pytest.mark.asyncio
+async def test_flow_get_as_json_returns_json():
+    tools = _tools()
+    ctx = ToolContext(run_id="r", project_id="42", user_id="u")
+    apply_res = await tools["flow.bulk_apply"].run(
+        {
+            "nodes": [
+                {"id": "trig", "type": "CommandTriggerNode", "data": {"command": "/start"}},
+            ],
+            "edges": [],
+            "validate_flow": False,
+            "layout": False,
+            "save": False,
+        },
+        ctx,
+    )
+    ctx.state.update(apply_res.state_updates or {})
+    res = await tools["flow.get"].run({"as_json": True}, ctx)
+    assert not res.is_error
+    assert res.content.lstrip().startswith("{")
+    assert "nodes" in res.content
 
 
 @pytest.mark.asyncio

@@ -70,15 +70,24 @@ def _project_id(ctx: ToolContext) -> str | None:
 class FlowGetInput(BaseModel):
     summary_only: bool = Field(
         default=False,
-        description="If true, return only node/edge counts + types instead of full JSON.",
+        description="If true, return compact node/edge counts only.",
+    )
+    as_json: bool = Field(
+        default=False,
+        description=(
+            "If true, return the full flow JSON. Default `false` — bu holatda "
+            "agent uchun tushunarli **tree formatdagi arxitektura tavsifi** "
+            "qaytariladi (JSON o'rniga). Json kerak bo'lsagina true qiling."
+        ),
     )
 
 
 @tool(
     name="flow.get",
     description=(
-        "Return the current working flow (the in-memory version, not the saved one). "
-        "Use this before any modification to confirm the current state."
+        "Joriy working flow ni qaytaradi. Default — tree formatdagi tushunarli "
+        "arxitektura (triggerlar, ularning oqimlari, branching'lar). "
+        "`summary_only=true` — qisqa hisob; `as_json=true` — to'liq JSON."
     ),
     input_model=FlowGetInput,
 )
@@ -95,8 +104,120 @@ async def flow_get(input: FlowGetInput, ctx: ToolContext) -> ToolResult:
             "triggers": [t.id for t in flow.triggers()],
         }
         return ToolResult.ok(str(summary), data=summary)
-    payload = flow.model_dump()
-    return ToolResult.ok(flow.to_json(indent=2), data=payload)
+    if input.as_json:
+        payload = flow.model_dump()
+        return ToolResult.ok(flow.to_json(indent=2), data=payload)
+    # Default — tree format
+    tree = _render_flow_tree(flow)
+    return ToolResult.ok(tree, data={"format": "tree"})
+
+
+def _render_flow_tree(flow: FlowDocument) -> str:
+    """Flow'ni LLM uchun tushunarli tree shaklida render qilish.
+
+    Boshlash nuqtalari — triggerlar. Har birining tagidan BFS qilib oqimni
+    chizamiz. Branching node'lar (IfCondition, ForLoop, ...) uchun har
+    source_handle alohida ko'rsatiladi.
+    """
+    if not flow.nodes:
+        return "(bo'sh flow — hali hech qanday node yo'q)"
+
+    nodes_by_id = {n.id: n for n in flow.nodes}
+    # source_id → [(target_id, source_handle)]
+    out_edges: dict[str, list[tuple[str, str | None]]] = {}
+    in_edges_count: dict[str, int] = {}
+    for e in flow.edges:
+        out_edges.setdefault(e.source, []).append((e.target, e.sourceHandle))
+        in_edges_count[e.target] = in_edges_count.get(e.target, 0) + 1
+
+    triggers = list(flow.triggers())
+    counts = {
+        "nodes": len(flow.nodes),
+        "edges": len(flow.edges),
+        "triggers": len(triggers),
+    }
+
+    lines: list[str] = [
+        f"# Flow arxitekturasi",
+        f"Statistika: {counts['nodes']} node, {counts['edges']} edge, "
+        f"{counts['triggers']} trigger (entry point).",
+        "",
+    ]
+
+    def _node_label(n_id: str) -> str:
+        n = nodes_by_id.get(n_id)
+        if n is None:
+            return f"<missing:{n_id}>"
+        # Field'lardan eng informativlarini olish
+        d = n.data or {}
+        hint = ""
+        for key in ("command", "messageText", "newText", "collection_name",
+                    "url", "code", "key", "type", "filter", "scheduledAt",
+                    "cronExpression"):
+            if key in d and d[key]:
+                v = str(d[key])
+                v = v.replace("\n", " ")
+                if len(v) > 50:
+                    v = v[:47] + "..."
+                hint = f' {key}="{v}"'
+                break
+        # Trigger / send / branching belgisi
+        kind = ""
+        if n.type.endswith("TriggerNode"):
+            kind = " [TRIGGER]"
+        return f"`{n_id}` ({n.type}){kind}{hint}"
+
+    visited: set[str] = set()
+
+    def _walk(node_id: str, prefix: str, is_last: bool) -> None:
+        if node_id in visited:
+            lines.append(f"{prefix}{'└─' if is_last else '├─'} ↻ `{node_id}` (loop)")
+            return
+        visited.add(node_id)
+        connector = "└─" if is_last else "├─"
+        lines.append(f"{prefix}{connector} {_node_label(node_id)}")
+        new_prefix = prefix + ("   " if is_last else "│  ")
+        children = out_edges.get(node_id) or []
+        # Branching: bir nechta turli source_handle bo'lsa, har birini alohida
+        for i, (target, handle) in enumerate(children):
+            child_is_last = i == len(children) - 1
+            handle_text = ""
+            if handle and handle != "source-handler":
+                # Branching label (true/false/found/...)
+                if handle.startswith("target-handler-"):
+                    btn = handle.split("-", 3)[-1] if "-" in handle else handle
+                    handle_text = f' [button: "{btn}"]'
+                else:
+                    handle_text = f" [{handle}]"
+            lines.append(
+                f"{new_prefix}{'└─' if child_is_last else '├─'} →{handle_text} {_node_label(target)}"
+            )
+            grandchildren = out_edges.get(target) or []
+            if grandchildren:
+                visited.add(target)
+                gprefix = new_prefix + ("   " if child_is_last else "│  ")
+                for j, (gt, gh) in enumerate(grandchildren):
+                    _walk(gt, gprefix, j == len(grandchildren) - 1)
+
+    # Trigger'lardan tushib chiqamiz
+    for i, t in enumerate(triggers):
+        lines.append(f"\n## Trigger #{i + 1}")
+        _walk(t.id, "", True)
+
+    # Bog'lanmagan / orphan node'lar
+    orphans = [
+        n.id for n in flow.nodes
+        if n.id not in visited and in_edges_count.get(n.id, 0) == 0
+        and not n.type.endswith("TriggerNode")
+    ]
+    if orphans:
+        lines.append("\n## Orphan node'lar (kirish yo'q)")
+        for oid in orphans[:20]:
+            lines.append(f"  - {_node_label(oid)}")
+        if len(orphans) > 20:
+            lines.append(f"  ...va yana {len(orphans) - 20}")
+
+    return "\n".join(lines)
 
 
 # ── flow.add_node (generic, replaces 53 per-type tools) ─────────────────────
@@ -739,8 +860,9 @@ async def flow_bulk_apply(input: FlowBulkApplyInput, ctx: ToolContext) -> ToolRe
             "Hech qanday node yo'q. Avval `flow.design` chaqir yoki nodes argument ber."
         )
 
-    # Per-node validation
-    errors: list[str] = []
+    # Per-node validation — partial mode: to'g'ri node'lar darhol qo'llaniladi,
+    # xato'lar alohida ro'yxatda agentga qaytariladi (boshidan yuborish shart emas).
+    failed_nodes: list[dict[str, Any]] = []
     validated_nodes: list[tuple[str, str, dict[str, Any]]] = []
     for i, n in enumerate(nodes_raw):
         try:
@@ -748,11 +870,14 @@ async def flow_bulk_apply(input: FlowBulkApplyInput, ctx: ToolContext) -> ToolRe
             ntype = n["type"]
             ndata = n.get("data") or {}
         except (KeyError, TypeError):
-            errors.append(f"node[{i}]: id/type yo'q")
+            failed_nodes.append({"index": i, "id": None, "reason": "id/type yo'q"})
             continue
         spec = get_node_spec(ntype)
         if spec is None:
-            errors.append(f"node[{i}] `{nid}`: noma'lum type `{ntype}`")
+            failed_nodes.append(
+                {"index": i, "id": nid, "type": ntype,
+                 "reason": f"noma'lum type `{ntype}`"}
+            )
             continue
         data_model = get_data_model(ntype)
         if data_model is not None:
@@ -760,31 +885,29 @@ async def flow_bulk_apply(input: FlowBulkApplyInput, ctx: ToolContext) -> ToolRe
                 validated = data_model.model_validate(ndata)
                 ndata = validated.model_dump(by_alias=True, exclude_none=True)
             except Exception as e:  # noqa: BLE001
-                errors.append(f"node[{i}] `{nid}` ({ntype}): {e}")
+                failed_nodes.append(
+                    {"index": i, "id": nid, "type": ntype, "reason": str(e)}
+                )
                 continue
         else:
             missing = [r for r in spec.required_data if r not in ndata]
             if missing:
-                errors.append(
-                    f"node[{i}] `{nid}` ({ntype}) majburiy field yo'q: {missing}"
+                failed_nodes.append(
+                    {"index": i, "id": nid, "type": ntype,
+                     "reason": f"majburiy field yo'q: {missing}"}
                 )
                 continue
         validated_nodes.append((nid, ntype, ndata))
 
-    if errors:
-        return ToolResult.error(
-            "Blueprint xatolar:\n" + "\n".join(f"  - {e}" for e in errors[:10])
-            + (f"\n  ...va yana {len(errors) - 10}" if len(errors) > 10 else "")
-        )
-
-    # Qo'llaymiz
+    # To'g'ri node'larni qo'llaymiz
     flow = _load_working_flow(ctx)
     node_ids_set = {n.id for n in flow.nodes}
     for nid, ntype, ndata in validated_nodes:
         flow.upsert_node(FlowNode(id=nid, type=ntype, data=ndata, position=Position()))
         node_ids_set.add(nid)
 
-    # Edges
+    # Edges — source/target faqat MAVJUD nodelar (avvaldan bor yoki hozir
+    # qo'llangan) bo'lsa qo'shamiz; aks holda alohida ogohlantirish.
     edge_errors: list[str] = []
     applied_edges = 0
     for i, e in enumerate(edges_raw):
@@ -816,9 +939,17 @@ async def flow_bulk_apply(input: FlowBulkApplyInput, ctx: ToolContext) -> ToolRe
 
     updates = _set_working_flow(flow)
 
-    # Optional validate
+    # Hech qaysi node qo'llanmagan va xatolar bor → to'liq xato.
+    if not validated_nodes and failed_nodes:
+        return ToolResult.error(
+            "Birorta ham node qo'llanmadi. Xatolar:\n"
+            + _format_failures(failed_nodes)
+        )
+
+    # Optional validate — agar qisman bo'lsa kerak emas (chala flow validatorni
+    # o'tmaydi). Validate faqat hech qanday xato yo'q bo'lganda qilinadi.
     val_status = ""
-    if input.validate_flow:
+    if input.validate_flow and not failed_nodes:
         result = validate(flow)
         if not result.ok:
             return ToolResult.error(
@@ -831,9 +962,9 @@ async def flow_bulk_apply(input: FlowBulkApplyInput, ctx: ToolContext) -> ToolRe
         auto_layout(flow)
         updates = _set_working_flow(flow)
 
-    # Optional save
+    # Optional save — faqat to'liq muvaffaqiyatda
     save_status = ""
-    if input.save:
+    if input.save and not failed_nodes:
         save_result = await flow_save.run({}, ctx)
         if save_result.is_error:
             return ToolResult.error(
@@ -842,6 +973,32 @@ async def flow_bulk_apply(input: FlowBulkApplyInput, ctx: ToolContext) -> ToolRe
         save_status = " · saved"
         if save_result.state_updates:
             updates.update(save_result.state_updates)
+
+    # Xulosa
+    if failed_nodes:
+        msg = (
+            f"Qisman apply: {len(validated_nodes)} node muvaffaqiyatli, "
+            f"{applied_edges} edge qo'shildi. "
+            f"{len(failed_nodes)} node xato — fix qilingani(lari)ni keyingi "
+            f"`flow.bulk_apply(nodes=[FAQAT tuzatilgan node'lar], "
+            f"edges=[bog'liq edge'lar], save=true)` bilan yuboring. "
+            f"Boshidan butun blueprint yubormang.\n\n"
+            f"Xato node'lar:\n" + _format_failures(failed_nodes)
+        )
+        if edge_errors:
+            msg += f"\nEdge ogohlantirishlari ({len(edge_errors)}):\n  - " + \
+                   "\n  - ".join(edge_errors[:5])
+        return ToolResult.ok(
+            msg,
+            data={
+                "nodes_applied": len(validated_nodes),
+                "edges_applied": applied_edges,
+                "failed_nodes": failed_nodes,
+                "edge_warnings": edge_errors,
+                "save_pending": True,
+            },
+            state_updates=updates,
+        )
 
     msg = (
         f"Apply: {len(validated_nodes)} node, {applied_edges} edge"
@@ -858,6 +1015,18 @@ async def flow_bulk_apply(input: FlowBulkApplyInput, ctx: ToolContext) -> ToolRe
         },
         state_updates=updates,
     )
+
+
+def _format_failures(failures: list[dict[str, Any]]) -> str:
+    lines: list[str] = []
+    for f in failures[:10]:
+        ident = f"node[{f.get('index')}] `{f.get('id')}`"
+        if f.get("type"):
+            ident += f" ({f['type']})"
+        lines.append(f"  - {ident}: {f.get('reason')}")
+    if len(failures) > 10:
+        lines.append(f"  ...va yana {len(failures) - 10}")
+    return "\n".join(lines)
 
 
 def build_flow_tools() -> list[Tool]:

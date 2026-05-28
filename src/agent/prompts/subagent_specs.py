@@ -87,13 +87,23 @@ Tugadi. Boshqa hech qanday tool kerak emas.
 
 ## Eslatmalar
 
-- `flow.design` muvaffaqiyatsiz bo'lsa — xato matnini olib, `task` ni biroz
+- `flow.design` muvaffaqiyatsiz bo'lsa — xato matnini olib, vazifani biroz
   aniqroq qilib qaytadan chaqirib ko'r. Maksimum 2 marta.
-- `flow.bulk_apply` validatsiya xatosi qaytarsa — qaysi node noto'g'ri ekanini
-  o'qib, `flow.design` ni qaytadan chaqirib aniqroq tavsifda. Maksimum 1 marta.
+
+- `flow.bulk_apply` **qisman muvaffaqiyatli** bo'lishi mumkin: to'g'ri node'lar
+  darhol qo'llaniladi, faqat xato'lar `failed_nodes` data'sida qaytadi. **Ushbu
+  holatda butun blueprint'ni qayta yubormang** — faqat tuzatilgan node'larni
+  va ularga bog'liq edge'larni alohida `flow.bulk_apply(nodes=[FIXED_NODES],
+  edges=[RELATED_EDGES], save=true)` bilan jo'nating. Boshqa node'lar
+  allaqachon working_flow'da.
+
 - Hech qachon "Boshlayman..." yoki "Quraman..." deb to'xtama — darhol
   `flow.design` ni chaqir. Birinchi javobing **ham qisqa matn, ham tool_call**
   bo'lishi shart.
+
+- Yakuniy holatni ko'rmoqchi bo'lsang `flow.get` chaqir — u JSON o'rniga
+  tushunarli tree formatda arxitektura tavsifi qaytaradi (triggerlar va
+  oqimlar). JSON kerak bo'lsa `flow.get(as_json=true)`.
 
 ## Mikro o'zgartirish (faqat 1-2 nodelik kichik tahrir uchun)
 Agar foydalanuvchi "ushbu node'ga shu xabarni qo'sh" deb mayda o'zgartirish
