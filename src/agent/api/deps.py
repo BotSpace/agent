@@ -80,7 +80,14 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="Token missing user id")
 
     access_token = claims.get("access") or creds.credentials
-    refresh_token = claims.get("refresh")
+    # Refresh token JWT ichida bo'lishi shart emas (xavfsizroq) — frontend
+    # uni X-Refresh-Token header'i orqali yuboradi. Header bo'lmasa, JWT
+    # ichidagi `refresh` field'iga qaytamiz (eski mijozlar uchun).
+    refresh_token = (
+        request.headers.get("X-Refresh-Token")
+        or request.headers.get("x-refresh-token")
+        or claims.get("refresh")
+    )
     return CurrentUser(
         user_id=user_id,
         claims={**claims, "access_token": access_token, "refresh_token": refresh_token},

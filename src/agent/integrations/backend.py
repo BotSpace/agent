@@ -17,6 +17,7 @@ foydalanuvchi access token'i forward qilinadi (`Authorization: Bearer ...`).
 
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 from typing import Any
 
@@ -24,6 +25,8 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from ..config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class BackendError(RuntimeError):
@@ -201,12 +204,18 @@ def _unwrap_item(payload: Any) -> dict[str, Any]:
 
 
 def _auth_kw(auth_claims: dict | None) -> dict[str, Any]:
-    """Split agent auth claims into BackendClient._request kwargs."""
+    """Split agent auth claims into BackendClient._request kwargs.
+
+    Dict refleksiyasi (`auth_claims`) ham yuboriladi: 401 → refresh muvaffaqiyatli
+    bo'lganda BackendClient `auth_claims['access_token']` ni in-place yangilaydi —
+    keyingi tool call'lar darhol yangi access bilan ishlaydi.
+    """
     if not auth_claims:
         return {}
     return {
         "bearer": auth_claims.get("access_token"),
         "refresh_token": auth_claims.get("refresh_token"),
+        "auth_claims": auth_claims,
     }
 
 
@@ -245,13 +254,22 @@ class BackendClient:
                 headers={"Accept": "application/json", "Content-Type": "application/json"},
             )
             if resp.status_code >= 400:
+                logger.warning(
+                    "Agent token refresh failed: %s %s",
+                    resp.status_code,
+                    resp.text[:200] if resp.text else "",
+                )
                 return None
             data = resp.json() or {}
             root = data.get("data") if isinstance(data.get("data"), dict) else data
             token = (root or {}).get("token") or {}
             access = token.get("access") or root.get("access")
-            return access if isinstance(access, str) and access else None
-        except Exception:
+            if isinstance(access, str) and access:
+                logger.info("Agent access token refreshed mid-run")
+                return access
+            return None
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Agent token refresh exception: %s", e)
             return None
 
     @retry(
@@ -268,6 +286,7 @@ class BackendClient:
         json: Any | None = None,
         bearer: str | None = None,
         refresh_token: str | None = None,
+        auth_claims: dict | None = None,
     ) -> Any:
         url = self._base_url + path
         resp = await self._client.request(
@@ -277,6 +296,11 @@ class BackendClient:
         if resp.status_code == 401 and refresh_token:
             new_access = await self._try_refresh(refresh_token)
             if new_access:
+                # Run davomida bir marta refresh qilamiz — auth_claims dict'i
+                # `ctx.state["auth_claims"]` ga reference; in-place yangilash
+                # keyingi tool call'larni darhol yangi access bilan ishlatadi.
+                if auth_claims is not None:
+                    auth_claims["access_token"] = new_access
                 resp = await self._client.request(
                     method,
                     url,
