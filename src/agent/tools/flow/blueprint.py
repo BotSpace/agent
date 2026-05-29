@@ -34,14 +34,6 @@ class FlowBlueprint(BaseModel):
     nodes: list[NodeSpec] = Field(default_factory=list)
     edges: list[EdgeSpec] = Field(default_factory=list)
     summary: str | None = Field(default=None, description="One-paragraph human description.")
-    remove_node_ids: list[str] = Field(
-        default_factory=list,
-        description=(
-            "Ixtiyoriy: shu sub-flow apply qilinishidan oldin working_flow'dan "
-            "o'chirib tashlanadigan eski node id'lari (va ularga bog'liq edge'lar). "
-            "Foydali: 'eski Aloqa bo'limini almashtirib yangisini qo'y' kabi vazifalarda."
-        ),
-    )
 
 
 _JSON_FENCE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
