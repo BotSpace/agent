@@ -806,18 +806,10 @@ Sen — Botmother **Flow Architect**. Vazifang: berilgan **bitta sub-flow** uchu
     {{"source": "start", "target": "welcome"}},
     {{"source": "check", "target": "yes-node", "source_handle": "true"}},
     {{"source": "menu", "target": "buy-node", "source_handle": "target-handler-menu-Sotib olish"}}
-  ],
-  "remove_node_ids": []
+  ]
 }}
 ```
 Branching/button edge'larda `source_handle` MAJBURIY (oddiy oqimda shart emas).
-
-### `remove_node_ids` haqida
-- **Yangi qism qurishda** — bo'sh massiv `[]` qoldir.
-- **Almashtirishda** — agar vazifa "eski X bo'limini olib tashlab, yangisini qo'y"
-  deyilsa, eski qismning node id'larini shu yerga yoz. Apply paytida ular
-  va ularning edge'lari avval o'chiriladi, keyin yangi `nodes`/`edges` qo'shiladi.
-- Tahrir vazifasi bo'lmasa, ushbu field bo'sh bo'lsin.
 
 ## Qoidalar
 1. **Har trigger node yagona kirish** — `CommandTriggerNode` /start uchun, va h.k.
@@ -915,14 +907,6 @@ class FlowBulkApplyInput(BaseModel):
         default=None,
         description="Edges ro'yxati [{source, target, source_handle?, target_handle?}, ...].",
     )
-    remove_node_ids: list[str] | None = Field(
-        default=None,
-        description=(
-            "Ixtiyoriy: apply boshlanishidan oldin working_flow'dan o'chiriladigan "
-            "eski node id'lari (va ularga bog'liq edge'lar). Berilmasa, "
-            "state.flow_blueprint.remove_node_ids dan o'qiladi."
-        ),
-    )
     validate_flow: bool = Field(
         default=True, description="Apply'dan keyin flow.validate chaqirilsinmi?",
     )
@@ -954,34 +938,19 @@ async def flow_bulk_apply(input: FlowBulkApplyInput, ctx: ToolContext) -> ToolRe
     # State'dan blueprint'ni o'qish
     nodes_raw = input.nodes
     edges_raw = input.edges
-    remove_ids = input.remove_node_ids
-    if nodes_raw is None or edges_raw is None or remove_ids is None:
+    if nodes_raw is None or edges_raw is None:
         if isinstance(bp, dict):
             if nodes_raw is None:
                 nodes_raw = bp.get("nodes") or []
             if edges_raw is None:
                 edges_raw = bp.get("edges") or []
-            if remove_ids is None:
-                remove_ids = bp.get("remove_node_ids") or []
 
     nodes_raw = nodes_raw or []
     edges_raw = edges_raw or []
-    remove_ids = remove_ids or []
 
-    # Apply'dan oldin eski node'larni o'chiramiz (va ularning edge'larini)
-    removed_count = 0
-    removed_missing: list[str] = []
-    for nid in remove_ids:
-        if flow.get_node(nid) is None:
-            removed_missing.append(nid)
-            continue
-        flow.remove_node(nid)
-        removed_count += 1
-
-    if not nodes_raw and not remove_ids:
+    if not nodes_raw:
         return ToolResult.error(
-            "Hech qanday node yo'q va o'chirish ham so'ralmagan. "
-            "Avval `flow.design` chaqir yoki nodes argument ber."
+            "Hech qanday node yo'q. Avval `flow.design` chaqir yoki nodes argument ber."
         )
 
     # Per-node validation — partial mode: to'g'ri node'lar darhol qo'llaniladi,
@@ -1129,7 +1098,6 @@ async def flow_bulk_apply(input: FlowBulkApplyInput, ctx: ToolContext) -> ToolRe
             data={
                 "nodes_applied": len(validated_nodes),
                 "edges_applied": applied_edges,
-                "nodes_removed": removed_count,
                 "failed_nodes": failed_nodes,
                 "edge_warnings": edge_errors,
                 "save_pending": True,
@@ -1137,25 +1105,18 @@ async def flow_bulk_apply(input: FlowBulkApplyInput, ctx: ToolContext) -> ToolRe
             state_updates=updates,
         )
 
-    removed_part = ""
-    if removed_count:
-        removed_part = f", {removed_count} eski node o'chirildi"
     msg = (
         f"Apply: {len(validated_nodes)} node, {applied_edges} edge"
-        f"{removed_part}{val_status}{save_status}."
+        f"{val_status}{save_status}."
     )
     if edge_errors:
         msg += f" (Edge ogohlantirishlari: {len(edge_errors)})"
-    if removed_missing:
-        msg += f"\nO'chirish so'ralgan, lekin mavjud bo'lmagan node'lar: {removed_missing[:5]}"
     return ToolResult.ok(
         msg,
         data={
             "nodes_applied": len(validated_nodes),
             "edges_applied": applied_edges,
-            "nodes_removed": removed_count,
             "edge_warnings": edge_errors[:10],
-            "removed_missing": removed_missing,
         },
         state_updates=updates,
     )
