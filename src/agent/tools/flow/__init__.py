@@ -717,10 +717,13 @@ visual bot flow blueprint'ini yaratish. Natija sifatida **faqat JSON** qaytar
     {{"id": "welcome", "type": "SendTextMessageNode", "data": {{"messageText": "Salom!"}}}}
   ],
   "edges": [
-    {{"source": "start", "target": "welcome"}}
+    {{"source": "start", "target": "welcome"}},
+    {{"source": "check", "target": "yes-node", "source_handle": "true"}},
+    {{"source": "menu", "target": "buy-node", "source_handle": "target-handler-menu-Sotib olish"}}
   ]
 }}
 ```
+Branching/button edge'larda `source_handle` MAJBURIY (oddiy oqimda shart emas).
 
 ## Qoidalar
 1. **Har trigger node yagona kirish** — `CommandTriggerNode` /start uchun, va h.k.
@@ -730,6 +733,8 @@ visual bot flow blueprint'ini yaratish. Natija sifatida **faqat JSON** qaytar
    ketma-ketligi. Trigger'da `state: {{key, type}}` qo'sh — avtomatik saqlanadi.
 4. Collection'ga yozish: `CollectionNode` bilan `fieldMappings`.
 5. Branching: `IfConditionNode` uchun `source_handle: "true"` yoki `"false"`.
+   Ko'p tarmoqli shart: `data.branches: [{{type, conditions, operator}}]` qo'sh,
+   edge'larda `source_handle: "branch_0"`, `"branch_1"`, ... ishlat.
 6. Expression syntax: `{{{{state.var}}}}`, `{{{{first_name}}}}`, `{{{{inserted_id}}}}`.
 7. Node id'lari **kebab-case**, takrorlanmasin.
 8. **JSON'dan boshqa hech narsa qaytarma** — kommentariy yoki tushuntirish yo'q.

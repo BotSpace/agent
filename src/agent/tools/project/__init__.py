@@ -59,7 +59,8 @@ class ProjectGetInput(BaseModel):
     name="project.get",
     description=(
         "Fetch a single project's details. Set `include_flow=true` to also load the "
-        "current flow into the agent's `baseline_flow` (overwrites the working flow)."
+        "saved flow into the agent — this resets BOTH `baseline_flow` and "
+        "`working_flow` to the project's saved flow (discards unsaved working changes)."
     ),
     input_model=ProjectGetInput,
 )

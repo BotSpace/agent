@@ -83,7 +83,10 @@ class EnvUnsetInput(BaseModel):
 
 @tool(
     name="env.unset",
-    description="Remove an environment variable by id.",
+    description=(
+        "Remove an environment variable by its globally-unique `env_id` "
+        "(no project_id needed — unlike env.set/env.list which are project-scoped)."
+    ),
     input_model=EnvUnsetInput,
     destructive=True,
 )

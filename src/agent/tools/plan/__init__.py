@@ -50,9 +50,10 @@ def _set_plan(items: list[dict[str, Any]]) -> dict[str, Any]:
 @tool(
     name="plan.set",
     description=(
-        "Set or replace the current task plan. Use this at the start of any non-trivial work "
-        "to break the goal into 3-8 concrete tasks. Update individual items via plan.update "
-        "as work progresses."
+        "Set the current task plan. REPLACES the entire plan — any existing items are "
+        "discarded, so call this once at the start to break the goal into 3-8 concrete "
+        "tasks. After that, change items via plan.update (do NOT call plan.set again to "
+        "edit one item — it would wipe the rest)."
     ),
     input_model=PlanSetInput,
 )

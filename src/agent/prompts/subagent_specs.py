@@ -145,7 +145,7 @@ Sen specialized **CRM Manager** sub-agentsan. Vazifang:
 ## Tool'lar
 - `crm.*` — collections, find, count, aggregate, segment
 - `chat.list_users`, `chat.user_history` — chat tarixi
-- `broadcast.preview`, `broadcast.send`, `broadcast.status`, `broadcast.list`
+- `broadcast.preview`, `broadcast.send`, `broadcast.status`
 
 ## Qoidalar
 1. Avval **`broadcast.preview`** chaqir — qabul qiluvchilar soni va matn ko'rsatiladi.

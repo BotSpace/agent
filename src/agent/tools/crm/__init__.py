@@ -76,7 +76,8 @@ class CrmFindInput(BaseModel):
 @tool(
     name="crm.find",
     description=(
-        "Query documents from a collection. Use filter/sort/limit/skip just like MongoDB."
+        "Query documents from a collection. Use filter/sort/limit/skip/projection "
+        "just like MongoDB (projection selects which fields to return)."
     ),
     input_model=CrmFindInput,
 )
@@ -218,7 +219,7 @@ class CrmDeleteInput(BaseModel):
 
 @tool(
     name="crm.delete",
-    description="Delete document(s) matching filter. Requires approval.",
+    description="Permanently delete document(s) matching filter — hard delete, not recoverable (use cms.delete for the soft-delete variant). Requires approval.",
     input_model=CrmDeleteInput,
     destructive=True,
 )
