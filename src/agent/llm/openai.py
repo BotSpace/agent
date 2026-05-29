@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import AsyncIterator
 from typing import Any
 
 import os
 
 from openai import APIStatusError, AsyncOpenAI
+
+from ..observability.metrics import record_llm_usage
 
 from .base import (
     ContentPart,
@@ -143,10 +146,63 @@ class OpenAIClient(LLMClient):
                 return True
         return False
 
+    @staticmethod
+    def _needs_explicit_cache_marker(model: str) -> bool:
+        """Models routed through OpenRouter that REQUIRE cache_control
+        markers — automatic prefix caching is not enabled for them.
+        OpenAI gpt-*, DeepSeek, Grok, Gemini 2.5 cache implicitly so
+        we leave them alone."""
+        m = model.lower()
+        return (
+            m.startswith("qwen/")
+            or m.startswith("alibaba/")
+            or m.startswith("anthropic/")
+            or "claude" in m
+            or m.startswith("google/gemini-1.5")
+            or m.startswith("google/gemini-2.0")
+        )
+
+    @classmethod
+    def _local_breakdown(
+        cls, messages: list[Message], options: GenerateOptions
+    ) -> dict[str, int]:
+        """Estimate input tokens by category for Prometheus.
+
+        Uses a chars/4 heuristic so we don't pull tiktoken in just for
+        observability. The split is approximate but still useful to see
+        relative shares (system vs user vs tool_result)."""
+        system_chars = 0
+        user_chars = 0
+        tool_result_chars = 0
+        for m in messages:
+            if m.role == "system":
+                system_chars += len(m.text)
+            elif m.role == "user":
+                user_chars += len(m.text)
+            elif m.role == "tool":
+                for p in m.content:
+                    if isinstance(p, ToolResultPart):
+                        tool_result_chars += len(p.content)
+            # assistant text is fed back next turn but not really a category
+            # we bill — folded into user_chars conceptually
+        tool_schema_chars = 0
+        for t in options.tools or []:
+            tool_schema_chars += len(t.name) + len(t.description or "")
+            tool_schema_chars += len(json.dumps(t.input_schema))
+        return {
+            "system": (system_chars + 3) // 4,
+            "tool_schema": (tool_schema_chars + 3) // 4,
+            "user": (user_chars + 3) // 4,
+            "tool_result": (tool_result_chars + 3) // 4,
+        }
+
     def _build_request(self, messages: list[Message], options: GenerateOptions) -> dict[str, Any]:
+        oai_messages = self._to_openai_messages(messages)
+        if self._needs_explicit_cache_marker(options.model):
+            self._inject_cache_markers(oai_messages)
         req: dict[str, Any] = {
             "model": options.model,
-            "messages": self._to_openai_messages(messages),
+            "messages": oai_messages,
             "temperature": options.temperature,
         }
         if self._uses_max_completion_tokens(options.model):
@@ -161,16 +217,64 @@ class OpenAIClient(LLMClient):
             req["stop"] = options.stop_sequences
         return req
 
+    @staticmethod
+    def _inject_cache_markers(oai_messages: list[dict[str, Any]]) -> None:
+        """Wrap the FIRST system message as content-blocks with a final
+        cache_control breakpoint. Providers that honor cache_control
+        (Anthropic, Qwen via OpenRouter, Gemini standard) will cache
+        the prefix up to and including this block. The breakpoint
+        covers the system prompt — tool schemas in the `tools` array
+        are still part of the same prefix and cached together by
+        Anthropic and (best-effort) by other explicit-cache providers."""
+        for m in oai_messages:
+            if m.get("role") == "system":
+                content = m.get("content")
+                if isinstance(content, str):
+                    m["content"] = [
+                        {
+                            "type": "text",
+                            "text": content,
+                            "cache_control": {"type": "ephemeral"},
+                        }
+                    ]
+                elif isinstance(content, list) and content:
+                    last = content[-1]
+                    if isinstance(last, dict):
+                        last["cache_control"] = {"type": "ephemeral"}
+                return  # only first system block
+
     # ── generate ───────────────────────────────────────────────────────
     async def generate(
         self,
         messages: list[Message],
         options: GenerateOptions,
     ) -> GenerateResult:
+        from ..observability.metrics import (
+            LLM_REQUESTS,
+            LLM_REQUEST_DURATION,
+        )
+
+        local = self._local_breakdown(messages, options)
+        t0 = time.monotonic()
         try:
             response = await self._client.chat.completions.create(**self._build_request(messages, options))
         except APIStatusError as e:
+            LLM_REQUESTS.labels(self.provider, options.model, "error").inc()
+            LLM_REQUEST_DURATION.labels(self.provider, options.model).observe(time.monotonic() - t0)
             raise LLMError(str(e), provider=self.provider, status=e.status_code) from e
+
+        LLM_REQUESTS.labels(self.provider, options.model, "success").inc()
+        LLM_REQUEST_DURATION.labels(self.provider, options.model).observe(time.monotonic() - t0)
+        try:
+            usage_dict = response.usage.model_dump() if response.usage else None
+        except AttributeError:
+            usage_dict = dict(response.usage) if response.usage else None
+        record_llm_usage(
+            provider=self.provider,
+            model=options.model,
+            usage=usage_dict,
+            local_breakdown=local,
+        )
 
         choice = response.choices[0]
         parts: list[ContentPart] = []
@@ -206,6 +310,12 @@ class OpenAIClient(LLMClient):
         messages: list[Message],
         options: GenerateOptions,
     ) -> AsyncIterator[StreamEvent]:
+        from ..observability.metrics import (
+            LLM_REQUESTS,
+            LLM_REQUEST_DURATION,
+        )
+
+        local = self._local_breakdown(messages, options)
         req = self._build_request(messages, options)
         req["stream"] = True
         req["stream_options"] = {"include_usage": True}
@@ -214,6 +324,8 @@ class OpenAIClient(LLMClient):
         tool_acc: dict[int, dict[str, Any]] = {}  # index → {id, name, arguments_json}
         stop_reason = "stop"
         usage = Usage()
+        raw_usage_dict: dict | None = None
+        t0 = time.monotonic()
 
         try:
             stream = await self._client.chat.completions.create(**req)
@@ -224,6 +336,10 @@ class OpenAIClient(LLMClient):
                         input_tokens=chunk.usage.prompt_tokens,
                         output_tokens=chunk.usage.completion_tokens,
                     )
+                    try:
+                        raw_usage_dict = chunk.usage.model_dump()
+                    except AttributeError:
+                        raw_usage_dict = dict(chunk.usage)
                 if not chunk.choices:
                     continue
                 choice = chunk.choices[0]
@@ -251,7 +367,18 @@ class OpenAIClient(LLMClient):
                             arguments_delta=tc_delta.function.arguments,
                         )
         except APIStatusError as e:
+            LLM_REQUESTS.labels(self.provider, options.model, "error").inc()
+            LLM_REQUEST_DURATION.labels(self.provider, options.model).observe(time.monotonic() - t0)
             raise LLMError(str(e), provider=self.provider, status=e.status_code) from e
+
+        LLM_REQUESTS.labels(self.provider, options.model, "success").inc()
+        LLM_REQUEST_DURATION.labels(self.provider, options.model).observe(time.monotonic() - t0)
+        record_llm_usage(
+            provider=self.provider,
+            model=options.model,
+            usage=raw_usage_dict,
+            local_breakdown=local,
+        )
 
         # Finalize
         parts: list[ContentPart] = []

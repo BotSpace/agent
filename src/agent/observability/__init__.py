@@ -3,6 +3,23 @@
 from __future__ import annotations
 
 from ..config import get_settings
+from .metrics import (
+    LLM_INPUT_TOKENS,
+    LLM_OUTPUT_TOKENS,
+    LLM_REQUESTS,
+    LLM_REQUEST_DURATION,
+    record_llm_usage,
+)
+
+
+__all__ = [
+    "LLM_INPUT_TOKENS",
+    "LLM_OUTPUT_TOKENS",
+    "LLM_REQUESTS",
+    "LLM_REQUEST_DURATION",
+    "configure_otel",
+    "record_llm_usage",
+]
 
 
 def configure_otel(app=None) -> bool:  # noqa: ANN001

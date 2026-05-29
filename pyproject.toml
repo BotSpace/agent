@@ -21,6 +21,7 @@ dependencies = [
   "langgraph-checkpoint-postgres>=2.0.0",
   "langchain-core>=0.3.20",
   "langsmith>=0.2.0",
+  "prometheus-client>=0.21.0",
 
   # LLM providers (direct SDKs — no LiteLLM)
   "anthropic>=0.39.0",

@@ -118,7 +118,8 @@ affinity:
                 - base
 
 prometheus:
-  scrape: false
+  scrape: true
   port: 8100
+  path: /metrics
 
 terminationGracePeriodSeconds: 30
