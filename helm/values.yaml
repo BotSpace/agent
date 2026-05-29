@@ -21,6 +21,7 @@ strategy:
     maxUnavailable: 0
 
 service:
+  name: http
   enabled: true
   type: ClusterIP
   port: 8100
