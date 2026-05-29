@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Response
@@ -16,6 +18,38 @@ from fastapi import Depends
 
 from .deps import CurrentUser, get_current_user
 from .routes.runs import router as runs_router
+
+logger = logging.getLogger(__name__)
+
+
+async def _template_sync_loop(initial_delay: int, interval_hours: float) -> None:
+    """Run agent.scripts.ingest_templates on a repeating schedule.
+
+    Catches all errors per-cycle so one failed sync doesn't kill the
+    loop. Logs the result of each cycle.
+    """
+    if interval_hours <= 0:
+        return
+    interval_seconds = max(60.0, interval_hours * 3600.0)
+    # Lazy import — pgvector connection happens lazily in the script.
+    from ..scripts.ingest_templates import ingest
+
+    try:
+        await asyncio.sleep(max(0, initial_delay))
+        while True:
+            try:
+                result = await ingest(rebuild=False)
+                logger.info(
+                    "Template sync cycle ok: fetched=%s indexed=%s",
+                    result.get("fetched"),
+                    result.get("indexed"),
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("Template sync cycle failed; will retry next interval")
+            await asyncio.sleep(interval_seconds)
+    except asyncio.CancelledError:
+        logger.info("Template sync loop cancelled (shutdown)")
+        raise
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -36,7 +70,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             except Exception:
                 # vector store optional — bootstrap failures shouldn't kill the API
                 pass
-        yield
+        # Background scheduler: periodically refresh the template vector
+        # index so newly-added templates become searchable without a
+        # manual re-deploy. AGENT_TEMPLATE_SYNC_INTERVAL_HOURS=0 disables.
+        sync_task: asyncio.Task | None = None
+        if s.rag_enabled and s.template_sync_interval_hours > 0:
+            sync_task = asyncio.create_task(
+                _template_sync_loop(
+                    s.template_sync_initial_delay_seconds,
+                    s.template_sync_interval_hours,
+                ),
+                name="template-sync-loop",
+            )
+        try:
+            yield
+        finally:
+            if sync_task is not None:
+                sync_task.cancel()
+                try:
+                    await sync_task
+                except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                    pass
 
     app = FastAPI(title="Botmother AgentV3 API", version="0.1.0", lifespan=lifespan)
     app.add_middleware(

@@ -93,6 +93,18 @@ class Settings(BaseSettings):
     # ── memory / rag ────────────────────────────────────────────────────
     rag_enabled: bool = Field(default=True, alias="AGENT_RAG_ENABLED")
     rag_top_k: int = Field(default=6, alias="AGENT_RAG_TOP_K")
+    # Template RAG re-ingestion interval (hours). 0 disables the
+    # background scheduler entirely (manual `python -m
+    # agent.scripts.ingest_templates` only).
+    template_sync_interval_hours: float = Field(
+        default=6.0, alias="AGENT_TEMPLATE_SYNC_INTERVAL_HOURS"
+    )
+    # Delay before the first sync after pod startup (seconds). Keeps
+    # the lifespan handler returning fast — first sync runs in
+    # background after the API is already serving requests.
+    template_sync_initial_delay_seconds: int = Field(
+        default=60, alias="AGENT_TEMPLATE_SYNC_INITIAL_DELAY_SECONDS"
+    )
 
     # ── observability ───────────────────────────────────────────────────
     otel_endpoint: str | None = Field(default=None, alias="OTEL_EXPORTER_OTLP_ENDPOINT")
