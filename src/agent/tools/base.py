@@ -87,6 +87,7 @@ class Tool(Generic[InputModel]):
         )
 
     async def run(self, raw_args: dict[str, Any], ctx: ToolContext) -> ToolResult:
+        raw_args = _coerce_stringified_json(raw_args, self.input_model)
         try:
             args = self.input_model.model_validate(raw_args)
         except ValidationError as e:
@@ -125,3 +126,44 @@ def _pydantic_to_json_schema(model: type[BaseModel]) -> dict[str, Any]:
     # Anthropic/OpenAI ikkalasi `definitions` o'rniga `$defs` ham qabul qiladi
     schema.pop("title", None)
     return schema
+
+
+def _coerce_stringified_json(
+    raw_args: Any, model_cls: type[BaseModel]
+) -> Any:
+    """LLM ba'zan nested dict/list field'larni JSON string sifatida yuboradi.
+
+    Qwen, Gemma va boshqa kuchsizroq modellar tipik xulqi:
+        {"data": "{\\"command\\": \\"/start\\"}"}
+    Pydantic dict kutadi, string keladi → rad etadi.
+
+    Bu funksiya: input modeldagi dict/list/BaseModel-tipli field'larni topib,
+    ularning qiymati `{...}` yoki `[...]` ko'rinishidagi string bo'lsa,
+    JSON parse qiladi. Boshqa string'lar tegmaydi.
+    """
+    import json
+
+    if not isinstance(raw_args, dict):
+        return raw_args
+
+    fields = getattr(model_cls, "model_fields", {})
+    if not fields:
+        return raw_args
+
+    out = dict(raw_args)
+    for key, info in fields.items():
+        value = out.get(key)
+        if not isinstance(value, str):
+            continue
+        stripped = value.strip()
+        if not stripped:
+            continue
+        # Faqat JSON object/list ko'rinishidagi string'larni unwrap qilamiz
+        if not (stripped.startswith("{") or stripped.startswith("[")):
+            continue
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        out[key] = parsed
+    return out
