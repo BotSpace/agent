@@ -860,6 +860,32 @@ class BackendClient:
             },
         )
 
+    async def list_internal_templates(self) -> list[dict[str, Any]]:
+        """Fetch ALL verified templates WITH their flow JSON for RAG indexing.
+
+        Uses X-Internal-Token; no user JWT involved. Backend returns
+        {"results": [...]} with each template's flow embedded.
+        """
+        if not self._internal_token:
+            logger.warning("list_internal_templates skipped — BACKEND_INTERNAL_TOKEN not set")
+            return []
+        d = await self._request("GET", "/api/template/internal/list/")
+        if isinstance(d, dict) and isinstance(d.get("results"), list):
+            return d["results"]
+        return []
+
+    async def get_internal_template(self, identifier: str | int) -> dict[str, Any] | None:
+        """Fetch a single template (by id or slug) WITH flow JSON."""
+        if not self._internal_token:
+            return None
+        try:
+            return await self._request("GET", f"/api/template/internal/{identifier}/")
+        except BackendError as e:
+            if e.status == 404:
+                return None
+            raise
+
+
 @lru_cache(maxsize=2)
 def get_backend_client(_settings_id: int = 0) -> BackendClient:
     s = get_settings()
