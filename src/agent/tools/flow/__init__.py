@@ -103,40 +103,17 @@ async def flow_get(input: FlowGetInput, ctx: ToolContext) -> ToolResult:
 
 
 class FlowAddNodeInput(BaseModel):
-    id: str = Field(description="Stable kebab-case node id. Same id replaces existing node (idempotent).")
-    type: str = Field(
-        description=(
-            "Engine node type from flow.list_node_types. Generic fallback — for the 9 "
-            "most-used types use the named tools (flow.add_send_text_message, "
-            "flow.add_command_trigger, etc.) which have strict typed data validation."
-        )
-    )
-    data: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Type-specific configuration. See flow.list_node_types for required/optional fields per type.",
-    )
-    after: str | None = Field(
-        default=None,
-        description="Optional previous node id. If set, auto-create an edge from `after` to this node.",
-    )
+    id: str = Field(description="Stable kebab-case id (re-using = replace).")
+    type: str = Field(description="Engine node type (from node-spec table or flow.list_node_types).")
+    data: dict[str, Any] = Field(default_factory=dict, description="Type-specific fields.")
+    after: str | None = Field(default=None, description="Previous node id; auto-creates an edge.")
     source_handle: str | None = Field(
         default="source-handler",
-        description=(
-            "Source handle on the `after` node. 'source-handler' (default) for normal flow; "
-            "branch handles like 'true'/'false', 'found'/'not_found', 'is-member'/'not-member', "
-            "'loop-body'/'no-items', 'option_0' for branching nodes; "
-            "'target-handler-{nodeId}-{button.text}' for keyboard buttons."
-        ),
+        description="Default 'source-handler'. Branch: true/false/found/not_found/is-member/loop-body/option_0. Button: target-handler-{nodeId}-{btn.text}.",
     )
     target_handle: str | None = Field(default="target-handler")
-    edge_id: str | None = Field(
-        default=None,
-        description="Optional explicit edge id (auto-generated if omitted).",
-    )
-    position: dict[str, float] | None = Field(
-        default=None,
-        description="Optional {x,y}. Omit and call flow.layout_auto at the end.",
-    )
+    edge_id: str | None = Field(default=None)
+    position: dict[str, float] | None = Field(default=None, description="{x,y} — omit, run flow.layout_auto last.")
 
 
 def _edge_id(source: str, target: str, source_handle: str | None = None) -> str:
@@ -147,11 +124,9 @@ def _edge_id(source: str, target: str, source_handle: str | None = None) -> str:
 @tool(
     name="flow.add_node",
     description=(
-        "Generic add-or-replace node for ANY engine type that does not have its own "
-        "named flow.add_* tool. Use the named tools first (they have strict typed "
-        "validation). Use this generic tool for rare types like send_photo, send_audio, "
-        "delay, cron, for_loop, edit_message, etc. Call flow.list_node_types(category) "
-        "to discover required `data` fields."
+        "Generic add/replace for any node type that lacks a typed flow.add_* "
+        "tool (send_photo, delay, cron, for_loop, ...). For required fields see "
+        "node-spec table or flow.list_node_types."
     ),
     input_model=FlowAddNodeInput,
 )

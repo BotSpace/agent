@@ -31,37 +31,24 @@ logger = logging.getLogger(__name__)
 
 class TaskRunInput(BaseModel):
     subagent_type: str = Field(
-        description=(
-            "Sub-agent name: flow-builder | crm-manager | cms-manager | deploy-manager"
-        )
+        description="flow-builder | crm-manager | cms-manager | deploy-manager"
     )
     prompt: str = Field(
-        description=(
-            "Vazifa tavsifi (1-3 jumla + kerakli kontekst). Misol: 'Loyiha 42 da "
-            "/start trigger qo'sh va salom xabari ber. project_id=42.' "
-            "(Qaysi tool'larni chaqirishni sub-agent o'zi hal qiladi — bu yerda "
-            "tool nomlarini ko'rsatma.)"
-        )
+        description="Task + needed context (project_id, ids, ...). Sub-agent has no main history."
     )
     propagate_flow: bool = Field(
         default=True,
-        description="working_flow ni sub-agent'ga uzatish (flow-builder uchun zarur).",
+        description="Pass working_flow to sub-agent (flow-builder).",
     )
 
 
 @tool(
     name="task.run",
     description=(
-        "Bir domen ishini specialized sub-agent'ga uzatish. Sub-agent o'z tool "
-        "to'plamiga ega va alohida thread'da ishlaydi. Oxirida qisqa xulosa "
-        "matn qaytaradi (oraliq tool call'lar main history'ga kirmaydi).\n\n"
-        "Sub-agentlar:\n"
-        "- flow-builder: visual bot flow qurish/o'zgartirish (flow.* tool'lari)\n"
-        "- crm-manager: foydalanuvchi, segment, chat, broadcast (crm.*, chat.*, broadcast.*)\n"
-        "- cms-manager: MongoDB collection schema va document CRUD (cms.*)\n"
-        "- deploy-manager: env, release, deploy, tarif, to'lov, loglar (env.*, release.*, ...)\n\n"
-        "Promptda kontekstni aniq ber: project_id, qaysi node'lar, qaysi segment va h.k. "
-        "Sub-agent main suhbat tarixini ko'rmaydi."
+        "Delegate a domain task to a specialized sub-agent. Returns a short "
+        "summary; intermediate tool calls stay out of main history. "
+        "flow-builder=flow.*, crm-manager=crm/chat/broadcast, cms-manager=cms, "
+        "deploy-manager=env/release/subscription/file."
     ),
     input_model=TaskRunInput,
 )
