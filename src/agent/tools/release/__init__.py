@@ -123,10 +123,13 @@ async def release_list(input: ReleaseListInput, ctx: ToolContext) -> ToolResult:
         for r in items
     ]
     summary = ", ".join(
-        f"v{r['version']}({r['status']})" for r in payload if r.get("version")
+        f"id={r['id']} v{r['version']}({r['status']})"
+        for r in payload if r.get("id")
     ) or "(none)"
     return ToolResult.ok(
-        f"{len(payload)} release(s): {summary}",
+        f"{len(payload)} release(s): {summary}. "
+        f"Note: use the `id` field (NOT the version number) as release_id "
+        f"for release.status / release.logs.",
         data={"releases": payload},
     )
 
@@ -302,7 +305,12 @@ async def payment_link_create(input: PaymentLinkCreateInput, ctx: ToolContext) -
 
 
 class ReleaseStatusInput(BaseModel):
-    release_id: str | int
+    release_id: str | int = Field(
+        description=(
+            "Release DB id (the `id` field from release.list — NOT the version "
+            "number)."
+        )
+    )
 
 
 @tool(
@@ -324,7 +332,12 @@ async def release_status(input: ReleaseStatusInput, ctx: ToolContext) -> ToolRes
 
 
 class ReleaseLogsInput(BaseModel):
-    release_id: str | int = Field(description="Release id (from release.list).")
+    release_id: str | int = Field(
+        description=(
+            "Release DB id (the `id` field from release.list — NOT the version "
+            "number like 4 or 'v4'). Example: 4521."
+        )
+    )
     tail: int = Field(
         default=200,
         ge=1,
