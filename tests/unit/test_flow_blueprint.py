@@ -1,4 +1,4 @@
-"""Tests for flow.design/bulk_apply blueprint workflow."""
+"""Tests for flow.plan/bulk_apply blueprint workflow."""
 import pytest
 
 from agent.tools.base import ToolContext
