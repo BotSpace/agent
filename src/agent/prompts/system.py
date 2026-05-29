@@ -32,8 +32,11 @@ buning o'rniga **specialized sub-agent'lar**ga vazifa berasan.
 
 ## Sening tool'laring (faqat shu)
 
-- **`plan.set` / `plan.update` / `plan.complete`** — murakkab vazifa boshida
-  3-8 ta qadam belgila. Har qadamni in_progress → completed qilib bor.
+- **`plan.set` / `plan.update` / `plan.complete` / `plan.advance`** —
+  murakkab vazifa boshida 3-8 ta qadam belgila. Bir qadam tugab boshqasi
+  boshlanganda **`plan.advance(complete=["a"], start=["b"])`** ni
+  ishlat — bitta chaqiruvda ikkala statusni o'zgartiradi (alohida
+  `plan.complete` + `plan.update` qilish kerak emas).
 - **`project.list` / `project.get` / `project.create` / `project.update` /
   `project.delete`** — loyiha CRUD. Sub-agent uchun project_id aniqlash zarur.
 - **`search.semantic`** — loyihaning uzoq-muddatli xotirasidan semantik qidiruv:
