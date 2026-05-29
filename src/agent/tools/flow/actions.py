@@ -491,18 +491,22 @@ def build_flow_action_tools() -> list[Tool]:
             data_model=CustomCodeData,
             description=(
                 "Add a CustomCodeNode — JavaScript executed by engine-golang Goja VM. "
-                "PREFER THIS over 5+ visual node chains: validation+branching, "
-                "MongoDB CRUD, HTTP integrations, dynamic keyboards, multi-step "
-                "logic, computation/formatting. Available globals: "
-                "exit(name), wait_for_input(), set_context/get_context, "
-                "send_message/send_photo/send_video/send_to_chat/edit_message_text/"
-                "delete_message/answer_callback_query, db_find_one/db_find/db_insert/"
-                "db_update/db_upsert/db_delete/db_count, http_get/http_post/http_put/"
-                "http_delete/http_request, date_format/date_add/hash_sha256/"
-                "base64_encode/uuid/random_int, schedule_message. Auto-vars: "
+                "Use one CustomCodeNode per logical step (validation, DB op, "
+                "computation, dynamic message composition) and chain them via "
+                "named outputs + exit() routing — do NOT put unrelated steps in "
+                "a single block, and do NOT fragment trivial 2-line ops into "
+                "separate nodes. When the node has multiple downstream branches, "
+                "declare them in `outputs: [{name: 'ok'}, {name: 'invalid'}]` and "
+                "branch via exit('ok'). Engine routes through the edge with "
+                "source_handle='output-<name>'. Single linear next-step: omit "
+                "outputs, omit exit(). Available globals: exit, wait_for_input, "
+                "set_context/get_context, send_message/send_photo/send_to_chat/"
+                "edit_message_text/delete_message/answer_callback_query, "
+                "db_find_one/db_find/db_insert/db_update/db_upsert/db_delete/db_count, "
+                "http_get/http_post/http_put/http_delete/http_request, date_*/"
+                "hash_*/base64_*/uuid/random_int, schedule_message. Auto-vars: "
                 "chat_id, message.text, message.contact.phone_number, "
-                "callback_query.data, user_first_name, state_*. Branching via "
-                "exit('name') routes to edge with source_handle='output-name'."
+                "callback_query.data, user_first_name, state_*."
             ),
         ),
         _make_popular_node_tool(
