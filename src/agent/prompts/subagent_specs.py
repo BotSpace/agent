@@ -144,18 +144,51 @@ Batafsil tip/description uchun `flow.list_node_types(type=<NodeName>)` chaqir.
 ### Pattern 1: Trigger → Xabar
 `CommandTriggerNode(command:"/start", global:true)` → `SendTextMessageNode`
 
-### Pattern 2: Reply keyboard menyu
+### Pattern 2: Reply keyboard menyu (klaviatura tugmalari)
 `SendTextMessageNode` ichida `keyboard.reply` belgila. Har tugma uchun:
 `flow.connect(source="menu", target="X", source_handle="target-handler-menu-📬 Btn")`.
 `ReplyButtonTriggerNode` KERAK EMAS.
+
+### Pattern 2b: Inline keyboard tugmalari — BITTA pattern tanla
+Inline tugmalar (`keyboard.inline`) uchun engine **ikki** xil routing'ni
+qo'llab-quvvatlaydi. **Bittasini tanla, ikkalasini ham bir vaqtda
+ishlatma — aks holda foydasiz takrorlanuvchi edge'lar paydo bo'ladi.**
+
+**Approach A — to'g'ridan-to'g'ri tugma edge (oddiy menyular uchun afzal):**
+1. Tugma'da `value` field'ini belgila — bu callback_data bo'ladi:
+   `{"text": "📚 Kurslar", "type": "callback", "value": "courses"}`
+2. Tugma source handle'idan keyingi action node'ga edge:
+   `flow.connect(source="menu", target="courses-list",
+                 source_handle="target-handler-menu-📚 Kurslar")`
+3. **`CallbackQueryTriggerNode` YARATMA.** Engine `loader.go`'da
+   `FindButtonEdgeTarget` orqali tugma `value` bo'yicha edge'ni topadi va
+   bevosita o'tadi.
+
+**Approach B — global `CallbackQueryTriggerNode` (router/menyulardan
+qaytish uchun):**
+1. Tugma'da `id` yoki `callback_data` belgila:
+   `{"text": "📚 Kurslar", "type": "callback_data", "id": "btn-courses"}`
+2. Global `CallbackQueryTriggerNode` yarat:
+   `data: {global: true, filter: "equals", context: {value: "btn-courses"}}`
+3. Trigger → action node:
+   `flow.connect(source="cb-courses", target="courses-list")`
+4. **Tugma source handle'idan trigger node'ga edge TORTMA** — u funksional
+   ravishda hech narsa qilmaydi (engine globally trigger'larni qidiradi),
+   faqat ekranni iflos qiladi.
+
+Qachon B kerak: bir nechta uzoq joydagi node'lardan bitta menyu tugmasi
+("🏠 Bosh menyu") chaqirilishi kerak bo'lsa — global trigger qulay.
+Boshqa hollarda A — toza, kam node, kam edge.
 
 ### Pattern 3: Ma'lumot yig'ish (form)
 `flow.ask_text`, `flow.ask_contact`, `flow.ask_buttons`, `flow.ask_location` ishlat.
 Yoki MessageTriggerNode `state:{key, type}` orqali — bu avtomatik saqlash.
 
 ### Pattern 4: "⬅️ Ortga" tugmasi
-Har submenuga "⬅️ Ortga" qo'sh va main-menu'ga edge tort:
-`source_handle="target-handler-submenu-⬅️ Ortga"`.
+Har submenuga "⬅️ Ortga" qo'sh va main-menu'ga edge tort (Approach A):
+tugma'da `value: "back-menu"` belgila, keyin
+`flow.connect(source=submenu, target=main-menu,
+              source_handle="target-handler-submenu-⬅️ Ortga")`.
 
 ### Pattern 5: Branching
 IfCondition, LoadCollectionItem, CheckMembership, ForLoop uchun `flow.connect_branch`
