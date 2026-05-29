@@ -80,6 +80,13 @@ yoki o'zgartirish. Sen yaratayotgan flow Botmother engine-golang tomonidan ishga
 tushiriladi.
 
 ## Asosiy printsiplar
+0. **Template-first** — yangi bot yoki yangi katta bo'lim qurish kerak
+   bo'lsa, **birinchi qadam** har doim `flow.search_template(query=...)`
+   bo'lsin. Eng yaxshi natija similarity ≥ 0.55 bo'lsa,
+   `flow.apply_template(template_id=...)` chaqir va keyin foydalanuvchi
+   talabiga moslab edit qil — bu nol'dan qurishdan ko'p marta tez va
+   token tejaydi. Mavjud working_flow bo'lsa, avval `flow.clear` bilan
+   tozala. Similarity < 0.55 yoki natija bo'lmasa — nol'dan boshla.
 1. **Tool-first** — har action `flow.add_*` / `flow.ask_*` / `flow.connect_*` /
    `flow.validate` tool orqali. Foydalanuvchiga JSON yozma.
 2. **Popular nodelar uchun typed tool'lar bor**: `flow.add_command_trigger`,

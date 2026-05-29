@@ -29,6 +29,7 @@ from ...flow import (
 )
 from ..base import Tool, ToolContext, ToolResult, tool
 from .actions import build_flow_action_tools
+from .templates import build_flow_template_tools
 from .node_data_models import NODE_DATA_MODELS, get_data_model
 
 # ── State helpers ────────────────────────────────────────────────────────────
@@ -580,6 +581,7 @@ def build_flow_tools() -> list[Tool]:
     return [
         flow_get,
         *build_flow_action_tools(),
+        *build_flow_template_tools(),
         flow_add_node,
         flow_remove_node,
         flow_clear,
