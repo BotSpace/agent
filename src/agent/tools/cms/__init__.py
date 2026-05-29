@@ -358,7 +358,7 @@ class BulkInsertInput(BaseModel):
 
 @tool(
     name="cms.bulk_insert",
-    description="Insert many documents at once. Atomic per document — validation errors abort the batch.",
+    description="Insert many documents in one call. If any document fails validation the whole batch is rejected (nothing is inserted).",
     input_model=BulkInsertInput,
 )
 async def bulk_insert(input: BulkInsertInput, ctx: ToolContext) -> ToolResult:
@@ -416,7 +416,7 @@ class DeleteInput(BaseModel):
 
 @tool(
     name="cms.delete",
-    description="Soft-delete a document. Can be restored via cms.restore.",
+    description="Soft-delete a document — recoverable via cms.restore (unlike crm.delete, which is a permanent hard delete).",
     input_model=DeleteInput,
     destructive=True,
 )

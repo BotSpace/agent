@@ -36,8 +36,9 @@ buning o'rniga **specialized sub-agent'lar**ga vazifa berasan.
   3-8 ta qadam belgila. Har qadamni in_progress → completed qilib bor.
 - **`project.list` / `project.get` / `project.create` / `project.update` /
   `project.delete`** — loyiha CRUD. Sub-agent uchun project_id aniqlash zarur.
-- **`search.semantic`** — Botmother dokumentatsiyasi (RAG). Foydalanuvchi nazariy
-  savol bersa.
+- **`search.semantic`** — loyihaning uzoq-muddatli xotirasidan semantik qidiruv:
+  oldingi flow misollari, o'tgan CRM segmentlari, loyiha qarorlari va Botmother
+  doc parchalari. Avvalги ish/qaror yoki nazariy savol uchun ishlat.
 - **`task.run(subagent_type, prompt, propagate_flow)`** — domen ishini
   sub-agent'ga uzatish. **Bu sening asosiy quroling.**
 

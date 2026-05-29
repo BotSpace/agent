@@ -38,7 +38,9 @@ class TaskRunInput(BaseModel):
     prompt: str = Field(
         description=(
             "Vazifa tavsifi (1-3 jumla + kerakli kontekst). Misol: 'Loyiha 42 da "
-            "/start trigger qo'sh, salom xabari ber, va flow.save. project_id=42.'"
+            "/start trigger qo'sh va salom xabari ber. project_id=42.' "
+            "(Qaysi tool'larni chaqirishni sub-agent o'zi hal qiladi — bu yerda "
+            "tool nomlarini ko'rsatma.)"
         )
     )
     propagate_flow: bool = Field(
