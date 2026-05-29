@@ -129,55 +129,6 @@ async def test_bulk_apply_rejects_orphan_edge():
 
 
 @pytest.mark.asyncio
-async def test_flow_clear_empties_working_flow_and_blueprint():
-    tools = _tools()
-    ctx = ToolContext(run_id="r", project_id="42", user_id="u")
-    apply_res = await tools["flow.bulk_apply"].run(
-        {
-            "nodes": [
-                {"id": "trig", "type": "CommandTriggerNode", "data": {"command": "/start"}},
-                {"id": "msg", "type": "SendTextMessageNode", "data": {"messageText": "Salom"}},
-            ],
-            "edges": [{"source": "trig", "target": "msg"}],
-            "validate_flow": False,
-            "layout": False,
-            "save": False,
-        },
-        ctx,
-    )
-    ctx.state.update(apply_res.state_updates or {})
-    ctx.state["flow_blueprint"] = {"nodes": [{"id": "stale"}], "edges": []}
-
-    res = await tools["flow.clear"].run({"confirm": True}, ctx)
-    assert not res.is_error
-    assert "tozalandi" in res.content.lower()
-    assert "2 node" in res.content
-    ctx.state.update(res.state_updates or {})
-    assert ctx.state["working_flow"]["nodes"] == []
-    assert ctx.state["working_flow"]["edges"] == []
-    assert ctx.state["flow_blueprint"] is None
-    assert ctx.state["flow_dirty"] is True
-
-
-@pytest.mark.asyncio
-async def test_flow_clear_without_confirm_is_error():
-    tools = _tools()
-    ctx = ToolContext(run_id="r", project_id="42", user_id="u")
-    res = await tools["flow.clear"].run({"confirm": False}, ctx)
-    assert res.is_error
-    assert "confirm" in res.content.lower()
-
-
-@pytest.mark.asyncio
-async def test_flow_clear_on_empty_flow_is_idempotent():
-    tools = _tools()
-    ctx = ToolContext(run_id="r", project_id="42", user_id="u")
-    res = await tools["flow.clear"].run({"confirm": True}, ctx)
-    assert not res.is_error
-    assert "bo'sh" in res.content
-
-
-@pytest.mark.asyncio
 async def test_flow_get_returns_tree_by_default():
     tools = _tools()
     ctx = ToolContext(run_id="r", project_id="42", user_id="u")

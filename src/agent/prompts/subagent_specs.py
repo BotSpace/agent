@@ -87,13 +87,6 @@ Tugadi. Boshqa hech qanday tool kerak emas.
 
 ## Eslatmalar
 
-- **Yangi bot quryapsanmi yoki "qaytadan tozalab quraman" desa** —
-  birinchi qadam **`flow.clear(confirm=true)`** chaqir. Bittadan
-  `flow.remove_node` chaqirma — vaqt va token isrofi. `flow.clear`
-  bitta chaqiruvda barcha node + edge'larni o'chiradi va
-  state.flow_blueprint ni ham tozalaydi. Keyin `flow.design` +
-  `flow.bulk_apply` bilan yangidan qur.
-
 - `flow.design` muvaffaqiyatsiz bo'lsa — xato matnini olib, vazifani biroz
   aniqroq qilib qaytadan chaqirib ko'r. Maksimum 2 marta.
 
