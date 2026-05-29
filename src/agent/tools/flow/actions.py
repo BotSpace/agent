@@ -424,99 +424,55 @@ def build_flow_action_tools() -> list[Tool]:
             name="flow.add_command_trigger",
             type_name="CommandTriggerNode",
             data_model=CommandTriggerData,
-            description=(
-                "Add a command trigger like /start, /help. Required: command. "
-                "Use `state={key,type}` to auto-capture command args."
-            ),
+            description="Add a command trigger (/start etc.). state={key,type} captures args.",
         ),
         _make_popular_node_tool(
             name="flow.add_send_text_message",
             type_name="SendTextMessageNode",
             data_model=SendTextMessageData,
-            description=(
-                "Send a text message. Required: messageText (supports {{var}}). "
-                "Optional: keyboard (reply/inline), recipients (admin group)."
-            ),
+            description="Send text. messageText (supports {{var}}). Optional keyboard, recipients.",
         ),
         _make_popular_node_tool(
             name="flow.add_message_trigger",
             type_name="MessageTriggerNode",
             data_model=MessageTriggerData,
-            description=(
-                "Wait for a user message of a given media type (text/photo/contact/...). "
-                "Use `state={key,type}` to auto-save the value. global=False (default) "
-                "means it fires only while engine is paused after a Send node."
-            ),
+            description="Wait for user message of given type. state={key,type} auto-saves. global=false → fires only after Send.",
         ),
         _make_popular_node_tool(
             name="flow.add_callback_query_trigger",
             type_name="CallbackQueryTriggerNode",
             data_model=CallbackQueryTriggerData,
-            description=(
-                "Handle inline keyboard callback presses. filter='starts_with' with "
-                "context={value:'accept:'} routes only callbacks starting with that prefix."
-            ),
+            description="Inline-button callback. filter='starts_with'+context={value:'accept:'} matches prefix.",
         ),
         _make_popular_node_tool(
             name="flow.add_if_condition",
             type_name="IfConditionNode",
             data_model=IfConditionData,
-            description=(
-                "Branching node. Source handles: 'true'/'false' (or 'branch_0'/'branch_1' "
-                "for multi-branch). Connect each handle with flow.connect_branch."
-            ),
+            description="Branch node. Handles: true/false (or branch_0/1). Use flow.connect_branch.",
         ),
         _make_popular_node_tool(
             name="flow.add_collection",
             type_name="CollectionNode",
             data_model=CollectionData,
-            description=(
-                "Insert collected state values into a MongoDB collection. "
-                "fieldMappings={collection_field: state_key}. After save, "
-                "{{inserted_id}} holds the new document id."
-            ),
+            description="Insert state into MongoDB. fieldMappings={col:state_key}. {{inserted_id}} after.",
         ),
         _make_popular_node_tool(
             name="flow.add_state",
             type_name="StateNode",
             data_model=StateData,
-            description=(
-                "Save a value to state. Use type='Custom' + customType='{{expr}}' to "
-                "store any expression (e.g. {{inserted_id}}, {{message.text}})."
-            ),
+            description="Save to state. type='Custom'+customType='{{expr}}' stores any expression.",
         ),
         _make_popular_node_tool(
             name="flow.add_custom_code",
             type_name="CustomCodeNode",
             data_model=CustomCodeData,
-            description=(
-                "Add a CustomCodeNode — JavaScript executed by engine-golang Goja VM. "
-                "Use one CustomCodeNode per logical step (validation, DB op, "
-                "computation, dynamic message composition) and chain them via "
-                "named outputs + exit() routing — do NOT put unrelated steps in "
-                "a single block, and do NOT fragment trivial 2-line ops into "
-                "separate nodes. When the node has multiple downstream branches, "
-                "declare them in `outputs: [{name: 'ok'}, {name: 'invalid'}]` and "
-                "branch via exit('ok'). Engine routes through the edge with "
-                "source_handle='output-<name>'. Single linear next-step: omit "
-                "outputs, omit exit(). Available globals: exit, wait_for_input, "
-                "set_context/get_context, send_message/send_photo/send_to_chat/"
-                "edit_message_text/delete_message/answer_callback_query, "
-                "db_find_one/db_find/db_insert/db_update/db_upsert/db_delete/db_count, "
-                "http_get/http_post/http_put/http_delete/http_request, date_*/"
-                "hash_*/base64_*/uuid/random_int, schedule_message. Auto-vars: "
-                "chat_id, message.text, message.contact.phone_number, "
-                "callback_query.data, user_first_name, state_*."
-            ),
+            description="CustomCodeNode (JS, Goja VM). One node per logical step. outputs=[{name:'ok'}]+exit('ok') for branches. JS API in prompt Pattern 7.",
         ),
         _make_popular_node_tool(
             name="flow.add_http_request",
             type_name="HTTPRequestNode",
             data_model=HTTPRequestData,
-            description=(
-                "Make an HTTP call. url/method required. saveAs stores parsed JSON "
-                "response into state[saveAs]."
-            ),
+            description="HTTP call. url/method required. saveAs writes JSON response to state.",
         ),
     ]
     tools: list[Tool] = list(popular_tools)

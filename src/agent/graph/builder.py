@@ -44,6 +44,46 @@ class GraphConfig:
     emit: EventEmitter | None = None
     services: dict[str, Any] | None = None
     approve_destructive: bool = True
+    # Max chars of conversation history (excluding system prompt) sent
+    # to the LLM per turn. When the history grows beyond this budget we
+    # drop the OLDEST turns while keeping the latest user/assistant
+    # pairs intact. ~120K chars ≈ 30K tokens with chars/4 — leaves
+    # plenty of room for system prompt + tool schemas under typical
+    # 128K context windows.
+    max_history_chars: int = 120_000
+
+
+def _trim_history(history: list[Message], *, max_chars: int) -> list[Message]:
+    """Keep the most-recent suffix of the conversation under max_chars.
+
+    Walks BACKWARDS from the newest message, including each as long as
+    the budget allows. Stops dropping at a tool-result boundary so the
+    next message after the cut isn't a tool_result with no matching
+    tool_call above it (would 400 on OpenAI/Anthropic). When the cut
+    would split such a pair, we drop one more message (the assistant
+    that issued the tool_call) until aligned.
+    """
+    if not history:
+        return history
+    total = 0
+    kept_rev: list[Message] = []
+    for m in reversed(history):
+        size = sum(len(p.text) if hasattr(p, "text") else 0 for p in m.content) or 0
+        if not size:
+            # Tool result / structured part: estimate via text fallback.
+            try:
+                size = sum(len(getattr(p, "content", "") or "") for p in m.content)
+            except Exception:  # noqa: BLE001
+                size = 256
+        if kept_rev and total + size > max_chars:
+            break
+        kept_rev.append(m)
+        total += size
+    kept = list(reversed(kept_rev))
+    # Drop leading tool-result messages — they have no matching tool_call.
+    while kept and kept[0].role == "tool":
+        kept.pop(0)
+    return kept
 
 
 async def _emit(emit: EventEmitter | None, name: str, payload: dict[str, Any]) -> None:
@@ -73,6 +113,7 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
     async def llm_call(state: AgentState) -> dict[str, Any]:
         system = Message.system_text(build_system_prompt(state))
         history = state.get("messages") or []
+        history = _trim_history(history, max_chars=cfg.max_history_chars)
         model = _pick_model(state, cfg.models)
         options = GenerateOptions(
             model=model,
