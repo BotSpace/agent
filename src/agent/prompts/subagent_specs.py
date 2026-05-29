@@ -120,6 +120,12 @@ ishlat. Handle'lar: `true`/`false`, `found`/`not_found`, `is-member`/`not-member
 `{{first_name}}`, `{{username}}`, `{{state.var}}`, `{{collection.X.field}}`,
 `{{inserted_id}}`, `{{message.text}}`, `{{callback_query.data}}`.
 
+## Eslatma — flow.clear
+Yangi bot quryapsanmi yoki foydalanuvchi "qaytadan tozalab quraman" desa —
+birinchi qadam **`flow.clear(confirm=true)`** chaqir. Bittadan
+`flow.remove_node` chaqirma — vaqt va token isrofi. `flow.clear` bitta
+chaqiruvda barcha node + edge'larni o'chiradi.
+
 ## Hech qachon
 - Project create/update/delete qilma.
 - Deploy qilma.
