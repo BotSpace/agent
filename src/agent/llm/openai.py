@@ -142,8 +142,6 @@ class OpenAIClient(LLMClient):
             req["tool_choice"] = self._resolve_tool_choice(options)
         if options.stop_sequences:
             req["stop"] = options.stop_sequences
-        if options.response_format:
-            req["response_format"] = options.response_format
         return req
 
     # ── generate ───────────────────────────────────────────────────────

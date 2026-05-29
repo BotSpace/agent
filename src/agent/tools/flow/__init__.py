@@ -640,56 +640,25 @@ Branching/button edge'larda `source_handle` MAJBURIY (oddiy oqimda shart emas).
 {catalog}
 """
 
-    user_prompt = (
-        f"Vazifa: {input.task}{current_summary}\n\n"
-        f"FAQAT JSON OB'EKTI qaytar (matn yoki tushuntirish yo'q). "
-        f"Sxema: {{summary, nodes:[...], edges:[...]}}. JSON to'liq yopilgan bo'lsin."
-    )
+    user_prompt = f"Task: {input.task}{current_summary}\n\nQuyidagi JSON sxemada blueprint yarat."
 
-    async def _try_generate(extra_hint: str = "") -> "tuple[str, int, int]":
-        prompt = user_prompt + (("\n\n" + extra_hint) if extra_hint else "")
+    try:
         result = await llm.generate(
-            [Message.system_text(system_prompt), Message.user_text(prompt)],
+            [Message.system_text(system_prompt), Message.user_text(user_prompt)],
             GenerateOptions(
                 model=s.model_planner,
-                # 20 nodelik forma blueprint odatda 10-14K token chiqaradi.
-                max_tokens=16000,
+                max_tokens=8000,
                 temperature=0.1,
-                # JSON mode — model tarkibni JSON ob'ekt sifatida chiqaradi.
-                response_format={"type": "json_object"},
             ),
         )
-        return (
-            result.message.text or "",
-            result.usage.input_tokens,
-            result.usage.output_tokens,
-        )
+    except Exception as e:  # noqa: BLE001
+        return ToolResult.error(f"Planner LLM xatosi: {e}")
 
-    total_in = 0
-    total_out = 0
-    text = ""
-    parse_err: ValueError | None = None
-    for attempt in range(2):
-        try:
-            hint = (
-                f"Avvalgi urinishda JSON xato: {parse_err}. "
-                "JSON to'liq va valid bo'lsin, oxirgi qavslarni unutma."
-                if attempt and parse_err else ""
-            )
-            text, in_tok, out_tok = await _try_generate(hint)
-        except Exception as e:  # noqa: BLE001
-            return ToolResult.error(f"Planner LLM xatosi: {e}")
-        total_in += in_tok
-        total_out += out_tok
-        try:
-            bp: FlowBlueprint = parse_blueprint(text)
-            break
-        except ValueError as e:
-            parse_err = e
-    else:
+    try:
+        bp: FlowBlueprint = parse_blueprint(result.message.text)
+    except ValueError as e:
         return ToolResult.error(
-            f"Blueprint 2 urinishdan keyin ham parse qilinmadi: {parse_err}.\n"
-            f"Planner javobining boshi:\n{text[:300]}"
+            f"Blueprint parse qilinmadi: {e}\nPlanner javobining boshi:\n{result.message.text[:300]}"
         )
 
     bp_dict = bp.model_dump()
@@ -699,8 +668,8 @@ Branching/button edge'larda `source_handle` MAJBURIY (oddiy oqimda shart emas).
         data={
             "blueprint": bp_dict,
             "summary": bp.summary or "",
-            "input_tokens": total_in,
-            "output_tokens": total_out,
+            "input_tokens": result.usage.input_tokens,
+            "output_tokens": result.usage.output_tokens,
         },
         state_updates={"flow_blueprint": bp_dict},
     )
