@@ -841,6 +841,14 @@ class BackendClient:
             return
         # _request `bearer=None` bilan chaqirilganda _headers fallback'da
         # X-Internal-Token qo'shadi.
+        # Backend project_id ni IntegerField sifatida qabul qiladi — "global",
+        # bo'sh string yoki noma'lum qiymatlar 400 qaytaradi. Faqat haqiqiy
+        # numeric id'lar yuboriladi, qolgan holatlarda null.
+        pid_payload: int | None = None
+        if project_id is not None:
+            pid_str = str(project_id).strip()
+            if pid_str.isdigit():
+                pid_payload = int(pid_str)
         await self._request(
             "POST",
             "/api/subscription/usage/report/",
@@ -848,7 +856,7 @@ class BackendClient:
                 "user_id": int(user_id) if str(user_id).strip().isdigit() else user_id,
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
-                "project_id": str(project_id) if project_id else None,
+                "project_id": pid_payload,
             },
         )
 
