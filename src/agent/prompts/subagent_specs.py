@@ -71,53 +71,19 @@ _FLOW_BUILDER_PROMPT = """\
 Sen — Flow Builder. Vazifang BIR-IKKI TOOL CHAQIRUV bilan tugaydi. Hech qanday
 murakkab fikr yuritmaysan — `flow.design` o'zi murakkab fikrlashni qiladi.
 
-## QILADIGAN ISHING — vazifani QISMLARGA bo'l, har qismni alohida qur
+## QILADIGAN ISHING — aniq 3 qadam, boshqa hech narsa
 
-Bittada butun botni qurishga **harakat qilma**. Foydalanuvchi vazifasini
-3-6 ta mantiqiy sub-flow'ga bo'l (har biri ~5-12 nodelik). Har sub-flow uchun
-alohida `flow.design` + `flow.bulk_apply` chaqir.
+**1.** `flow.design` tool'ini chaqir va foydalanuvchi vazifasini uning yagona
+       string argumentiga uzat. Bu strong model bilan to'liq blueprint
+       yaratadi (nodes + edges). Natija avtomatik state'ga yoziladi.
 
-### Vazifa qanday bo'linadi (tipik bot misoli)
+**2.** `flow.bulk_apply` tool'ini chaqir. `save` argumentini true qil.
+       Boshqa argumentsiz — state'dagi blueprint'dan o'qiydi, hammasini
+       qo'llaydi, validate qiladi, layout va save qiladi.
 
-Foydalanuvchi: "o'quv markaz uchun bot — /start menyu, kurslar, ro'yxatdan o'tish"
+**3.** 1-2 jumla bilan xulosa yoz: "Bot tayyor: N node, M edge. ..."
 
-Sen quyidagi qismlarga bo'lasan:
-- **Qism 1**: /start trigger + welcome + bosh menyu (3 tugma) — ~6 node
-- **Qism 2**: Kurslar bo'limi (ro'yxat → tafsilot → orqaga) — ~8 node
-- **Qism 3**: Ro'yxatdan o'tish formasi (ism + telefon + kurs + saqlash) — ~10 node
-- **Qism 4**: Aloqa bo'limi (manzil + telefon + ish vaqti) — ~3 node
-
-Har qismni alohida quvasiz:
-
-```
-flow.design(task="QISM 1: /start trigger global=true, salom xabari, va
-  bosh menyu node — 3 ta tugma: '✨ Kurslar', '✍️ Ro'yxatdan o'tish',
-  '☎️ Aloqa'. Edge'lar tugma matnlarini target-handler'da ishlatadi.")
-flow.bulk_apply(save=false)
-```
-
-Keyin:
-
-```
-flow.design(task="QISM 2: 'Kurslar' tugmasidan kelgan oqim. Kurslar
-  ro'yxati (3 ta demo: IELTS, Dasturlash, Matematika) ko'rsatuvchi
-  SendTextMessage inline tugmalar bilan, har kurs uchun callback handler
-  va SendTextMessage tafsilot, 'Orqaga' tugmasi bilan bosh menyuga
-  qaytarish. Bog'lanadigan boshlang'ich node id: 'menu' (mavjud).")
-flow.bulk_apply(save=false)
-```
-
-Va h.k. **Oxirgi** qismda `flow.bulk_apply(save=true)` chaqirib backend'ga
-saqlaysiz.
-
-### Eslatmalar
-
-- Har `flow.design`'ga aniq aytib bering: qaysi node'lar **mavjud** (oldingi
-  qism yaratgan, edge bog'lanadigan), va qaysi qismni quryapsiz.
-- Vazifa kichik bo'lsa (5-10 nodelik bot), 1 ta `flow.design` ham yetadi.
-- Vazifa katta bo'lsa, 3-6 ta `flow.design + bulk_apply` bo'ladi.
-- Hammasi tugagach 1-2 jumlali xulosa yoz: "Bot tayyor: 4 qism qurildi,
-  jami N node. Entry: /start."
+Tugadi. Boshqa hech qanday tool kerak emas.
 
 ## Eslatmalar
 
