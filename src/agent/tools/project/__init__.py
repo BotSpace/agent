@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from ...integrations.backend import BackendClient, BackendError, get_backend_client
+from ...integrations.backend import BackendClient, BackendError, get_backend_client, format_backend_error
 from ..base import Tool, ToolContext, ToolResult, tool
 
 
@@ -38,7 +38,7 @@ async def project_list(input: ProjectListInput, ctx: ToolContext) -> ToolResult:
     try:
         items = await _backend(ctx).list_projects(search=input.search, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
-        return ToolResult.error(f"Backend error: {e}")
+        return ToolResult.error(format_backend_error(None, e))
     summary = [{"id": i.get("id"), "name": i.get("name"), "status": i.get("status")} for i in items]
     names = ", ".join(f"{s['name']} (id={s['id']})" for s in summary) or "(none)"
     return ToolResult.ok(
@@ -68,7 +68,7 @@ async def project_get(input: ProjectGetInput, ctx: ToolContext) -> ToolResult:
     try:
         project = await _backend(ctx).get_project(input.id, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
-        return ToolResult.error(f"Backend error: {e}")
+        return ToolResult.error(format_backend_error(None, e))
 
     updates: dict[str, Any] = {"project_id": str(input.id)}
     if input.include_flow and isinstance(project.get("flow"), dict):
@@ -102,7 +102,7 @@ async def project_create(input: ProjectCreateInput, ctx: ToolContext) -> ToolRes
     try:
         project = await _backend(ctx).create_project(body, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
-        return ToolResult.error(f"Backend error: {e}")
+        return ToolResult.error(format_backend_error(None, e))
     return ToolResult.ok(
         f"Project `{project.get('name')}` created with id `{project.get('id')}`",
         data={"project": project},
@@ -136,7 +136,7 @@ async def project_update(input: ProjectUpdateInput, ctx: ToolContext) -> ToolRes
     try:
         project = await _backend(ctx).update_project(input.id, body, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
-        return ToolResult.error(f"Backend error: {e}")
+        return ToolResult.error(format_backend_error(None, e))
     return ToolResult.ok(f"Project `{input.id}` updated.", data={"project": project})
 
 
@@ -157,7 +157,7 @@ async def project_delete(input: ProjectDeleteInput, ctx: ToolContext) -> ToolRes
     try:
         await _backend(ctx).delete_project(input.id, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
-        return ToolResult.error(f"Backend error: {e}")
+        return ToolResult.error(format_backend_error(None, e))
     return ToolResult.ok(f"Project `{input.id}` deleted.")
 
 

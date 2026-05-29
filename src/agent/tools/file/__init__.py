@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from ...integrations.backend import BackendClient, BackendError, get_backend_client
+from ...integrations.backend import BackendClient, BackendError, get_backend_client, format_backend_error
 from ..base import Tool, ToolContext, ToolResult, tool
 
 
@@ -35,7 +35,7 @@ async def file_list(input: FileListInput, ctx: ToolContext) -> ToolResult:
     try:
         items = await _backend(ctx).list_files(pid, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
-        return ToolResult.error(f"Backend error: {e}")
+        return ToolResult.error(format_backend_error(None, e))
     items = items[: input.limit]
     payload = [
         {"id": f.get("id"), "name": f.get("name"), "url": f.get("url"), "size": f.get("size")}
@@ -62,7 +62,7 @@ async def file_delete(input: FileDeleteInput, ctx: ToolContext) -> ToolResult:
     try:
         await _backend(ctx).delete_file(input.file_id, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
-        return ToolResult.error(f"Backend error: {e}")
+        return ToolResult.error(format_backend_error(None, e))
     return ToolResult.ok(f"File `{input.file_id}` deleted.")
 
 

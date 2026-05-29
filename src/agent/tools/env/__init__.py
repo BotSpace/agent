@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from ...integrations.backend import BackendClient, BackendError, get_backend_client
+from ...integrations.backend import BackendClient, BackendError, get_backend_client, format_backend_error
 from ..base import Tool, ToolContext, ToolResult, tool
 
 
@@ -40,7 +40,7 @@ async def env_list(input: EnvListInput, ctx: ToolContext) -> ToolResult:
     try:
         items = await _backend(ctx).list_env(pid, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
-        return ToolResult.error(f"Backend error: {e}")
+        return ToolResult.error(format_backend_error(None, e))
     safe = [{"id": i.get("id"), "key": i.get("key")} for i in items]
     keys = ", ".join(str(s["key"]) for s in safe if s.get("key")) or "(none)"
     return ToolResult.ok(
@@ -73,7 +73,7 @@ async def env_set(input: EnvSetInput, ctx: ToolContext) -> ToolResult:
             auth_claims=ctx.state.get("auth_claims"),
         )
     except BackendError as e:
-        return ToolResult.error(f"Backend error: {e}")
+        return ToolResult.error(format_backend_error(None, e))
     return ToolResult.ok(f"Env var `{input.key}` set for project `{pid}`.")
 
 
@@ -94,7 +94,7 @@ async def env_unset(input: EnvUnsetInput, ctx: ToolContext) -> ToolResult:
     try:
         await _backend(ctx).delete_env(input.env_id, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
-        return ToolResult.error(f"Backend error: {e}")
+        return ToolResult.error(format_backend_error(None, e))
     return ToolResult.ok(f"Env var `{input.env_id}` removed.")
 
 

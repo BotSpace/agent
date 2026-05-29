@@ -66,6 +66,44 @@ class BackendError(RuntimeError):
         return f"HTTP {self.status}" if self.status else "Backend error"
 
 
+def format_backend_error(action: str | None, err: "BackendError") -> str:
+    """Tool'lar uchun yagona format — barcha mavjud sabab manbalarini chiqaradi.
+
+    Birinchi qator: action + HTTP status. Keyin har field xatosi alohida
+    qator, yoki detail_message, yoki raw payload — qaysi biri mavjud bo'lsa.
+    Bu LLM uchun aniq xato sababini ko'rishga imkon beradi (oddiy "Backend
+    error 400" o'rniga: "phone: unique constraint violated").
+    """
+    header = (
+        f"{action} muvaffaqiyatsiz (HTTP {err.status or '?'})"
+        if action else f"Backend xato (HTTP {err.status or '?'})"
+    )
+    parts: list[str] = [header]
+
+    if err.field_errors:
+        parts.append("Field validatsiya xatolari:")
+        for field, msgs in err.field_errors.items():
+            joined = "; ".join(str(m) for m in msgs)
+            if field in {"non_field_errors", "detail", "errors"}:
+                parts.append(f"  • {joined}")
+            else:
+                parts.append(f"  • {field}: {joined}")
+    elif err.detail_message:
+        parts.append(f"Sabab: {err.detail_message}")
+    elif err.payload is not None:
+        raw = str(err.payload)
+        if len(raw) > 500:
+            raw = raw[:497] + "..."
+        parts.append(f"Backend javobi: {raw}")
+    else:
+        parts.append("(backend body bo'sh — pod log'da batafsilroq bo'lishi mumkin)")
+
+    if err.codes:
+        parts.append(f"Backend kod(lar)i: {err.codes}")
+
+    return "\n".join(parts)
+
+
 def _unwrap_envelopes(data: Any, depth: int = 0) -> Any:
     """Peel repeated ``{"status": <bool>, "data": …}`` envelopes.
 
