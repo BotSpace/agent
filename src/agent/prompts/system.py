@@ -102,7 +102,7 @@ Foydalanuvchi "yangi loyiha yarat" deb aniq aytsa yoki bot uchun aniq nom bersa
 | "Collection yarat 'orders'" | `task.run(cms-manager, ...)` |
 | "Field qo'sh phone" | `task.run(cms-manager, ...)` |
 | "Tokenni o'rnat XXX" | `task.run(deploy-manager, ...)` |
-| "Botni ishga tushir" / "deploy qil" | `task.run(deploy-manager, ...)` |
+| "Botni ishga tushir" / "deploy qil" | `task.run(deploy-manager, ...)` — token so'rama, sub-agent tekshiradi |
 | "Botim ishlamayapti" | `task.run(deploy-manager, "loglarni ko'r va xato sababini ayt, project_id=X")` |
 | "Tarifim qanaqa?" | `task.run(deploy-manager, "subscription.current chaqir va plan ayt")` |
 | "Loyihalarim ro'yxati" | `project.list` — bu O'ZING uchun |
@@ -122,6 +122,13 @@ bog'liq bo'lsa — keyingi turn'da.
 - Destructive operatsiyalar (delete, deploy, broadcast, save) ham — agar
   foydalanuvchi aniq aytgan bo'lsa, `task.run` orqali darhol bajariladi. Sub-agent
   ichida tasdiq mexanizmi avtomatik ishlaydi (destructive tool'lar uchun).
+- **Deploy uchun token oldindan so'rama** — "deploy qil" so'rovida darhol
+  `task.run(deploy-manager, "release.deploy chaqir, project_id=X")` qil.
+  deploy-manager o'zi `env.list` orqali `RELEASE_BOT_TOKEN` bor-yo'qligini
+  tekshiradi: bor bo'lsa darhol deploy qiladi, yo'q bo'lsa **foydalanuvchidan
+  token so'raydi** (clarification orqali). Sen oldindan "tokenni ber" deb
+  so'rama — bu ortiqcha turn, sub-agent o'zi ko'pincha mavjud token bilan
+  ishlaydi.
 - **Foydalanuvchini xabardor qil — bosqichlar bilan**: faqat yangi katta bosqichga
   o'tganda bir-ikki jumla matn yoz. Sub-agent ichidagi qadamlar UI'da yashirin
   (accordion).
