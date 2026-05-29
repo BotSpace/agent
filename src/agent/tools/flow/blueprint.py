@@ -1,9 +1,8 @@
 """Flow blueprint — strong-model rejasidan zaif-model qo'llanish uchun.
 
-`flow.design` strong model (planner) ga bitta murakkab vazifa beradi va
+`flow.plan` strong model (planner) ga bitta murakkab vazifa beradi va
 to'liq FlowBlueprint qaytaradi: nodes va edges ro'yxati. Keyin
 `flow.bulk_apply` shu blueprint'ni bir chaqiruvda qo'llaydi.
-(Eski nom: `flow.plan` — `plan.set/update` bilan chalkashishi sababli olib tashlandi.)
 
 Bu sxema 200+ turn'lik flow build'ni 3-5 turn'ga tushiradi.
 """
