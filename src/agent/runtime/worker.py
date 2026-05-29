@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,23 @@ from ..llm import ModelRoles, build_client
 from ..memory import close_async_checkpointer, create_async_checkpointer
 from ..tools import build_main_registry
 from .store import RunStore
+
+
+def _maybe_traceable(name: str):
+    """Return langsmith @traceable when tracing is enabled, else a no-op.
+    Lets us wrap run_agent without forcing the dependency in tests/dev."""
+    enabled = (os.getenv("LANGSMITH_TRACING") or os.getenv("LANGCHAIN_TRACING_V2") or "").lower() == "true"
+    if not enabled or not os.getenv("LANGSMITH_API_KEY"):
+        def _noop(fn):
+            return fn
+        return _noop
+    try:
+        from langsmith import traceable  # type: ignore[import-untyped]
+    except ImportError:
+        def _noop(fn):
+            return fn
+        return _noop
+    return traceable(name=name, run_type="chain")
 
 
 # Per-run resolution future map: request_id → asyncio.Future[Any]
@@ -49,6 +67,7 @@ async def _wait_resolution(request_id: str, loop: asyncio.AbstractEventLoop) -> 
         _RESOLUTIONS.pop(request_id, None)
 
 
+@_maybe_traceable("botmother.agent.run")
 async def run_agent(
     *,
     store: RunStore,

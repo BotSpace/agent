@@ -6,6 +6,8 @@ import json
 from collections.abc import AsyncIterator
 from typing import Any
 
+import os
+
 from openai import APIStatusError, AsyncOpenAI
 
 from .base import (
@@ -29,6 +31,20 @@ from .base import (
 )
 
 
+def _wrap_for_langsmith(client: AsyncOpenAI) -> AsyncOpenAI:
+    """If LangSmith tracing is enabled, wrap the OpenAI client so every
+    chat-completions call is auto-traced. No-op when LangSmith isn't
+    configured or the langsmith package isn't installed."""
+    enabled = (os.getenv("LANGSMITH_TRACING") or os.getenv("LANGCHAIN_TRACING_V2") or "").lower() == "true"
+    if not enabled or not os.getenv("LANGSMITH_API_KEY"):
+        return client
+    try:
+        from langsmith.wrappers import wrap_openai  # type: ignore[import-untyped]
+    except ImportError:
+        return client
+    return wrap_openai(client)
+
+
 # OpenAI function names must match ^[a-zA-Z0-9_-]+$, while internal tool
 # names use dotted namespaces like "flow.get".
 def _sanitize_tool_name(name: str) -> str:
@@ -45,7 +61,7 @@ class OpenAIClient(LLMClient):
     def __init__(self, api_key: str | None) -> None:
         if not api_key:
             raise LLMError("OPENAI_API_KEY is not set", provider=self.provider)
-        self._client = AsyncOpenAI(api_key=api_key)
+        self._client = _wrap_for_langsmith(AsyncOpenAI(api_key=api_key))
 
     # ── conversion: internal → OpenAI ──────────────────────────────────
     @staticmethod

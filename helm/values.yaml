@@ -54,6 +54,10 @@ configMaps:
     AGENT_RAG_TOP_K: "6"
     JWT_ALGORITHM: "RS256"
     JWT_PUBLIC_KEY_PATH: "/app/keys/public.pem"
+    # LangSmith tracing — API key lives in agent-runtime-secret as LANGSMITH_API_KEY
+    LANGSMITH_TRACING: "true"
+    LANGSMITH_ENDPOINT: "https://api.smith.langchain.com"
+    LANGSMITH_PROJECT: "botspace"
 
 # References to EXISTING secrets NOT managed by this chart
 envFrom:
