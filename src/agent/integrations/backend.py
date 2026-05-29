@@ -276,11 +276,18 @@ class BackendClient:
     async def aclose(self) -> None:
         await self._client.aclose()
 
-    async def _try_refresh(self, refresh_token: str) -> str | None:
-        """Exchange a refresh token for a fresh access token.
+    async def _try_refresh(self, refresh_token: str) -> tuple[str, str | None] | None:
+        """Exchange a refresh token for a fresh access (and refresh) token.
 
-        Mirrors `dashboard/src/shared/api/server.ts`. Returns the new access
-        token, or None if refresh failed.
+        Backend SimpleJWT konfiguratsiyasi ROTATE_REFRESH_TOKENS=True va
+        BLACKLIST_AFTER_ROTATION=True bilan ishlaydi. Bu degani:
+          - Har refresh paytida YANGI refresh ham qaytadi
+          - Eski refresh blacklist'ga qo'shiladi (qayta ishlatib bo'lmaydi)
+        Shu sababli yangi refresh'ni HAR DOIM saqlash zarur — keyingi
+        refresh'larda undan foydalanamiz. Aks holda 2-marotaba refresh
+        urinilganda blacklist'dagi eski token ishlatilib 401 qaytadi.
+
+        Returns: (new_access, new_refresh_or_None) yoki None — agar refresh fail.
         """
         if not refresh_token:
             return None
@@ -302,9 +309,16 @@ class BackendClient:
             root = data.get("data") if isinstance(data.get("data"), dict) else data
             token = (root or {}).get("token") or {}
             access = token.get("access") or root.get("access")
+            new_refresh = token.get("refresh") or root.get("refresh")
             if isinstance(access, str) and access:
-                logger.info("Agent access token refreshed mid-run")
-                return access
+                logger.info(
+                    "Agent access token refreshed mid-run (rotated_refresh=%s)",
+                    bool(new_refresh),
+                )
+                return (
+                    access,
+                    new_refresh if isinstance(new_refresh, str) and new_refresh else None,
+                )
             return None
         except Exception as e:  # noqa: BLE001
             logger.warning("Agent token refresh exception: %s", e)
@@ -332,13 +346,18 @@ class BackendClient:
         )
         # Auto-refresh on 401 if a refresh token is available.
         if resp.status_code == 401 and refresh_token:
-            new_access = await self._try_refresh(refresh_token)
-            if new_access:
-                # Run davomida bir marta refresh qilamiz — auth_claims dict'i
-                # `ctx.state["auth_claims"]` ga reference; in-place yangilash
-                # keyingi tool call'larni darhol yangi access bilan ishlatadi.
+            refreshed = await self._try_refresh(refresh_token)
+            if refreshed:
+                new_access, new_refresh = refreshed
+                # auth_claims dict'i `ctx.state["auth_claims"]` ga reference;
+                # in-place yangilash keyingi tool call'larni darhol yangi
+                # token'lar bilan ishlatadi. Backend rotation rejimida bo'lsa,
+                # YANGI refresh ham saqlanadi — aks holda eski blacklist'dagi
+                # refresh ikkinchi marotaba ishlatilib 401 qaytaradi.
                 if auth_claims is not None:
                     auth_claims["access_token"] = new_access
+                    if new_refresh:
+                        auth_claims["refresh_token"] = new_refresh
                 resp = await self._client.request(
                     method,
                     url,

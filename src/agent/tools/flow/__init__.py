@@ -645,7 +645,26 @@ async def flow_save(input: FlowSaveInput, ctx: ToolContext) -> ToolResult:
     try:
         await backend.update_project(project_id, {"flow": flow_dict}, auth_claims=claims)
     except BackendError as e:
-        return ToolResult.error(f"Backend save failed: {e}")
+        from ...integrations.backend import format_backend_error
+        # 401 — refresh logikasi backend client'da bo'lishi kerak, lekin agar bu
+        # yerga yetib kelgan bo'lsa, refresh muvaffaqiyatsiz tugagan. Agentga
+        # aniq sabab beramiz.
+        extra = ""
+        if e.status == 401:
+            has_refresh = bool(claims and (claims.get("refresh_token") or claims.get("refresh")))
+            if not has_refresh:
+                extra = (
+                    "\nFoydalanuvchi refresh_token'i mavjud emas — agent uzoq vaqt "
+                    "ishlagan va access muddati tugagan bo'lishi mumkin. Foydalanuvchi "
+                    "qaytadan kirishi kerak."
+                )
+            else:
+                extra = (
+                    "\nAccess token muddati tugagan, refresh ham muvaffaqiyatsiz "
+                    "(refresh ham eskirgan yoki backend rad etdi). Foydalanuvchidan "
+                    "qaytadan login qilishni so'rang."
+                )
+        return ToolResult.error(format_backend_error("Flow saqlash", e) + extra)
 
     return ToolResult.ok(
         f"Flow saved to project `{project_id}`.",
