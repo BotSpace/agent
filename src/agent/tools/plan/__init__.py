@@ -39,6 +39,17 @@ class PlanCompleteInput(BaseModel):
     id: str
 
 
+class PlanAdvanceInput(BaseModel):
+    complete: list[str] = Field(
+        default_factory=list,
+        description="Item id'lar — `completed` ga o'tkaziladi (odatda hozirgi qadam).",
+    )
+    start: list[str] = Field(
+        default_factory=list,
+        description="Item id'lar — `in_progress` ga o'tkaziladi (odatda keyingi qadam).",
+    )
+
+
 def _get_plan(ctx: ToolContext) -> list[dict[str, Any]]:
     return list(ctx.state.get("current_plan") or [])
 
@@ -111,6 +122,62 @@ async def plan_complete(input: PlanCompleteInput, ctx: ToolContext) -> ToolResul
     return ToolResult.error(f"Plan item `{input.id}` not found")
 
 
+@tool(
+    name="plan.advance",
+    description=(
+        "Bitta chaqiruvda bir nechta plan item'ning statusini o'zgartiradi: "
+        "`complete` ro'yxatidagilar `completed` ga, `start` ro'yxatidagilar "
+        "`in_progress` ga o'tadi. Eski qadamni tugatib darhol yangisini "
+        "boshlash uchun ideal — alohida plan.complete + plan.update ikkita "
+        "chaqiruv qilish o'rniga."
+    ),
+    input_model=PlanAdvanceInput,
+)
+async def plan_advance(input: PlanAdvanceInput, ctx: ToolContext) -> ToolResult:
+    plan = _get_plan(ctx)
+    by_id = {item.get("id"): item for item in plan}
+
+    not_found: list[str] = []
+    completed: list[str] = []
+    started: list[str] = []
+
+    for cid in input.complete:
+        item = by_id.get(cid)
+        if item is None:
+            not_found.append(cid)
+            continue
+        item["status"] = "completed"
+        completed.append(cid)
+
+    for sid in input.start:
+        item = by_id.get(sid)
+        if item is None:
+            not_found.append(sid)
+            continue
+        item["status"] = "in_progress"
+        started.append(sid)
+
+    if not completed and not started:
+        return ToolResult.error(
+            f"Hech qanday item topilmadi/o'zgartirilmadi. Yo'qotilgan id'lar: {not_found}"
+        )
+
+    parts: list[str] = []
+    if completed:
+        parts.append(f"completed: {completed}")
+    if started:
+        parts.append(f"in_progress: {started}")
+    msg = " · ".join(parts)
+    if not_found:
+        msg += f" (topilmadi: {not_found})"
+
+    return ToolResult.ok(
+        msg,
+        state_updates=_set_plan(plan),
+        data={"plan": plan, "completed": completed, "started": started, "not_found": not_found},
+    )
+
+
 def has_incomplete_plan(plan: list[dict[str, Any]] | None) -> bool:
     if not plan:
         return False
@@ -118,4 +185,4 @@ def has_incomplete_plan(plan: list[dict[str, Any]] | None) -> bool:
 
 
 def build_plan_tools() -> list[Tool]:
-    return [plan_set, plan_update, plan_complete]
+    return [plan_set, plan_update, plan_complete, plan_advance]
