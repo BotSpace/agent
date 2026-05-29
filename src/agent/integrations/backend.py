@@ -823,14 +823,24 @@ class BackendClient:
         output_tokens: int,
         project_id: str | int | None = None,
         *,
-        auth_claims: dict | None = None,
+        auth_claims: dict | None = None,  # noqa: ARG002 — interface uchun saqlangan, bu endpoint ishlatmaydi
     ) -> None:
         """Report AI token usage to backend for subscription tracking.
 
-        Run-ni boshlagan foydalanuvchi JWT auth_claims orqali yuboriladi —
-        DRF endpoint IsAuthenticated talab qiladi va internal_token holida
-        ham endpoint user-scoped logikani topa olmaydi.
+        BU SYSTEM-TO-SYSTEM endpoint — foydalanuvchi Bearer JWT'ni qabul qilmaydi.
+        `X-Internal-Token` header orqali avtorizatsiya qiladi (backend tomonida
+        `INTERNAL_API_TOKEN` settings'da bo'lishi kerak).
+
+        Agar agent settings'ida `BACKEND_INTERNAL_TOKEN` yo'q bo'lsa, bu
+        endpoint chaqirilmaydi — bu rejim'da subscription token tracking
+        ishlamaydi (xato emas).
         """
+        if not self._internal_token:
+            # Internal token sozlanmagan — silent skip, run muvaffaqiyatini buzmaymiz.
+            logger.info("Token usage report skipped (BACKEND_INTERNAL_TOKEN not set)")
+            return
+        # _request `bearer=None` bilan chaqirilganda _headers fallback'da
+        # X-Internal-Token qo'shadi.
         await self._request(
             "POST",
             "/api/subscription/usage/report/",
@@ -840,7 +850,6 @@ class BackendClient:
                 "output_tokens": output_tokens,
                 "project_id": str(project_id) if project_id else None,
             },
-            **_auth_kw(auth_claims),
         )
 
 @lru_cache(maxsize=2)
