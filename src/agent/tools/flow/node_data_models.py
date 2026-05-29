@@ -330,7 +330,52 @@ class HTTPRequestData(_StrictData):
 
 
 class CustomCodeData(_StrictData):
-    code: str = Field(description="JavaScript code. set_context('state_x', value) to save.")
+    code: str = Field(
+        description=(
+            "JavaScript code executed by Goja VM in engine-golang. Has full access "
+            "to bot context and a rich set of built-in functions:\n\n"
+            "FLOW CONTROL:\n"
+            "  exit('output_name') — branch to edge with source_handle='output-output_name'\n"
+            "  wait_for_input() — pause flow, resume on next user message\n"
+            "  sleep(seconds) — async sleep\n\n"
+            "CONTEXT (state):\n"
+            "  get_context(key), set_context(key, value), delete_context(key),\n"
+            "  has_context(key), clear_context(), get_all_context()\n"
+            "  Auto-vars: chat_id, message.text, message.from, message.contact,\n"
+            "  callback_query.data, user_id, user_first_name, user_username, etc.\n\n"
+            "TELEGRAM API (all accept {} options):\n"
+            "  send_message({text, parse_mode, reply_markup, disable_web_page_preview}),\n"
+            "  send_photo({photo, caption, reply_markup}), send_video, send_audio,\n"
+            "  send_document, send_sticker, send_voice, send_location, send_contact,\n"
+            "  send_animation, forward_message, copy_message, edit_message_text,\n"
+            "  edit_inline_button, delete_message, answer_callback_query,\n"
+            "  send_to_chat(chat_id, opts), pin_message, unpin_message,\n"
+            "  remove_reply_keyboard\n"
+            "  Keyboards: reply_markup = {type:'inline'|'reply', buttons:[[{text,callback_data|url|request_contact|request_location}]]}\n\n"
+            "MONGODB (project collections):\n"
+            "  db_find_one(coll, filter), db_find(coll, filter, {limit,skip,sort}),\n"
+            "  db_insert(coll, doc), db_update(coll, filter, update),\n"
+            "  db_upsert(coll, filter, doc), db_delete(coll, filter),\n"
+            "  db_count(coll, filter)\n"
+            "  Returns {success, data, error}.\n\n"
+            "HTTP:\n"
+            "  http_request({method,url,headers,body,timeout}), http_get(url, opts),\n"
+            "  http_post(url, data, opts), http_put, http_delete\n"
+            "  Returns {success, status, data, headers, error}.\n\n"
+            "STDLIB:\n"
+            "  date_format, date_parse, date_add, date_diff, hash_md5, hash_sha256,\n"
+            "  hmac_sha256, base64_encode/decode, url_encode/decode, uuid, random_int,\n"
+            "  str_pad, current_timestamp, log(msg), console.log\n\n"
+            "SCHEDULING: schedule_message({delay_seconds, text}), schedule_cancel(id)\n"
+            "WEBHOOK: get_webhook_url('provider', chat_id)\n\n"
+            "Example: validate phone + save state + branch\n"
+            "  const phone = message.text.replace(/\\D/g, '');\n"
+            "  if (phone.length !== 12) { send_message({text:'Noto\\'g\\'ri format'}); exit('invalid'); return; }\n"
+            "  set_context('phone', phone);\n"
+            "  db_upsert('users', {chat_id: chat_id}, {chat_id, phone});\n"
+            "  exit('ok');"
+        )
+    )
 
 
 class SendToAdminData(_StrictData):
