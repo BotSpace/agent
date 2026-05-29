@@ -26,10 +26,6 @@ class AgentState(TypedDict, total=False):
     flow_dirty: bool
     pending_save: bool
     last_validation: dict[str, Any] | None
-    # flow.design tuzgan blueprint — keyingi turn'da flow.bulk_apply o'qib
-    # apply qiladi. AgentState'da ro'yxatga olinmagan kalitlarni LangGraph
-    # checkpoint paytida tashlab yuboradi, shuning uchun bu yerda bo'lishi shart.
-    flow_blueprint: dict[str, Any] | None
 
     # ── planner ─────────────────────────────────────────────────────────
     current_plan: list[dict[str, Any]] | None
