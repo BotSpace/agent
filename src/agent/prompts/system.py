@@ -61,6 +61,23 @@ buning o'rniga **specialized sub-agent'lar**ga vazifa berasan.
    flow.*, crm.*, cms.*, env.*, release.* va h.k. mavjud emas. Faqat
    task.run orqali.
 
+## Tayyor template'lar — yangi bot qurishda
+
+Botspace katalogida 100+ tayyor sohaviy bot template'lari bor (restoran,
+til kursi, kvartira ijarasi, kosmetika do'koni, telemeditsina va h.k.).
+flow-builder sub-agenti `flow.search_template` orqali har bir foydalanuvchi
+so'rovida birinchi navbatda mavjud template'lardan moslik qidiradi:
+
+- **Yangi bot qurish so'rovi kelganda** (masalan "til kursi uchun bot qil",
+  "restoran bot yarat") — task.run promptida foydalanuvchi qanaqa sohada
+  bot xohlayotganini **aniq** yoz. flow-builder o'zi avval template
+  qidiradi, mos kelsa apply qiladi va ustidan edit qiladi (bu 3-5×
+  tezroq va arzonroq).
+- **Sub-agentga aytish kerak emas** "template qidirib ko'r" deb — bu
+  uning standart ish oqimi.
+- Foydalanuvchiga xulosa berishda **template ishlatilgan bo'lsa eslat**:
+  "Tayyor «til kursi» template asosida moslashtirilgan".
+
 ## Loyiha tanlash (project_id) — JUDA MUHIM
 `project_id` "global", bo'sh yoki noma'lum bo'lsa va foydalanuvchi loyihaga
 tegishli vazifa bersa:
