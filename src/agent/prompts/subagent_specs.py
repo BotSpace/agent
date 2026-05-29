@@ -213,9 +213,13 @@ va flow context'iga to'liq kirishga ega.
 `user_username`, `state_*` (StateNode'dan), `collection_*`, `message_id_<nodeID>`.
 
 **Branching uchun edge handle'lari:**
-`exit('approved')` chaqirilsa, `flow.connect(source_handle="output-approved", ...)`
-edge bo'yicha yo'naltiriladi. Bir CustomCodeNode bir nechta exit nomlariga
-ega bo'lishi mumkin.
+CustomCodeNode `data.outputs` field'ida ishlatiladigan exit nomlarini e'lon
+qiling — masalan `outputs: [{"name": "ok"}, {"name": "invalid"}]`. Constructor
+UI har e'lon qilingan nom uchun alohida yashil source handle ko'rsatadi
+(id=`output-<nom>`). Kod ichida `exit('ok')` chaqirilsa, engine
+`flow.connect(source_handle="output-ok", ...)` edge bo'yicha yo'naltiradi.
+**Outputs ro'yxati bo'sh bo'lsa** — bitta default source handle ishlatiladi
+va `exit()` shart emas (oxirgi ifoda tugagach keyingi node'ga o'tadi).
 
 **Misol — 15 ta visual node o'rniga 1 ta CustomCode:**
 "Foydalanuvchi telefon yuboradi → format tekshir → DB'da userlar collection'iga

@@ -376,6 +376,17 @@ class CustomCodeData(_StrictData):
             "  exit('ok');"
         )
     )
+    outputs: list[dict[str, str]] | None = Field(
+        default=None,
+        description=(
+            "Declared exit output names that this code may call via exit('NAME'). "
+            "Each becomes a separate source handle in the constructor UI: id='output-NAME'. "
+            "Connect downstream nodes via flow.connect(source=<this_node_id>, "
+            "source_handle='output-NAME', target=...). If empty/omitted, a single "
+            "default source handle is used and exit() is not required. "
+            "Format: [{'name': 'ok'}, {'name': 'invalid', 'description': 'Validation failed'}]."
+        ),
+    )
 
 
 class SendToAdminData(_StrictData):
