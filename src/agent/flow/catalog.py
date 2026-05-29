@@ -52,7 +52,7 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         type="MessageTriggerNode",
         category="trigger",
         description=(
-            "Xabar turini kutib trigger. type: text/photo/video/audio/document/contact/location/any. "
+            "Xabar turini kutib trigger. type: text/photo/video/audio/voice/video_note/document/contact/location/sticker/animation. "
             "filter: any/equals/contains/starts_with/regex. context.value: filter qiymati. "
             "global:false bo'lsa faqat pauzada ishlaydi (foydalanuvchi javobini kutish). "
             "state: {key, type} — kelgan ma'lumotni AVTOMATIK saqlaydi, alohida StateNode KERAK EMAS. "
@@ -70,8 +70,8 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "context.value: mos keladigan callback_data. global:true bo'lsa har yerda ishlaydi. "
             "state: {key, type} — callback data'ni saqlaydi (type: 'callback'/'data'/'collection_id')."
         ),
-        required_data=["filter"],
-        optional_data=["context", "global", "state"],
+        required_data=[],
+        optional_data=["filter", "context", "global", "state"],
         is_trigger=True,
     ),
     "CallbackButtonTriggerNode": NodeTypeSpec(

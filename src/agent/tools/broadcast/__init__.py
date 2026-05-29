@@ -43,7 +43,8 @@ class BroadcastPreviewInput(BaseModel):
     name="broadcast.preview",
     description=(
         "Preview a broadcast — shows the text, recipient count and a sample. "
-        "Always call this before broadcast.send so the user can confirm."
+        "Recommended before broadcast.send so the user can confirm (not enforced — "
+        "send can also be called directly with an explicit telegram_ids list)."
     ),
     input_model=BroadcastPreviewInput,
 )
@@ -88,8 +89,9 @@ class BroadcastSendInput(BaseModel):
 @tool(
     name="broadcast.send",
     description=(
-        "Send a broadcast to the previewed segment (or to all users if no segment). "
-        "Requires approval. Use broadcast.preview first to confirm recipients."
+        "Send a broadcast. Recipients come from an explicit `telegram_ids` list if "
+        "given, otherwise the previously previewed segment, otherwise all users. "
+        "Requires approval. Prefer broadcast.preview first to confirm recipients."
     ),
     input_model=BroadcastSendInput,
     destructive=True,
