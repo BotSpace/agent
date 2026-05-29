@@ -737,8 +737,12 @@ async def flow_save(input: FlowSaveInput, ctx: ToolContext) -> ToolResult:
 class FlowDesignInput(BaseModel):
     task: str = Field(
         description=(
-            "User-facing task: what the bot should do. Be specific (commands, "
-            "form fields, branches, integrations). Planner reasons over this."
+            "**Yagona qism**'ni (sub-flow'ni) tasvirla, butun botni emas. "
+            "Misol: '/start trigger + bosh menyu (3 ta tugma)', yoki 'kurslar "
+            "bo'limi (ro'yxat + tafsilot + orqaga)', yoki 'ro'yxatdan o'tish "
+            "formasi (ism+telefon+kurs+saqlash)'. Har topshiriq ~5-12 nodelik "
+            "mantiqiy birlik bo'lsin. Butun bot blueprint'ni bittada so'rama "
+            "— bo'lib bo'lib so'rang."
         )
     )
 
@@ -746,11 +750,13 @@ class FlowDesignInput(BaseModel):
 @tool(
     name="flow.design",
     description=(
-        "Strong planner LLM (planner role) bilan to'liq flow blueprint tuzadi: "
-        "nodes + edges ro'yxati JSON tarzida. Bitta LLM chaqiruvi — recursion "
-        "yo'q. Natija `state.flow_blueprint` ga yoziladi. Keyin `flow.bulk_apply` "
-        "bilan bir chaqiruvda qo'llanadi. Bittadan `flow.add_node` chaqirishdan "
-        "OLDIN birinchi shu tool'ni chaqir."
+        "Strong planner LLM bilan **bitta sub-flow** (bot bo'limi) uchun "
+        "blueprint tuzadi: ~5-12 ta node + tegishli edge'lar. Natija "
+        "`state.flow_blueprint` ga yoziladi va keyin `flow.bulk_apply` bilan "
+        "qo'llaniladi. Butun bot uchun bir necha marotaba ketma-ket chaqiriladi "
+        "(har sub-flow alohida task bilan). Bittada hamma narsani so'rama — "
+        "planner bunga LLM token chegarasi va JSON murakkabligi sababli bardosh "
+        "bera olmaydi (xato JSON, validation buzilishi)."
     ),
     input_model=FlowDesignInput,
 )
@@ -776,9 +782,17 @@ async def flow_design(input: FlowDesignInput, ctx: ToolContext) -> ToolResult:
 
     catalog = render_summary_table()
     system_prompt = f"""\
-Sen — Botmother **Flow Architect**. Vazifang: foydalanuvchi tavsifidan to'liq
-visual bot flow blueprint'ini yaratish. Natija sifatida **faqat JSON** qaytar
-(``` kod-blok ichida).
+Sen — Botmother **Flow Architect**. Vazifang: berilgan **bitta sub-flow** uchun
+~5-12 nodelik blueprint yaratish (butun bot emas, qism). Natija sifatida
+**faqat JSON** qaytar (``` kod-blok ichida).
+
+## ASOSIY CHEKLOV
+- Maksimum **~12 node** chiqar (ko'p bo'lsa ham 15 dan oshmasin).
+- Faqat berilgan vazifaning qismi haqida o'yla — agent boshqa qismlarni
+  alohida flow.design chaqiruvlari bilan qo'yadi.
+- Agar foydalanuvchi vazifasi juda katta (masalan "butun bot qur") ko'rinsa,
+  shunda ham faqat **mantiqiy birinchi qismni** (odatda /start + bosh menyu)
+  chiqar va `summary`'da boshqa qismlar alohida design'ni so'rashini bildir.
 
 ## JSON sxema
 ```json
@@ -907,11 +921,10 @@ class FlowBulkApplyInput(BaseModel):
 @tool(
     name="flow.bulk_apply",
     description=(
-        "Bir chaqiruvda barcha nodes/edges ni working flow'ga qo'llaydi: "
-        "per-type Pydantic validatorlar bilan, ixtiyoriy validate + layout + save. "
-        "Argumentlar berilmasa state.flow_blueprint dan o'qiydi (flow.design natijasi). "
-        "Bittadan `flow.add_node` o'rniga shu tool'ni ishlat — 30+ qadam bitta "
-        "chaqiruvga aylanadi."
+        "Berilgan nodes/edges ni working flow'ga qo'llaydi: per-type Pydantic "
+        "validatorlar bilan, ixtiyoriy validate + layout + save. Argumentlar "
+        "berilmasa state.flow_blueprint dan o'qiydi (`flow.design` natijasi). "
+        "Mavjud node'lar ustiga upsert qilinadi (id bir xil bo'lsa yangilanadi)."
     ),
     input_model=FlowBulkApplyInput,
     destructive=False,
@@ -919,11 +932,13 @@ class FlowBulkApplyInput(BaseModel):
 async def flow_bulk_apply(input: FlowBulkApplyInput, ctx: ToolContext) -> ToolResult:
     from .node_data_models import get_data_model
 
+    flow = _load_working_flow(ctx)
+    bp = ctx.state.get("flow_blueprint")
+
     # State'dan blueprint'ni o'qish
     nodes_raw = input.nodes
     edges_raw = input.edges
     if nodes_raw is None or edges_raw is None:
-        bp = ctx.state.get("flow_blueprint")
         if isinstance(bp, dict):
             if nodes_raw is None:
                 nodes_raw = bp.get("nodes") or []
@@ -978,7 +993,6 @@ async def flow_bulk_apply(input: FlowBulkApplyInput, ctx: ToolContext) -> ToolRe
         validated_nodes.append((nid, ntype, ndata))
 
     # To'g'ri node'larni qo'llaymiz
-    flow = _load_working_flow(ctx)
     node_ids_set = {n.id for n in flow.nodes}
     for nid, ntype, ndata in validated_nodes:
         flow.upsert_node(FlowNode(id=nid, type=ntype, data=ndata, position=Position()))
