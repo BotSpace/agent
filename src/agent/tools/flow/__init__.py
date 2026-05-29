@@ -355,6 +355,59 @@ async def flow_add_node(input: FlowAddNodeInput, ctx: ToolContext) -> ToolResult
     )
 
 
+# ── flow.clear ────────────────────────────────────────────────────────────────
+
+
+class FlowClearInput(BaseModel):
+    confirm: bool = Field(
+        default=True,
+        description=(
+            "Tasdiqlash flag. Foydalanuvchi yangi bot quryapti yoki tozalashni "
+            "aniq xohlasagina true qiling."
+        ),
+    )
+
+
+@tool(
+    name="flow.clear",
+    description=(
+        "Working flow'dan BARCHA node va edge'larni bir chaqiruvda o'chiradi. "
+        "Yangi bot qurish boshida ishlatish kerak (bittadan `flow.remove_node` "
+        "chaqirish o'rniga). State'dagi flow_blueprint ham tozalanadi. "
+        "Destructive — foydalanuvchi aniq so'rasagina chaqir."
+    ),
+    input_model=FlowClearInput,
+    destructive=True,
+)
+async def flow_clear(input: FlowClearInput, ctx: ToolContext) -> ToolResult:
+    if not input.confirm:
+        return ToolResult.error(
+            "flow.clear destructive — tasdiqlash uchun confirm=true bering."
+        )
+    flow = _load_working_flow(ctx)
+    n_nodes = len(flow.nodes)
+    n_edges = len(flow.edges)
+    if n_nodes == 0 and n_edges == 0:
+        return ToolResult.ok(
+            "Flow allaqachon bo'sh.",
+            state_updates={"flow_blueprint": None},
+        )
+    # Yangi bo'sh flow yaratamiz (mavjud baseline_flow saqlanadi — diff uchun)
+    empty = FlowDocument()
+    return ToolResult.ok(
+        f"Flow tozalandi: {n_nodes} node + {n_edges} edge o'chirildi. "
+        f"Endi `flow.design` orqali yangi blueprint yarating yoki to'g'ridan-to'g'ri "
+        f"flow.add_* tool'lari bilan yangi node'lar qo'shing.",
+        state_updates={
+            "working_flow": empty.model_dump(),
+            "flow_dirty": True,
+            # Eski blueprint endi noto'g'ri — tozalaymiz
+            "flow_blueprint": None,
+            "last_validation": None,
+        },
+    )
+
+
 # ── flow.remove_node ─────────────────────────────────────────────────────────
 
 
@@ -1073,6 +1126,7 @@ def build_flow_tools() -> list[Tool]:
         *build_flow_action_tools(),
         flow_add_node,
         flow_remove_node,
+        flow_clear,
         flow_patch,
         flow_connect,
         flow_disconnect,
