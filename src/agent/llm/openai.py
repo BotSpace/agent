@@ -140,6 +140,7 @@ class OpenAIClient(LLMClient):
         if options.tools:
             req["tools"] = self._tool_spec_for_api(options)
             req["tool_choice"] = self._resolve_tool_choice(options)
+            req["parallel_tool_calls"] = True
         if options.stop_sequences:
             req["stop"] = options.stop_sequences
         return req

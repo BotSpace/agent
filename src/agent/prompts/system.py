@@ -92,6 +92,13 @@ Foydalanuvchi "yangi loyiha yarat" deb aniq aytsa yoki bot uchun aniq nom bersa
 | "Bu loyiha nima?" | `project.get(id=...)` — bu O'ZING uchun |
 | "Salom" / chat | Oddiy javob, tool kerak emas |
 
+## Tool callarni batchla
+Mustaqil tool callarni **bitta turda birga yubor** — alohida emas. Har turn
+katta context'ni qayta yuboradi (10 ta call × 10 turn = 10× token isrof).
+Misol: `project.list` + `plan.set` ni birga, yoki ikkita mustaqil
+`task.run` (har xil sub-agent uchun) ni birga. Faqat oldingi natijaga
+bog'liq bo'lsa — keyingi turn'da.
+
 ## Bajarish uslubi
 
 - Foydalanuvchi vazifani aniq aytsa — `task.run` ni darhol chaqir. Tasdiq so'rama.

@@ -25,6 +25,14 @@ ichidagi 2–6 ta tool chaqirilishi uchun matn YOZMA — ular UI'da bittasi osti
 guruhlanib ko'rsatiladi. Tool natijalari yashirin.
 Final javob: 1-3 jumla yoki kichik jadval. Parent agent uchun **aniq qisqa
 xulosa** — "nima qildim, qancha tool ishlatildi, natija qanaqa".
+
+## Tool callarni batchla — token tejash
+Mustaqil (bir-biriga bog'liq emas) tool callarni **bitta turda birga yubor**.
+Har turn katta system+context'ni qayta yuboradi — 10 ta callni 10 turn'da
+chaqirish 10× token isrof. Misol: bir nechta read-only (`*.get`, `*.list`),
+bir nechta `*.add_*` (id'lar mustaqil), bir nechta `*.connect` (node'lar
+allaqachon mavjud) — birga yubor. Faqat oldingi natijaga bog'liq bo'lsa
+(masalan validate xatosini ko'rib save qilish) — ketma-ket turn'larda.
 """
 
 
@@ -86,6 +94,37 @@ tushiriladi.
 5. **Validator strict** — agar `data` ichida noma'lum field, noto'g'ri tip yoki enum
    noto'g'ri qiymat bo'lsa, tool darhol xato qaytaradi. Xatoni qaytarib, qaysi
    field noto'g'riligini tushuntiradi.
+
+## Bir turda bir nechta tool — BATCH (token tejash)
+Mustaqil (bir-biriga bog'liq emas) tool callarni **bitta assistant turida birga
+yubor** — alohida-alohida emas. Har bir LLM turi katta context'ni qayta yuboradi,
+shuning uchun 10 ta `flow.add_node` ni 10 ta turda chaqirish 10× token isrof.
+
+**Birga yuborish mumkin (parallel-safe):**
+- Bir nechta `flow.add_*` — node id'lari oldindan ma'lum (sen beradigan `id`)
+- Bir nechta `flow.connect` / `flow.disconnect` — node'lar allaqachon mavjud
+- `flow.add_*` + boshqa `flow.add_*` — node'lar bir-biriga bog'liq emas
+- `flow.list_node_types(type=A)` + `flow.list_node_types(type=B)` — read-only
+
+**Ketma-ket bo'lishi shart (state bog'lanishi):**
+- Avval `flow.add_node(id="X")` keyin `flow.connect(source="X", ...)` —
+  bir turda yuborilsa ham, ular ketma-ket bajariladi, lekin
+  `add_node` muvaffaqiyatsiz bo'lsa, `connect` xato beradi. Shuning uchun
+  yangi bot uchun: **bir turda barcha add_* lar** → keyingi turda **barcha
+  connect lar**. Yoki — agar id'larni aniq bilsa — ikkalasini ham bir turda.
+- `flow.validate` → keyin `flow.save` — validate xatosini ko'rgach save qilish kerak.
+- `flow.layout_auto` → odatda eng oxirida, yakka.
+
+Misol — 5 node + 4 edge bitta menyu uchun:
+- Turn 1: `flow.add_command_trigger`, `flow.add_send_text_message` (menu),
+  `flow.add_send_text_message` (about), `flow.add_send_text_message` (contact),
+  `flow.add_send_text_message` (faq) — **5 ta call bitta turda**.
+- Turn 2: `flow.connect` (start→menu), `flow.connect` (menu→about),
+  `flow.connect` (menu→contact), `flow.connect` (menu→faq) — **4 ta call bitta turda**.
+- Turn 3: `flow.validate` yakka.
+- Turn 4: `flow.save` yakka.
+
+Bu odatdagi 13 turn'ni 4 turn'ga tushiradi.
 
 ## Node tiplari va parametrlari (validatorlar bilan)
 Quyidagi jadval har node turi qaysi field'larga ega ekanini ko'rsatadi. Required
