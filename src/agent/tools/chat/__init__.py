@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from ...integrations.backend import BackendClient, BackendError, get_backend_client
+from ...integrations.backend import BackendClient, BackendError, get_backend_client, format_backend_error
 from ..base import Tool, ToolContext, ToolResult, tool
 
 
@@ -41,7 +41,7 @@ async def chat_list_users(input: ChatListUsersInput, ctx: ToolContext) -> ToolRe
     try:
         users = await _backend(ctx).list_chat_users(pid, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
-        return ToolResult.error(f"Backend error: {e}")
+        return ToolResult.error(format_backend_error(None, e))
     users = users[: input.limit]
     return ToolResult.ok(f"{len(users)} user(s).", data={"users": users})
 
@@ -63,7 +63,7 @@ async def chat_user_history(input: ChatUserHistoryInput, ctx: ToolContext) -> To
     try:
         history = await _backend(ctx).user_chat_history(pid, input.chat_id, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
-        return ToolResult.error(f"Backend error: {e}")
+        return ToolResult.error(format_backend_error(None, e))
     return ToolResult.ok(f"{len(history)} message(s).", data={"history": history})
 
 

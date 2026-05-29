@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from ...integrations.backend import BackendClient, BackendError, get_backend_client
+from ...integrations.backend import BackendClient, BackendError, get_backend_client, format_backend_error
 from ..base import Tool, ToolContext, ToolResult, tool
 
 
@@ -112,7 +112,7 @@ async def broadcast_send(input: BroadcastSendInput, ctx: ToolContext) -> ToolRes
     try:
         msg = await _backend(ctx).create_message(body, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
-        return ToolResult.error(f"Backend error: {e}")
+        return ToolResult.error(format_backend_error(None, e))
     return ToolResult.ok(
         f"Broadcast queued (message id={msg.get('id')}). Total recipients: {msg.get('total') or 'pending'}.",
         data={"message": msg},
@@ -135,7 +135,7 @@ async def broadcast_status(input: BroadcastStatusInput, ctx: ToolContext) -> Too
     try:
         items = await _backend(ctx).list_messages(pid, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
-        return ToolResult.error(f"Backend error: {e}")
+        return ToolResult.error(format_backend_error(None, e))
     items = items[: input.limit]
     payload = [
         {

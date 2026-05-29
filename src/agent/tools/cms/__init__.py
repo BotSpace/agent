@@ -34,8 +34,10 @@ def _pid(ctx: ToolContext, override: str | int | None = None) -> str | int | Non
     return override or ctx.state.get("project_id")
 
 
-def _error(e: BackendError) -> ToolResult:
-    return ToolResult.error(f"Backend error ({e.status}): {e}")
+def _error(e: BackendError, action: str | None = None) -> ToolResult:
+    """Backend xatosini batafsil tarzda LLM uchun ko'rsatish."""
+    from ...integrations.backend import format_backend_error
+    return ToolResult.error(format_backend_error(action, e))
 
 
 # ── field type catalog (matches backend FieldKind enum) ──────────────────────
