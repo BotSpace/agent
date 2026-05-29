@@ -14,7 +14,7 @@ from __future__ import annotations
 from openai import AsyncOpenAI
 
 from .base import LLMError
-from .openai import OpenAIClient
+from .openai import OpenAIClient, _wrap_for_langsmith
 
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
@@ -37,10 +37,12 @@ class OpenRouterClient(OpenAIClient):
             default_headers["HTTP-Referer"] = site_url
         if app_name:
             default_headers["X-Title"] = app_name
-        self._client = AsyncOpenAI(
-            api_key=api_key,
-            base_url=OPENROUTER_BASE_URL,
-            default_headers=default_headers or None,
+        self._client = _wrap_for_langsmith(
+            AsyncOpenAI(
+                api_key=api_key,
+                base_url=OPENROUTER_BASE_URL,
+                default_headers=default_headers or None,
+            )
         )
 
     @staticmethod
