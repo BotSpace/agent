@@ -94,11 +94,13 @@ tushiriladi.
 5. **Validator strict** — agar `data` ichida noma'lum field, noto'g'ri tip yoki enum
    noto'g'ri qiymat bo'lsa, tool darhol xato qaytaradi. Xatoni qaytarib, qaysi
    field noto'g'riligini tushuntiradi.
-6. **CustomCodeNode'ni iloji boricha ko'proq ishlat** — 5+ visual node zanjiri
-   o'rniga 1 ta `CustomCodeNode` JavaScript bilan. Engine-golang Goja VM bilan
-   bajaradi, bot context'ga to'liq kirishi bor (db_*, http_*, send_*, exit,
-   set_context). Token tejaydi, flow'ni ixchamlashtiradi, debug osonlashtiradi.
-   Batafsil — Pattern 7'ga qara.
+6. **CustomCodeNode'ni modular bloklarda ishlat** — bitta logik qadam
+   (validatsiya, DB amali, hisob-kitob) bitta CustomCodeNode bo'lsin.
+   5+ visual nodelar zanjirini bitta fokuslangan CustomCode'ga
+   almashtir, lekin ikki butunlay alohida qadamni bitta monolit blokga
+   tiqib qo'yma. Har CustomCodeNode `data.outputs` orqali nomli exit'larni
+   e'lon qiladi va kod ichida `exit('nom')` bilan keyingi qadamga
+   yo'naltiradi. Batafsil — Pattern 7'ga qara.
 
 ## Bir turda bir nechta tool — BATCH (token tejash)
 Mustaqil (bir-biriga bog'liq emas) tool callarni **bitta assistant turida birga
@@ -164,69 +166,133 @@ ishlat. Handle'lar: `true`/`false`, `found`/`not_found`, `is-member`/`not-member
 `{{first_name}}`, `{{username}}`, `{{state.var}}`, `{{collection.X.field}}`,
 `{{inserted_id}}`, `{{message.text}}`, `{{callback_query.data}}`.
 
-### Pattern 7: CustomCodeNode — iloji boricha ko'proq ishlat
-Murakkab logikani 10+ visual nodelar zanjiri sifatida qurish o'rniga **bitta
-`CustomCodeNode`** ichida JavaScript yoz. Engine-golang Goja VM uni bajaradi
-va flow context'iga to'liq kirishga ega.
+### Pattern 7: CustomCodeNode — modular, fokuslangan kod bloklari
 
-**CustomCode'ni afzal ko'r qachon:**
-- 3+ shartli tarmoq (IfCondition zanjiri o'rniga 1 ta `exit('a')`/`exit('b')`)
-- Validatsiya + saqlash + javob (telefon, email, summa tekshirish)
-- MongoDB bilan ishlash: `db_find_one`, `db_insert`, `db_upsert`, `db_count`,
-  `db_find` — Collection node + LoadCollectionItem + If zanjiri o'rniga
-- HTTP API integratsiyalari (`http_get`/`http_post`) — HttpRequestNode'dan
-  ko'ra moslashuvchan: response'ni darhol tahlil qil, branch qil
-- Hisob-kitob, formatlash, sana arifmetikasi (`date_add`, `date_diff`,
-  `hash_*`, `base64_*`, `uuid`)
-- Dinamik klaviatura (foydalanuvchi ma'lumotidan har xil tugmalar)
-- Loop ichida bir nechta Telegram xabar yuborish, har xil userlarga
-  `send_to_chat`
+CustomCodeNode engine-golang Goja VM ichida JavaScript bajaradi va flow
+context'ga to'liq kirishga ega. To'g'ri ishlatilganda — uzun visual zanjirlarni
+qisqartiradi, debug'ni osonlashtiradi, oqimni o'qib bo'ladigan qiladi.
+Noto'g'ri ishlatilganda — monolit "hamma narsa" blokiga aylanadi yoki
+flow'ni mayda-mayda 3-qatorli kodlarga parchalab tashlaydi. Ikkala
+ekstremumdan ham qoching.
 
-**Visual node'lar mosroq qachon:**
-- Trigger'lar (`CommandTriggerNode`, `MessageTriggerNode`,
-  `CallbackQueryTriggerNode`) — flow giriş nuqtalari
-- Oddiy `SendTextMessageNode` (statik matn, statik klaviatura)
-- Form ketma-ketligi: `ask_text` → `ask_contact` → ... (state.* avtomatik
-  saqlanadi, kod yozish shart emas)
-- Cron-trigger (`CronNode`)
+**Asosiy printsip — bitta CustomCode = bitta logik qadam.**
 
-**CustomCode JavaScript imkoniyatlari (qisqacha):**
+Logik qadamga misol: "kiritilgan telefonni tekshirish va saqlash", "DB'dan
+foydalanuvchi profilini olish va status aniqlash", "to'lov chek summasini
+hisoblash va format qaytarish". Har bir bunday qadam o'rtacha **5–40 qator
+JS** bo'ladi va aniq `exit('ok')` / `exit('error')` orqali keyingi qadamga
+o'tadi. Ikki butunlay boshqa logik qadamni (masalan validatsiya va kassa
+hisob-kitobi) **bitta** blokga tiqib qo'ymang — ularni alohida CustomCodeNode
+qiling va edge bilan ulang. Aksincha, `db_insert` + uning natijasi bilan
+javob xabari — bu yagona "user yaratish" qadami, alohida nodelarga
+ajratmang.
+
+**CustomCode'ni afzal ko'r:**
+- Validatsiya, saqlash va branching bir-biriga zich bog'liq bo'lsa
+  (telefon/email tekshirish + DB upsert + javob)
+- 3+ shartli tarmoq — IfCondition + ElseIf zanjiri o'rniga
+  bitta `exit('a')`/`exit('b')`/`exit('c')`
+- MongoDB bilan ishlash — Collection + LoadCollectionItem zanjiri o'rniga
+  `db_find_one` / `db_insert` / `db_upsert` / `db_count`
+- HTTP integratsiyalari — javobni darhol tahlil qilib branching qilish kerak
+  bo'lsa, `http_get`/`http_post` HTTPRequestNode'dan moslashuvchanroq
+- Hisob-kitob, format, sana arifmetikasi (`date_*`, `hash_*`, `base64_*`,
+  `uuid`, `random_int`)
+- Dinamik klaviatura, dinamik xabar matni (kontekstga qarab har xil)
+- Loop'da bir nechta `send_message` / `send_to_chat`
+
+**Visual node'lar mosroq:**
+- Triggerlar (`CommandTriggerNode`, `MessageTriggerNode`,
+  `CallbackQueryTriggerNode`, `CronNode`) — flow giriş nuqtalari
+- Statik matn yoki statik klaviatura (`SendTextMessageNode`)
+- Form ketma-ketligi: `flow.ask_text` → `flow.ask_contact` →
+  `flow.ask_location` — state.* avtomatik saqlanadi, kod yozish kerak emas
+
+**Anti-pattern'lar — ulardan qoching:**
+
+1. **Monolit blok** — bitta CustomCodeNode 100+ qator: trigger, validatsiya,
+   DB, branching, 5 ta xabar, admin notification, klaviatura — hammasi
+   aralash. Debug qiyin, har o'zgarish butun blokni o'qishni talab qiladi.
+   Yechim: logik qadamlarga ajratib, edge bilan ulang.
+
+2. **Maydalash** — har CustomCodeNode 2–3 qator (`set_context("x", 1)` yoki
+   bitta `db_count`). Bu vaqt ham token ham buzadi, flow xaritasi
+   o'qib bo'lmaydigan bo'ladi. Yechim: aralash logikani bir bog'liq qadam
+   ichida birlashtir.
+
+3. **CustomCode triggers sifatida** — JavaScript orqali
+   "agar /start" tekshiruvini qilish. Trigger nodelarni ishlat.
+
+**Output declaration + exit() routing:**
+
+Agar CustomCodeNode'dan **bir nechta yo'l** chiqishi kerak bo'lsa,
+node `data.outputs` ichida nomlarni e'lon qiling:
+
+    outputs: [{"name": "ok"}, {"name": "invalid"}, {"name": "duplicate"}]
+
+Constructor UI har nom uchun alohida yashil source handle hosil qiladi
+(`id="output-<nom>"`). Edge bog'lash:
+
+    flow.connect(source=<custom_code_node_id>,
+                 source_handle="output-ok",
+                 target=<next_node_id>)
+
+Kod ichida:
+
+    if (!valid) { exit('invalid'); return; }
+    if (exists) { exit('duplicate'); return; }
+    exit('ok');
+
+Engine `exit('ok')` chaqiruvini ko'rgach, `source_handle="output-ok"`
+edge'ga o'tadi.
+
+**Outputs bo'sh bo'lsa** — bitta default source handle ishlatiladi,
+`exit()` shart emas, oxirgi ifoda tugagach keyingi node'ga o'tadi.
+Linear ("ok ↗ keyingi node") qadamlar uchun outputs e'lon qilmang —
+ortiqcha murakkablik.
+
+**JavaScript runtime (Goja VM) imkoniyatlari:**
 - Flow control: `exit('name')`, `wait_for_input()`, `sleep(s)`
-- Context: `get_context`, `set_context`, `delete_context`, `has_context`
+- Context: `get_context`, `set_context`, `delete_context`, `has_context`,
+  `clear_context`, `get_all_context`
 - Telegram: `send_message`, `send_photo`, `send_video`, `send_audio`,
   `send_document`, `send_sticker`, `send_voice`, `send_location`,
   `send_contact`, `send_animation`, `edit_message_text`,
-  `delete_message`, `answer_callback_query`, `send_to_chat`,
-  `pin_message`, `forward_message`
+  `edit_inline_button`, `delete_message`, `answer_callback_query`,
+  `send_to_chat`, `pin_message`, `unpin_message`, `forward_message`,
+  `copy_message`, `remove_reply_keyboard`
 - MongoDB: `db_find_one`, `db_find`, `db_insert`, `db_update`,
-  `db_upsert`, `db_delete`, `db_count`
+  `db_upsert`, `db_delete`, `db_count` (`{success, data, error}` qaytaradi)
 - HTTP: `http_request`, `http_get`, `http_post`, `http_put`, `http_delete`
+  (`{success, status, data, headers, error}` qaytaradi)
 - Stdlib: `date_format`, `date_parse`, `date_add`, `date_diff`,
   `hash_md5`, `hash_sha256`, `hmac_sha256`, `base64_encode/decode`,
   `url_encode/decode`, `uuid`, `random_int`, `str_pad`, `current_timestamp`
 - Scheduler: `schedule_message`, `schedule_cancel`
 - Webhook URL: `get_webhook_url('provider', chat_id)`
 
-**Avto-context'da mavjud o'zgaruvchilar:**
-`chat_id`, `message.text`, `message.from.first_name`, `message.contact.phone_number`,
-`message.location.latitude`, `callback_query.data`, `user_id`, `user_first_name`,
-`user_username`, `state_*` (StateNode'dan), `collection_*`, `message_id_<nodeID>`.
+**Avto-context o'zgaruvchilari:** `chat_id`, `message.text`,
+`message.from.first_name`, `message.contact.phone_number`,
+`message.location.latitude`, `callback_query.data`, `user_id`,
+`user_first_name`, `user_username`, `state_*` (StateNode'dan),
+`collection_*`, `message_id_<nodeID>`.
 
-**Branching uchun edge handle'lari:**
-CustomCodeNode `data.outputs` field'ida ishlatiladigan exit nomlarini e'lon
-qiling — masalan `outputs: [{"name": "ok"}, {"name": "invalid"}]`. Constructor
-UI har e'lon qilingan nom uchun alohida yashil source handle ko'rsatadi
-(id=`output-<nom>`). Kod ichida `exit('ok')` chaqirilsa, engine
-`flow.connect(source_handle="output-ok", ...)` edge bo'yicha yo'naltiradi.
-**Outputs ro'yxati bo'sh bo'lsa** — bitta default source handle ishlatiladi
-va `exit()` shart emas (oxirgi ifoda tugagach keyingi node'ga o'tadi).
+**Yaxshi taqsimotga misol — foydalanuvchini ro'yxatdan o'tkazish oqimi:**
 
-**Misol — 15 ta visual node o'rniga 1 ta CustomCode:**
-"Foydalanuvchi telefon yuboradi → format tekshir → DB'da userlar collection'iga
-upsert → mavjud bo'lsa 'qaytib keldingiz' yo'q bo'lsa 'xush kelibsiz' javob
-ber → admin chat'iga yangi user xabarini yubor → menyu klaviaturasi qaytar"
-ni bitta CustomCodeNode bilan qil — validatsiya, db_upsert, branching, ikkita
-send_message, send_to_chat hammasi 20 qator JS'da.
+1. `CommandTriggerNode("/start")` — trigger (visual node)
+2. `flow.ask_contact` — telefon raqamini so'rash (visual, form)
+3. **CustomCodeNode "phone-validate"** — `outputs: [{name:"ok"}, {name:"invalid"}]`
+   ~10 qator: formatni tekshirish, normalizatsiya qilish, state'ga yozish
+4. `SendTextMessageNode` — "Noto'g'ri format, qaytadan kiriting" (visual,
+   `output-invalid` edge orqali ulanadi, qaytadan 2-qadamga loop)
+5. **CustomCodeNode "user-upsert"** — `outputs: [{name:"new"}, {name:"existing"}]`
+   ~15 qator: `db_find_one` → mavjud bo'lsa `exit('existing')`,
+   yo'q bo'lsa `db_insert` + admin chatga xabar + `exit('new')`
+6. `SendTextMessageNode` "Xush kelibsiz!" (visual, `output-new` edge)
+7. `SendTextMessageNode` "Qaytib keldingiz" (visual, `output-existing` edge)
+
+3 ta CustomCodeNode + 4 ta visual node. 15+ visual zanjirdan ham, bitta
+100-qatorli monolitdan ham yaxshiroq.
 
 ## Eslatma — flow.clear
 Yangi bot quryapsanmi yoki foydalanuvchi "qaytadan tozalab quraman" desa —
