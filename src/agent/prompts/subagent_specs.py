@@ -128,6 +128,15 @@ saqlaysiz.
   state.flow_blueprint ni ham tozalaydi. Keyin `flow.design` +
   `flow.bulk_apply` bilan yangidan qur.
 
+- **Mavjud bo'limni almashtirish kerak bo'lsa** (masalan "eski Aloqa
+  bo'limini olib tashla va yangisini qo'y") — `flow.design`
+  vazifasini quyidagi shaklda yoz: "QISM: yangi Aloqa bo'limi ...
+  Mavjud node id'larini almashtirish: [contact-old, contact-old-msg,
+  contact-old-back]". Design natijasida `remove_node_ids` field
+  to'ldiriladi va `flow.bulk_apply` uni apply paytida birgalikda
+  o'chiradi va yangisini qo'shadi. Bittadan `flow.remove_node`
+  chaqirma.
+
 - `flow.design` muvaffaqiyatsiz bo'lsa — xato matnini olib, vazifani biroz
   aniqroq qilib qaytadan chaqirib ko'r. Maksimum 2 marta.
 
