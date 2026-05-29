@@ -103,8 +103,6 @@ class GenerateOptions:
     thinking_budget: int | None = None
     stop_sequences: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
-    response_format: dict[str, Any] | None = None
-    """OpenAI-style response_format. E.g. {"type": "json_object"} to force JSON."""
 
 
 @dataclass
