@@ -61,9 +61,6 @@ def _pick_model(state: AgentState, models: ModelRoles) -> str:
     - Boshqa barcha holatlarda → `executor`
 
     AGENT_MODEL_EXECUTOR helm/values.yaml da gpt-5.2 — kuchli model.
-    Asosiy token tejovi sub-agent'lar ichida `flow.design` (bitta strong call)
-    + `flow.bulk_apply` (mexanik apply) orqali bo'ladi, executor'ni arzon
-    modelga o'tkazish o'rniga.
     """
     if has_incomplete_plan(state.get("current_plan")):
         return models.planner
