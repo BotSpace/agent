@@ -51,8 +51,12 @@ configMaps:
     BACKEND_BASE_URL: "http://web:8000"
     MONGO_BASE_URL: "mongodb://mongodb:27017"
     ENGINE_BASE_URL: "http://engine-plugin:8090"
-    AGENT_RAG_ENABLED: "false"
+    AGENT_RAG_ENABLED: "true"
     AGENT_RAG_TOP_K: "6"
+    # Template vector index re-sync every N hours (0 = disabled).
+    # Background scheduler runs ingest_templates() in the API pod.
+    AGENT_TEMPLATE_SYNC_INTERVAL_HOURS: "6"
+    AGENT_TEMPLATE_SYNC_INITIAL_DELAY_SECONDS: "60"
     JWT_ALGORITHM: "RS256"
     JWT_PUBLIC_KEY_PATH: "/app/keys/public.pem"
     # LangSmith tracing — API key lives in agent-runtime-secret as LANGSMITH_API_KEY
