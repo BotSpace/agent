@@ -151,8 +151,22 @@ Batafsil tip/description uchun `flow.list_node_types(type=<NodeName>)` chaqir.
 ### Pattern 1: Trigger → Xabar
 `CommandTriggerNode(command:"/start", global:true)` → `SendTextMessageNode`
 
-### Pattern 2: Reply keyboard menyu (klaviatura tugmalari)
-`SendTextMessageNode` ichida `keyboard.reply` belgila. Har tugma uchun:
+### Pattern 2: Klaviatura turini tanlash — INLINE birinchi navbatda
+Botda menyu yoki tugmalar kerak bo'lsa, **standart variant — inline
+keyboard** (`keyboard.inline`). Inline tugmalar Telegram chatini
+xabar oqimi bilan bosib ketmaydi, foydalanuvchi bossa joriy xabar
+o'rnida muloqot qiladi, mobil ekranda yaxshiroq ko'rinadi va
+animatsiya samarali.
+
+**Reply keyboard (`keyboard.reply`) faqat shu hollarda:**
+- Foydalanuvchidan **kontakt** so'rash (`request_contact: true`)
+- Foydalanuvchidan **joylashuv** so'rash (`request_location: true`)
+- Doimiy "pastdagi klaviatura" zarur bo'lsa (kamdan-kam)
+
+Boshqa barcha holatlarda — inline.
+
+### Pattern 2a: Reply keyboard tugmasi (faqat kontakt/joylashuv)
+`SendTextMessageNode.keyboard.reply` belgila. Har tugma uchun:
 `flow.connect(source="menu", target="X", source_handle="target-handler-menu-📬 Btn")`.
 `ReplyButtonTriggerNode` KERAK EMAS.
 
@@ -187,15 +201,40 @@ Qachon B kerak: bir nechta uzoq joydagi node'lardan bitta menyu tugmasi
 ("🏠 Bosh menyu") chaqirilishi kerak bo'lsa — global trigger qulay.
 Boshqa hollarda A — toza, kam node, kam edge.
 
+### Pattern 2c: Inline tugma bosilgandan keyingi action — EditOrSendMessageNode
+Inline tugma bosilganda **xabarni o'rniga yangisini yuborma** —
+`EditOrSendMessageNode` ishlat. Bu node:
+- Agar inline tugma bosilgan bo'lsa (callback_query bor) — **mavjud xabarni
+  tahrirlaydi**. Telegram'da yangi xabar paydo bo'lmaydi, oqim toza qoladi.
+- Agar callback_query yo'q bo'lsa (oddiy yo'l, fallback) — yangi xabar yuboradi.
+
+**Inline menyu zanjirida — `SendTextMessageNode` ishlatma**, har bosish
+yangi xabar bilan chat'ni to'ldiradi. To'g'ri tartib:
+
+`menu (Send + inline)` → tugmalar → `courses-detail (EditOrSendMessageNode)` →
+"⬅️ Ortga" tugmasi yana → `menu-edit (EditOrSendMessageNode, targetMessageNodeId="menu")`.
+
+`EditOrSendMessageData` field'lari: `messageText` (majburiy) + odatdagi
+`keyboard` / `parseMode` / `disableWebPagePreview`. Mavjud xabarni
+maxsus aniqlash kerak bo'lsa `targetMessageNodeId="<menu-node-id>"`
+belgila — engine o'sha node yuborgan oxirgi xabarni tahrirlaydi.
+
+**Istisno**: bot oqimida birinchi xabar (masalan `/start` javobi) — bu
+hali tahrirlanadigan xabar yo'q, shuning uchun `SendTextMessageNode`
+ishlat. Keyingi barcha inline-callback responsi `EditOrSendMessageNode`.
+
 ### Pattern 3: Ma'lumot yig'ish (form)
 `flow.ask_text`, `flow.ask_contact`, `flow.ask_buttons`, `flow.ask_location` ishlat.
 Yoki MessageTriggerNode `state:{key, type}` orqali — bu avtomatik saqlash.
 
 ### Pattern 4: "⬅️ Ortga" tugmasi
-Har submenuga "⬅️ Ortga" qo'sh va main-menu'ga edge tort (Approach A):
-tugma'da `value: "back-menu"` belgila, keyin
-`flow.connect(source=submenu, target=main-menu,
-              source_handle="target-handler-submenu-⬅️ Ortga")`.
+Har submenuga "⬅️ Ortga" inline tugma qo'sh. Bosilganda menyuga qaytish —
+`EditOrSendMessageNode` bilan, joriy xabar o'rnida menyu paydo bo'ladi
+(yangi xabar emas). Approach A: tugma'da `value: "back-menu"` belgila, keyin
+`flow.connect(source=submenu, target=menu-edit,
+              source_handle="target-handler-submenu-⬅️ Ortga")`
+bu yerda `menu-edit` — `EditOrSendMessageNode` bo'lib, asosiy menyu
+matnini va inline klaviaturani qaytaradi.
 
 ### Pattern 5: Branching
 IfCondition, LoadCollectionItem, CheckMembership, ForLoop uchun `flow.connect_branch`
