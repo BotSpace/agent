@@ -244,13 +244,25 @@ def _unwrap_item(payload: Any) -> dict[str, Any]:
 def _auth_kw(auth_claims: dict | None) -> dict[str, Any]:
     """Split agent auth claims into BackendClient._request kwargs.
 
-    Dict refleksiyasi (`auth_claims`) ham yuboriladi: 401 → refresh muvaffaqiyatli
-    bo'lganda BackendClient `auth_claims['access_token']` ni in-place yangilaydi —
-    keyingi tool call'lar darhol yangi access bilan ishlaydi.
+    Yangi rejim: BackendClient agent'ning INTERNAL_API_TOKEN bilan
+    chaqiradi va `X-User-Id` header'ida foydalanuvchi id'sini beradi —
+    foydalanuvchi JWT'si forward qilinmaydi. Backend
+    InternalTokenAuthentication shu pattern'ni qabul qiladi.
+
+    Eski rejim (JWT forward + refresh) hali ham qoldirilgan
+    fallback sifatida — internal token sozlanmagan dev/test
+    muhitlarida tools ishlasin.
     """
     if not auth_claims:
         return {}
+    user_block = auth_claims.get("user") or {}
+    user_id = (
+        auth_claims.get("user_id")
+        or user_block.get("id")
+        or auth_claims.get("sub")
+    )
     return {
+        "user_id": str(user_id) if user_id is not None else None,
         "bearer": auth_claims.get("access_token"),
         "refresh_token": auth_claims.get("refresh_token"),
         "auth_claims": auth_claims,
@@ -265,9 +277,24 @@ class BackendClient:
         self._internal_token = internal_token
         self._client = httpx.AsyncClient(timeout=timeout)
 
-    def _headers(self, *, bearer: str | None = None) -> dict[str, str]:
+    def _headers(
+        self, *, bearer: str | None = None, user_id: str | None = None
+    ) -> dict[str, str]:
+        """Compose auth headers.
+
+        Priority:
+          1. Internal token + X-User-Id (system-to-system) — used when
+             both INTERNAL_API_TOKEN is configured AND we know the
+             user_id (which we do after agent's JWT verification).
+          2. Bearer JWT (legacy / fallback when no internal token).
+          3. Internal token only — for endpoints that don't need a
+             user context (e.g. /api/template/internal/list/).
+        """
         h = {"Accept": "application/json"}
-        if bearer:
+        if self._internal_token and user_id:
+            h["X-Internal-Token"] = self._internal_token
+            h["X-User-Id"] = user_id
+        elif bearer:
             h["Authorization"] = f"Bearer {bearer}"
         elif self._internal_token:
             h["X-Internal-Token"] = self._internal_token
@@ -336,16 +363,29 @@ class BackendClient:
         *,
         params: dict[str, Any] | None = None,
         json: Any | None = None,
+        user_id: str | None = None,
         bearer: str | None = None,
         refresh_token: str | None = None,
         auth_claims: dict | None = None,
     ) -> Any:
         url = self._base_url + path
+        use_internal = bool(self._internal_token and user_id)
         resp = await self._client.request(
-            method, url, params=params, json=json, headers=self._headers(bearer=bearer)
+            method,
+            url,
+            params=params,
+            json=json,
+            headers=self._headers(bearer=bearer, user_id=user_id),
         )
-        # Auto-refresh on 401 if a refresh token is available.
-        if resp.status_code == 401 and refresh_token:
+        # Refresh-on-401 only when we're using a forwarded user JWT.
+        # When the request was made with the internal token + X-User-Id
+        # there is no refresh to perform — the internal token does not
+        # expire, and a 401 there means the X-User-Id is invalid.
+        if (
+            resp.status_code == 401
+            and not use_internal
+            and refresh_token
+        ):
             refreshed = await self._try_refresh(refresh_token)
             if refreshed:
                 new_access, new_refresh = refreshed

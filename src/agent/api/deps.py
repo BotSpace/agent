@@ -90,7 +90,12 @@ async def get_current_user(
     )
     return CurrentUser(
         user_id=user_id,
-        claims={**claims, "access_token": access_token, "refresh_token": refresh_token},
+        claims={
+            **claims,
+            "user_id": user_id,  # explicit copy for BackendClient (_auth_kw)
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+        },
     )
 
 
