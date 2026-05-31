@@ -18,6 +18,7 @@ from fastapi import Depends
 
 from .deps import CurrentUser, get_current_user
 from .routes.runs import router as runs_router
+from .routes.threads import router as threads_router
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +126,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"count": len(specs), "tools": specs}
 
     app.include_router(runs_router)
+    app.include_router(threads_router)
 
     @app.get("/usage")
     async def usage(

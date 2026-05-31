@@ -379,6 +379,186 @@ class RunStore:
                 )
             await conn.commit()
 
+    # ── threads (dashboard history) ────────────────────────────────────
+    async def list_threads(
+        self, *, project_id: str | None, user_id: str | None, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        """Group ``agent_runs`` by ``thread_id`` for the dashboard history list.
+
+        Each thread carries the earliest run's prompt as ``title`` (truncated
+        to ~60 chars), the latest ``updated_at`` and a ``run_count``. Ordered
+        by ``updated_at`` DESC. Filtered by project_id / user_id so a user only
+        ever sees their own threads. On any error returns an empty list.
+        """
+        try:
+            await self.bootstrap()
+            where = ["thread_id IS NOT NULL"]
+            params: list[Any] = []
+            if project_id:
+                where.append("project_id = %s")
+                params.append(project_id)
+            if user_id:
+                where.append("user_id = %s")
+                params.append(user_id)
+            clause = "WHERE " + " AND ".join(where)
+            params.append(limit)
+            async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        f"""
+                        SELECT
+                            thread_id,
+                            (ARRAY_AGG(prompt ORDER BY created_at ASC))[1] AS title,
+                            MAX(updated_at) AS updated_at,
+                            COUNT(*) AS run_count
+                        FROM agent_runs
+                        {clause}
+                        GROUP BY thread_id
+                        ORDER BY updated_at DESC
+                        LIMIT %s
+                        """,
+                        params,
+                    )
+                    rows = await cur.fetchall()
+            threads: list[dict[str, Any]] = []
+            for r in rows:
+                title = (r[1] or "").strip()
+                if len(title) > 60:
+                    title = title[:60].rstrip() + "…"
+                threads.append(
+                    {
+                        "thread_id": r[0],
+                        "title": title,
+                        "updated_at": str(r[2]) if r[2] is not None else "",
+                        "run_count": int(r[3]),
+                    }
+                )
+            return threads
+        except Exception:  # noqa: BLE001
+            return []
+
+    async def get_thread_turns(
+        self, *, project_id: str | None, user_id: str | None, thread_id: str
+    ) -> list[dict[str, Any]]:
+        """Reconstruct an ordered transcript ("turns") for one thread.
+
+        Faithful reconstruction note: ``agent_messages`` only persists the
+        ``user`` prompt and the FINAL ``assistant`` text — intermediate
+        assistant steps and tool calls live in ``agent_events`` (types
+        ``assistant_message`` / ``tool_call`` / ``tool_result``). So per run we
+        emit the user turn from ``agent_messages`` (stable ``m{id}``), then
+        walk that run's events in ``seq`` order, materialising assistant and
+        tool turns. Access is scoped to the caller's project_id / user_id; a
+        thread that doesn't belong to the caller yields an empty list.
+        On any error returns an empty list (never raises).
+        """
+        try:
+            await self.bootstrap()
+            run_where = ["thread_id = %s"]
+            run_params: list[Any] = [thread_id]
+            if project_id:
+                run_where.append("project_id = %s")
+                run_params.append(project_id)
+            if user_id:
+                run_where.append("user_id = %s")
+                run_params.append(user_id)
+            run_clause = "WHERE " + " AND ".join(run_where)
+
+            async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
+                async with conn.cursor() as cur:
+                    # Runs for this thread, oldest first. Scoped to caller.
+                    await cur.execute(
+                        f"""SELECT request_id FROM agent_runs
+                            {run_clause} ORDER BY created_at ASC, request_id ASC""",
+                        run_params,
+                    )
+                    run_rows = await cur.fetchall()
+                    request_ids = [r[0] for r in run_rows]
+                    if not request_ids:
+                        return []
+
+                    # user-prompt rows (stable ids) per run.
+                    await cur.execute(
+                        """SELECT id, request_id, content FROM agent_messages
+                           WHERE request_id = ANY(%s) AND role = 'user'
+                           ORDER BY id ASC""",
+                        (request_ids,),
+                    )
+                    user_rows = await cur.fetchall()
+                    user_by_req: dict[str, tuple[int, str]] = {}
+                    for mid, req, content in user_rows:
+                        # first user message per run is the prompt
+                        user_by_req.setdefault(req, (int(mid), content or ""))
+
+                    # all relevant events for these runs, ordered per run by seq.
+                    await cur.execute(
+                        """SELECT request_id, seq, type, payload FROM agent_events
+                           WHERE request_id = ANY(%s)
+                             AND type IN ('assistant_message', 'tool_call', 'tool_result')
+                           ORDER BY request_id, seq ASC""",
+                        (request_ids,),
+                    )
+                    event_rows = await cur.fetchall()
+
+            events_by_req: dict[str, list[tuple[int, str, dict[str, Any]]]] = {}
+            for req, seq, etype, payload in event_rows:
+                events_by_req.setdefault(req, []).append(
+                    (int(seq), etype, payload if isinstance(payload, dict) else {})
+                )
+
+            turns: list[dict[str, Any]] = []
+            for req in request_ids:
+                # 1) user turn for this run
+                um = user_by_req.get(req)
+                if um is not None:
+                    turns.append(
+                        {"kind": "user", "id": f"m{um[0]}", "text": um[1]}
+                    )
+
+                # 2) walk events in seq order: assistant text + tool call/result
+                tool_results: dict[str, dict[str, Any]] = {}
+                for seq, etype, payload in events_by_req.get(req, []):
+                    if etype == "tool_result":
+                        tid = payload.get("tool_call_id")
+                        if tid is not None:
+                            tool_results[str(tid)] = payload
+
+                for seq, etype, payload in events_by_req.get(req, []):
+                    if etype == "assistant_message":
+                        text = (payload.get("text") or "").strip()
+                        if text:
+                            turns.append(
+                                {
+                                    "kind": "assistant",
+                                    "id": f"{req}-a{seq}",
+                                    "text": text,
+                                }
+                            )
+                    elif etype == "tool_call":
+                        call_id = payload.get("id")
+                        res = tool_results.get(str(call_id)) if call_id is not None else None
+                        result_content = ""
+                        is_error = False
+                        if res is not None:
+                            result_content = res.get("content") or ""
+                            is_error = bool(res.get("is_error"))
+                        turns.append(
+                            {
+                                "kind": "tool",
+                                "id": f"{req}-t{seq}",
+                                "call": {
+                                    "id": call_id,
+                                    "name": payload.get("name"),
+                                    "arguments": payload.get("arguments") or {},
+                                    "result": result_content,
+                                    "isError": is_error,
+                                },
+                            }
+                        )
+            return turns
+        except Exception:  # noqa: BLE001
+            return []
+
     # ── messages (history) ─────────────────────────────────────────────
     async def list_messages(
         self, *, project_id: str | None, user_id: str | None, limit: int, offset: int
