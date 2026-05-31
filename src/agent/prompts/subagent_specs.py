@@ -373,6 +373,57 @@ ortiqcha murakkablik.
 3 ta CustomCodeNode + 4 ta visual node. 15+ visual zanjirdan ham, bitta
 100-qatorli monolitdan ham yaxshiroq.
 
+## Pattern 8: AI Agent node — LLM javob berish
+
+Bot LLM orqali javob berishi kerak bo'lsa (savollarga intelligent javob,
+freeform chat, tool-calling agent), **AIAgentNode** ishlatiladi.
+
+**Minimal qurilish (3 qadam — birga yuborish mumkin):**
+
+Turn 1 — nodelarni qo'sh:
+```
+flow.add_ai_agent(id="agent", data={systemPrompt:"...", outputKey:"agent_output"}, after=<prev_node>)
+flow.add_ai_openai_provider(id="openai-prov", data={apiKey:"{{env.OPENAI_KEY}}", model:"gpt-4o-mini"})
+```
+
+Turn 2 — provider ni agent'ga ulash (accessory edge):
+```
+flow.connect_accessory(accessory_id="openai-prov", agent_id="agent", port="acc:ai_model")
+```
+
+Turn 3 — agent natijasini ko'rsatish (agent_output o'zgaruvchisi):
+```
+flow.add_send_text_message(id="reply", data={messageText:"{{agent_output}}"}, after="agent")
+```
+
+**Har bir AI Agent uchun AYNAN BITTA provider** (`acc:ai_model` portiga)
+ulangan bo'lishi shart. Ko'p provider = validator xatosi.
+
+**Tool sub-nodelar** (ixtiyoriy, `acc:ai_tool` portiga, soni cheksiz):
+```
+flow.add_ai_http_tool(id="search-tool", data={toolName:"web_search", urlTemplate:"...", ...})
+flow.connect_accessory(accessory_id="search-tool", agent_id="agent", port="acc:ai_tool")
+```
+
+**Provider tanlov:**
+- `AIOpenAIProviderNode` — OpenAI (gpt-4o-mini default, cloud)
+- `AIOllamaProviderNode` — Ollama (llama3.1, local, baseURL=http://localhost:11434)
+- `AIGeminiProviderNode` — Google Gemini (gemini-1.5-flash)
+- `AIAnthropicProviderNode` — Anthropic Claude (claude-3-5-haiku-latest)
+
+**Natijani o'qish:**
+- Muvaffaqiyat: `{{agent_output}}` (yoki `{{<outputKey>}}`)
+- Xato: `{{agent_error}}` (yoki `{{<errorOutputKey>}}`) — IfConditionNode bilan branch qil.
+- `returnMode:"json"` bo'lsa `{{agent_output_json}}` ham to'ldiriladi.
+
+**Muhim:**
+- Provider/tool sub-nodelar accessory node — ular flow'da trigger'dan reachable
+  emas, bu NORMAL, validator warning bermaydi.
+- Accessory nodelarni `flow.add_node(after=...)` bilan ulab flow edge tortma —
+  faqat `flow.connect_accessory` ishlatiladi.
+- `sourceHandle` har doim `'source-default'`, `targetHandle` = `'acc:ai_model'`
+  yoki `'acc:ai_tool'` — bu FROZEN qiymatlar.
+
 ## Eslatma — flow.clear
 Yangi bot quryapsanmi yoki foydalanuvchi "qaytadan tozalab quraman" desa —
 birinchi qadam **`flow.clear(confirm=true)`** chaqir. Bittadan
