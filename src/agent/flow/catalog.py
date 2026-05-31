@@ -20,6 +20,7 @@ NodeCategory = Literal[
     "integration",
     "interaction",
     "subflow",
+    "ai",
 ]
 
 
@@ -33,6 +34,11 @@ class NodeTypeSpec:
     source_handles: list[str] = field(default_factory=lambda: ["source-handler"])
     target_handles: list[str] = field(default_factory=lambda: ["target-handler"])
     is_trigger: bool = False
+    # Accessory sub-node flag: True → node has no flow target handle, only source-default.
+    # It attaches to a parent node's acc: port and is never traversed as a flow step.
+    is_accessory: bool = False
+    # For AIAgentNode: accessory ports it exposes as target handles (e.g. ["acc:ai_model", "acc:ai_tool"]).
+    accessory_target_handles: list[str] = field(default_factory=list)
 
 
 NODE_TYPES: dict[str, NodeTypeSpec] = {
@@ -426,6 +432,145 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         description="Boshqa flow ni ichki sifatida chaqirish",
         required_data=["subflowId"],
     ),
+    # ── AI Agent (flow node + accessory parent) ────────────────────────
+    "AIAgentNode": NodeTypeSpec(
+        type="AIAgentNode",
+        category="ai",
+        description=(
+            "LLM agent node. Bitta provider sub-node (acc:ai_model portiga) va ixtiyoriy "
+            "tool sub-node'lar (acc:ai_tool portiga) ulanadi. systemPrompt + userInputSource → "
+            "LLM tool-calling loop → natija outputKey context o'zgaruvchisiga yoziladi "
+            "(standart: agent_output). Keyingi nodelar {{agent_output}} orqali foydalanadi. "
+            "Xato: errorOutputKey (standart: agent_error). "
+            "Bog'lash: flow.connect(source=<provider_id>, source_handle='source-default', "
+            "target=<agent_id>, target_handle='acc:ai_model'). "
+            "Tavsiya: OpenAI yoki Ollama provider'i bilan boshlang."
+        ),
+        required_data=[],
+        optional_data=[
+            "systemPrompt", "userInputSource", "userInputText", "outputKey",
+            "maxIterations", "temperature", "maxTokens", "returnMode",
+            "historyKey", "errorOutputKey",
+        ],
+        source_handles=["source-default"],
+        target_handles=["target-default"],
+        accessory_target_handles=["acc:ai_model", "acc:ai_tool"],
+    ),
+    # ── AI Provider sub-nodes (accessory, attach to acc:ai_model) ─────
+    "AIOpenAIProviderNode": NodeTypeSpec(
+        type="AIOpenAIProviderNode",
+        category="ai",
+        description=(
+            "OpenAI provider sub-node. AIAgentNode'ning acc:ai_model portiga ulanadi. "
+            "provider='openai', default model='gpt-4o-mini'. "
+            "Edge: source=<this_id>, sourceHandle='source-default', "
+            "target=<agent_id>, targetHandle='acc:ai_model'."
+        ),
+        required_data=[],
+        optional_data=["provider", "apiKey", "model", "baseURL", "temperature", "maxTokens", "extraHeaders", "extraParams"],
+        source_handles=["source-default"],
+        target_handles=[],
+        is_accessory=True,
+    ),
+    "AIOllamaProviderNode": NodeTypeSpec(
+        type="AIOllamaProviderNode",
+        category="ai",
+        description=(
+            "Ollama provider sub-node. AIAgentNode'ning acc:ai_model portiga ulanadi. "
+            "provider='ollama', default model='llama3.1', baseURL='http://localhost:11434'. "
+            "Edge: source=<this_id>, sourceHandle='source-default', "
+            "target=<agent_id>, targetHandle='acc:ai_model'."
+        ),
+        required_data=[],
+        optional_data=["provider", "apiKey", "model", "baseURL", "temperature", "maxTokens", "extraHeaders", "extraParams"],
+        source_handles=["source-default"],
+        target_handles=[],
+        is_accessory=True,
+    ),
+    "AIGeminiProviderNode": NodeTypeSpec(
+        type="AIGeminiProviderNode",
+        category="ai",
+        description=(
+            "Google Gemini provider sub-node. AIAgentNode'ning acc:ai_model portiga ulanadi. "
+            "provider='gemini', default model='gemini-1.5-flash'. "
+            "Edge: source=<this_id>, sourceHandle='source-default', "
+            "target=<agent_id>, targetHandle='acc:ai_model'."
+        ),
+        required_data=[],
+        optional_data=["provider", "apiKey", "model", "baseURL", "temperature", "maxTokens", "extraHeaders", "extraParams"],
+        source_handles=["source-default"],
+        target_handles=[],
+        is_accessory=True,
+    ),
+    "AIAnthropicProviderNode": NodeTypeSpec(
+        type="AIAnthropicProviderNode",
+        category="ai",
+        description=(
+            "Anthropic (Claude) provider sub-node. AIAgentNode'ning acc:ai_model portiga ulanadi. "
+            "provider='anthropic', default model='claude-3-5-haiku-latest'. "
+            "Edge: source=<this_id>, sourceHandle='source-default', "
+            "target=<agent_id>, targetHandle='acc:ai_model'."
+        ),
+        required_data=[],
+        optional_data=["provider", "apiKey", "model", "baseURL", "temperature", "maxTokens", "extraHeaders", "extraParams"],
+        source_handles=["source-default"],
+        target_handles=[],
+        is_accessory=True,
+    ),
+    # ── AI Tool sub-nodes (accessory, attach to acc:ai_tool) ──────────
+    "AIHTTPToolNode": NodeTypeSpec(
+        type="AIHTTPToolNode",
+        category="ai",
+        description=(
+            "HTTP request tool sub-node. AIAgentNode'ning acc:ai_tool portiga ulanadi. "
+            "tool='http_request'. LLM urlTemplate/bodyTemplate'ni tool args bilan chaqiradi. "
+            "Edge: source=<this_id>, sourceHandle='source-default', "
+            "target=<agent_id>, targetHandle='acc:ai_tool'."
+        ),
+        required_data=[],
+        optional_data=[
+            "tool", "toolName", "description", "parametersSchema",
+            "method", "urlTemplate", "headers", "bodyTemplate", "timeout",
+        ],
+        source_handles=["source-default"],
+        target_handles=[],
+        is_accessory=True,
+    ),
+    "AIMongoToolNode": NodeTypeSpec(
+        type="AIMongoToolNode",
+        category="ai",
+        description=(
+            "MongoDB query tool sub-node. AIAgentNode'ning acc:ai_tool portiga ulanadi. "
+            "tool='mongo_query'. Read-only: find/find_one/count. "
+            "Edge: source=<this_id>, sourceHandle='source-default', "
+            "target=<agent_id>, targetHandle='acc:ai_tool'."
+        ),
+        required_data=[],
+        optional_data=[
+            "tool", "toolName", "description", "parametersSchema",
+            "collection", "operation", "filterTemplate", "limit",
+        ],
+        source_handles=["source-default"],
+        target_handles=[],
+        is_accessory=True,
+    ),
+    "AICustomCodeToolNode": NodeTypeSpec(
+        type="AICustomCodeToolNode",
+        category="ai",
+        description=(
+            "Custom JavaScript tool sub-node. AIAgentNode'ning acc:ai_tool portiga ulanadi. "
+            "tool='custom_code'. Goja sandbox'da ishlaydi, args + flow context mavjud. "
+            "Edge: source=<this_id>, sourceHandle='source-default', "
+            "target=<agent_id>, targetHandle='acc:ai_tool'."
+        ),
+        required_data=[],
+        optional_data=[
+            "tool", "toolName", "description", "parametersSchema", "jsCode",
+        ],
+        source_handles=["source-default"],
+        target_handles=[],
+        is_accessory=True,
+    ),
 }
 
 
@@ -448,7 +593,7 @@ def summary_for_llm() -> str:
     categories: dict[str, list[NodeTypeSpec]] = {}
     for spec in NODE_TYPES.values():
         categories.setdefault(spec.category, []).append(spec)
-    for cat in ("trigger", "send", "edit", "flow_control", "data", "integration", "interaction", "subflow"):
+    for cat in ("trigger", "send", "edit", "flow_control", "data", "integration", "interaction", "subflow", "ai"):
         items = categories.get(cat, [])
         if not items:
             continue

@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from .catalog import get_node_spec, is_trigger
+from .catalog import get_node_spec, is_trigger, NODE_TYPES
 from .schema import FlowDocument
 
 
@@ -46,6 +46,25 @@ class ValidationResult:
 
 
 VARIABLE_RE = re.compile(r"\{\{\s*[\w\.\[\]]+\s*\}\}|\$[\w\.\[\]]+")
+
+# Accessory targetHandle prefix (contract §1.1)
+_ACC_PREFIX = "acc:"
+
+# Mapping: accessory targetHandle → accepted source node types (contract §1.1)
+_ACC_PORT_ACCEPTS: dict[str, frozenset[str]] = {
+    "acc:ai_model": frozenset({
+        "AIOpenAIProviderNode", "AIOllamaProviderNode",
+        "AIGeminiProviderNode", "AIAnthropicProviderNode",
+    }),
+    "acc:ai_tool": frozenset({
+        "AIHTTPToolNode", "AIMongoToolNode", "AICustomCodeToolNode",
+    }),
+}
+
+
+def _is_accessory_node(node_type: str) -> bool:
+    spec = NODE_TYPES.get(node_type)
+    return bool(spec and spec.is_accessory)
 
 
 def validate(flow: FlowDocument) -> ValidationResult:
@@ -95,6 +114,9 @@ def validate(flow: FlowDocument) -> ValidationResult:
     # ── 2. Edge-level checks ───────────────────────────────────────────
     nodes_by_id = {node.id: node for node in flow.nodes}
     edge_pairs: set[tuple[str, str, str | None]] = set()
+    # Track acc:ai_model connections per AIAgentNode (must be exactly 1)
+    ai_model_connections: dict[str, int] = {}
+
     for edge in flow.edges:
         if not edge.id:
             issues.append(
@@ -118,19 +140,60 @@ def validate(flow: FlowDocument) -> ValidationResult:
                     edge_id=edge.id,
                 )
             )
-        source_node = nodes_by_id.get(edge.source)
-        if source_node is not None:
-            unsupported = _unsupported_source_handle(source_node, edge.sourceHandle)
-            if unsupported is not None:
+
+        target_handle = edge.targetHandle or ""
+        is_acc_edge = target_handle.startswith(_ACC_PREFIX)
+
+        if is_acc_edge:
+            # Validate that the accessory edge connects accepted node types.
+            source_node = nodes_by_id.get(edge.source)
+            target_node = nodes_by_id.get(edge.target)
+            accepted = _ACC_PORT_ACCEPTS.get(target_handle)
+            if accepted is not None and source_node is not None:
+                if source_node.type not in accepted:
+                    issues.append(
+                        ValidationIssue(
+                            "error",
+                            "acc_wrong_node_type",
+                            (
+                                f"Accessory edge `{edge.id}`: source `{source_node.type}` is not "
+                                f"accepted on port `{target_handle}`. Accepted: {sorted(accepted)}."
+                            ),
+                            edge_id=edge.id,
+                        )
+                    )
+            # Track acc:ai_model multiplicity (max 1 per AIAgentNode)
+            if target_handle == "acc:ai_model" and target_node is not None:
+                ai_model_connections[target_node.id] = ai_model_connections.get(target_node.id, 0) + 1
+            # Accessory source nodes must use source-default
+            if edge.sourceHandle not in (None, "source-default"):
                 issues.append(
                     ValidationIssue(
-                        "error",
-                        "unsupported_source_handle",
-                        unsupported,
-                        node_id=source_node.id,
+                        "warning",
+                        "acc_wrong_source_handle",
+                        (
+                            f"Accessory edge `{edge.id}` should use sourceHandle='source-default', "
+                            f"got '{edge.sourceHandle}'."
+                        ),
                         edge_id=edge.id,
                     )
                 )
+        else:
+            # Only validate source handles for non-accessory edges.
+            source_node = nodes_by_id.get(edge.source)
+            if source_node is not None:
+                unsupported = _unsupported_source_handle(source_node, edge.sourceHandle)
+                if unsupported is not None:
+                    issues.append(
+                        ValidationIssue(
+                            "error",
+                            "unsupported_source_handle",
+                            unsupported,
+                            node_id=source_node.id,
+                            edge_id=edge.id,
+                        )
+                    )
+
         key = (edge.source, edge.target, edge.sourceHandle)
         if key in edge_pairs:
             issues.append(
@@ -143,6 +206,30 @@ def validate(flow: FlowDocument) -> ValidationResult:
             )
         edge_pairs.add(key)
 
+    # acc:ai_model multiplicity: AIAgentNode should have exactly one provider.
+    for node in flow.nodes:
+        if node.type == "AIAgentNode":
+            count = ai_model_connections.get(node.id, 0)
+            if count == 0:
+                issues.append(
+                    ValidationIssue(
+                        "warning",
+                        "ai_agent_no_provider",
+                        f"AIAgentNode `{node.id}` has no provider attached on acc:ai_model. "
+                        "Add one provider sub-node (e.g. AIOpenAIProviderNode).",
+                        node_id=node.id,
+                    )
+                )
+            elif count > 1:
+                issues.append(
+                    ValidationIssue(
+                        "error",
+                        "ai_agent_multiple_providers",
+                        f"AIAgentNode `{node.id}` has {count} providers on acc:ai_model (max 1).",
+                        node_id=node.id,
+                    )
+                )
+
     # ── 3. Trigger presence ────────────────────────────────────────────
     trigger_nodes = [n for n in flow.nodes if is_trigger(n.type)]
     if flow.nodes and not trigger_nodes:
@@ -151,6 +238,7 @@ def validate(flow: FlowDocument) -> ValidationResult:
         )
 
     # ── 4. Reachability (BFS from triggers) ────────────────────────────
+    # Accessory nodes are intentionally not reachable from triggers — exclude from warning.
     reachable: set[str] = set()
     queue = [t.id for t in trigger_nodes]
     while queue:
@@ -159,10 +247,15 @@ def validate(flow: FlowDocument) -> ValidationResult:
             continue
         reachable.add(nid)
         for e in flow.edges:
+            # Do not follow accessory edges during BFS (they are not flow connections).
             if e.source == nid and e.target not in reachable:
-                queue.append(e.target)
+                if not (e.targetHandle or "").startswith(_ACC_PREFIX):
+                    queue.append(e.target)
     for node in flow.nodes:
         if node.id not in reachable and not is_trigger(node.type):
+            # Accessory nodes are never reachable from triggers by design — skip warning.
+            if _is_accessory_node(node.type):
+                continue
             issues.append(
                 ValidationIssue(
                     "warning",
