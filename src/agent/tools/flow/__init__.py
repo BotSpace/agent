@@ -328,7 +328,8 @@ class FlowConnectInput(BaseModel):
         "LoadCollectionItemNode → 'found'/'not_found', "
         "CheckMembershipNode → 'is-member'/'not-member', "
         "ForLoopNode → 'loop-body'/'no-items', "
-        "RandomNode → 'option_0'/'option_1'/..."
+        "RandomNode → 'option_0'/'option_1'/... "
+        "For AI accessory wiring, prefer flow.connect_accessory which validates port types."
     ),
     input_model=FlowConnectInput,
 )
@@ -425,7 +426,7 @@ async def flow_layout_auto(_: FlowLayoutInput, ctx: ToolContext) -> ToolResult:
 class FlowListNodeTypesInput(BaseModel):
     category: str | None = Field(
         default=None,
-        description="Optional filter: trigger | send | edit | flow_control | data | integration | interaction | subflow",
+        description="Optional filter: trigger | send | edit | flow_control | data | integration | interaction | subflow | ai",
     )
     type: str | None = Field(
         default=None,
@@ -450,6 +451,7 @@ async def flow_list_node_types(input: FlowListNodeTypesInput, ctx: ToolContext) 
         specs = [s for s in specs if s.type == input.type]
     elif input.category:
         specs = [s for s in specs if s.category == input.category]
+
     payload = []
     for s in specs:
         schema = render_node_schema(s.type)

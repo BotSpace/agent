@@ -11,12 +11,19 @@ from __future__ import annotations
 import re
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
-from ...flow import FlowDocument, FlowEdge, FlowNode, Position, auto_layout, get_node_spec
-from ...flow.catalog import NODE_TYPES, NodeTypeSpec
+from ...flow import FlowDocument, FlowEdge, FlowNode, Position, auto_layout
 from ..base import Tool, ToolContext, ToolResult
 from .node_data_models import (
+    AIAgentData,
+    AIAnthropicProviderData,
+    AICustomCodeToolData,
+    AIGeminiProviderData,
+    AIHTTPToolData,
+    AIMongoToolData,
+    AIOpenAIProviderData,
+    AIOllamaProviderData,
     CallbackQueryTriggerData,
     CollectionData,
     CommandTriggerData,
@@ -414,12 +421,149 @@ def _slug(text: str) -> str:
     return slug or "option"
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Accessory edge helper: connect provider/tool sub-nodes to AIAgentNode ports.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_ACC_PORT_ACCEPTS: dict[str, frozenset[str]] = {
+    "acc:ai_model": frozenset({
+        "AIOpenAIProviderNode", "AIOllamaProviderNode",
+        "AIGeminiProviderNode", "AIAnthropicProviderNode",
+    }),
+    "acc:ai_tool": frozenset({
+        "AIHTTPToolNode", "AIMongoToolNode", "AICustomCodeToolNode",
+    }),
+}
+
+
+class ConnectAccessoryInput(BaseModel):
+    accessory_id: str = Field(description="Id of the accessory sub-node (provider or tool).")
+    agent_id: str = Field(description="Id of the AIAgentNode this sub-node attaches to.")
+    port: str = Field(
+        description="Target accessory port: 'acc:ai_model' (exactly one provider) or 'acc:ai_tool' (zero or more tools).",
+    )
+    edge_id: str | None = None
+
+
+async def flow_connect_accessory(input: ConnectAccessoryInput, ctx: ToolContext) -> ToolResult:
+    flow = _load_working_flow(ctx)
+    acc_node = flow.get_node(input.accessory_id)
+    if acc_node is None:
+        return ToolResult.error(f"Accessory node `{input.accessory_id}` does not exist.")
+    agent_node = flow.get_node(input.agent_id)
+    if agent_node is None:
+        return ToolResult.error(f"AIAgentNode `{input.agent_id}` does not exist.")
+    if agent_node.type != "AIAgentNode":
+        return ToolResult.error(f"`{input.agent_id}` is `{agent_node.type}`, expected AIAgentNode.")
+    accepted = _ACC_PORT_ACCEPTS.get(input.port)
+    if accepted is None:
+        return ToolResult.error(
+            f"Unknown accessory port `{input.port}`. Valid ports: {sorted(_ACC_PORT_ACCEPTS)}."
+        )
+    if acc_node.type not in accepted:
+        return ToolResult.error(
+            f"Node type `{acc_node.type}` is not accepted on port `{input.port}`. "
+            f"Accepted: {sorted(accepted)}."
+        )
+    eid = input.edge_id or f"e-acc-{input.accessory_id}-{input.agent_id}-{input.port.replace(':', '_')}"
+    _connect(
+        flow,
+        source=input.accessory_id,
+        target=input.agent_id,
+        source_handle="source-default",
+        target_handle=input.port,
+        edge_id=eid,
+    )
+    return ToolResult.ok(
+        f"Accessory edge: `{input.accessory_id}` → `{input.agent_id}` on `{input.port}`.",
+        state_updates=_set_working_flow(flow),
+        data={"source": input.accessory_id, "target": input.agent_id, "port": input.port, "edge_id": eid},
+    )
+
+
 def build_flow_action_tools() -> list[Tool]:
     # The 9 most-used node types keep their own typed tool with strict Pydantic
     # validation (extra='forbid' rejects unknown fields, enums validate values).
     # The other ~46 node types go through the generic `flow.add_node` in
     # `flow/__init__.py`.
     popular_tools: list[Tool] = [
+        # ── AI Agent nodes (typed, strict validation) ───────────────────
+        _make_popular_node_tool(
+            name="flow.add_ai_agent",
+            type_name="AIAgentNode",
+            data_model=AIAgentData,
+            description=(
+                "Add an AIAgentNode (LLM agent). After adding, attach a provider with "
+                "flow.connect_accessory(port='acc:ai_model') and optionally tools on "
+                "'acc:ai_tool'. The agent output is stored in outputKey (default: agent_output). "
+                "Use {{agent_output}} in downstream nodes."
+            ),
+        ),
+        _make_popular_node_tool(
+            name="flow.add_ai_openai_provider",
+            type_name="AIOpenAIProviderNode",
+            data_model=AIOpenAIProviderData,
+            description=(
+                "Add an OpenAI provider sub-node. Then connect: "
+                "flow.connect_accessory(accessory_id=<this>, agent_id=<agent>, port='acc:ai_model'). "
+                "Default model: gpt-4o-mini."
+            ),
+        ),
+        _make_popular_node_tool(
+            name="flow.add_ai_ollama_provider",
+            type_name="AIOllamaProviderNode",
+            data_model=AIOllamaProviderData,
+            description=(
+                "Add an Ollama provider sub-node (local LLM). Connect to acc:ai_model. "
+                "Default model: llama3.1, baseURL: http://localhost:11434."
+            ),
+        ),
+        _make_popular_node_tool(
+            name="flow.add_ai_gemini_provider",
+            type_name="AIGeminiProviderNode",
+            data_model=AIGeminiProviderData,
+            description=(
+                "Add a Google Gemini provider sub-node. Connect to acc:ai_model. "
+                "Default model: gemini-1.5-flash."
+            ),
+        ),
+        _make_popular_node_tool(
+            name="flow.add_ai_anthropic_provider",
+            type_name="AIAnthropicProviderNode",
+            data_model=AIAnthropicProviderData,
+            description=(
+                "Add an Anthropic (Claude) provider sub-node. Connect to acc:ai_model. "
+                "Default model: claude-3-5-haiku-latest."
+            ),
+        ),
+        _make_popular_node_tool(
+            name="flow.add_ai_http_tool",
+            type_name="AIHTTPToolNode",
+            data_model=AIHTTPToolData,
+            description=(
+                "Add an HTTP request tool sub-node for an AIAgentNode. "
+                "Connect to acc:ai_tool. The LLM calls this tool with its own args."
+            ),
+        ),
+        _make_popular_node_tool(
+            name="flow.add_ai_mongo_tool",
+            type_name="AIMongoToolNode",
+            data_model=AIMongoToolData,
+            description=(
+                "Add a MongoDB query tool sub-node (read-only: find/find_one/count). "
+                "Connect to acc:ai_tool."
+            ),
+        ),
+        _make_popular_node_tool(
+            name="flow.add_ai_custom_code_tool",
+            type_name="AICustomCodeToolNode",
+            data_model=AICustomCodeToolData,
+            description=(
+                "Add a custom JavaScript tool sub-node for an AIAgentNode. "
+                "Connect to acc:ai_tool. jsCode return value becomes the tool result."
+            ),
+        ),
+        # ── Core popular nodes ──────────────────────────────────────────
         _make_popular_node_tool(
             name="flow.add_command_trigger",
             type_name="CommandTriggerNode",
@@ -477,6 +621,18 @@ def build_flow_action_tools() -> list[Tool]:
     ]
     tools: list[Tool] = list(popular_tools)
     tools += [
+            Tool(
+                name="flow.connect_accessory",
+                description=(
+                    "Wire a provider/tool sub-node to an AIAgentNode's accessory port. "
+                    "port='acc:ai_model' (one provider, e.g. AIOpenAIProviderNode) or "
+                    "'acc:ai_tool' (any number of tool nodes). "
+                    "This creates an edge: sourceHandle='source-default' → targetHandle=port."
+                ),
+                input_model=ConnectAccessoryInput,
+                handler=flow_connect_accessory,
+                tags=["flow", "ai", "safe-edge"],
+            ),
             Tool(
                 name="flow.connect_button",
                 description="Connect an exact reply/inline keyboard button using target-handler-{nodeId}-{buttonText}.",
