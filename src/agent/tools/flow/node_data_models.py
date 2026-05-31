@@ -394,6 +394,107 @@ class SubFlowData(_StrictData):
 
 
 # ═════════════════════════════════════════════════════════════════════════════
+# AI (8) — AIAgentNode + 4 providers + 3 tools
+# ═════════════════════════════════════════════════════════════════════════════
+
+
+class AIAgentData(_StrictData):
+    """Flow node: attach one provider to acc:ai_model and tools to acc:ai_tool."""
+
+    systemPrompt: str = Field(default="", description="System prompt. Supports {{var}}/$var substitutions.")
+    userInputSource: str = Field(default="message.text", description="Context path read for the user turn.")
+    userInputText: str = Field(default="", description="Literal/templated user turn override; if non-empty, used instead of userInputSource.")
+    outputKey: str = Field(default="agent_output", description="Context key the final text is written to. Read as {{agent_output}}.")
+    maxIterations: int = Field(default=5, ge=1, le=10, description="Max tool-call loop iterations (hard cap 10).")
+    temperature: float | None = Field(default=None, description="Optional per-agent temperature override.")
+    maxTokens: int | None = Field(default=None, description="Optional per-agent response cap.")
+    returnMode: Literal["text", "json"] = Field(default="text", description="'text' returns plain string; 'json' also stores parsed JSON under outputKey_json.")
+    historyKey: str = Field(default="", description="Optional context key holding prior messages[] to seed the conversation.")
+    errorOutputKey: str = Field(default="agent_error", description="Context key for error string on failure. Branch on this with IfConditionNode.")
+
+
+class _AIProviderBase(_StrictData):
+    """Shared fields for all provider sub-nodes (accessory, attach to acc:ai_model)."""
+
+    apiKey: str = Field(default="", description="API key. May be {{env.OPENAI_KEY}}. Never logged.")
+    model: str = Field(default="", description="Model id. Leave empty to use node-type default.")
+    baseURL: str = Field(default="", description="Override endpoint URL. Leave empty for default.")
+    temperature: float = Field(default=0.7, description="Sampling temperature.")
+    maxTokens: int | None = Field(default=None, description="Max response tokens.")
+    extraHeaders: dict[str, str] = Field(default_factory=dict, description="Optional raw header map.")
+    extraParams: dict[str, Any] = Field(default_factory=dict, description="Provider-specific passthrough (e.g. top_p).")
+
+
+class AIOpenAIProviderData(_AIProviderBase):
+    """OpenAI provider. provider='openai', default model='gpt-4o-mini', baseURL='https://api.openai.com/v1'."""
+
+    provider: Literal["openai"] = "openai"
+
+
+class AIOllamaProviderData(_AIProviderBase):
+    """Ollama provider. provider='ollama', default model='llama3.1', baseURL='http://localhost:11434'."""
+
+    provider: Literal["ollama"] = "ollama"
+
+
+class AIGeminiProviderData(_AIProviderBase):
+    """Gemini provider. provider='gemini', default model='gemini-1.5-flash'."""
+
+    provider: Literal["gemini"] = "gemini"
+
+
+class AIAnthropicProviderData(_AIProviderBase):
+    """Anthropic provider. provider='anthropic', default model='claude-3-5-haiku-latest'."""
+
+    provider: Literal["anthropic"] = "anthropic"
+
+
+class _AIToolBase(_StrictData):
+    """Shared fields for all tool sub-nodes (accessory, attach to acc:ai_tool)."""
+
+    toolName: str = Field(default="", description="Function name given to the LLM (^[a-zA-Z0-9_]+$).")
+    description: str = Field(default="", description="Natural-language tool description for the LLM.")
+    parametersSchema: dict[str, Any] = Field(
+        default_factory=lambda: {"type": "object", "properties": {}, "required": []},
+        description="JSON-Schema {type:'object', properties, required} the LLM fills.",
+    )
+
+
+class AIHTTPToolData(_AIToolBase):
+    """HTTP request tool. tool='http_request'. urlTemplate/bodyTemplate templated with tool args."""
+
+    tool: Literal["http_request"] = "http_request"
+    method: str = Field(default="GET", description="HTTP method. '{{from_args}}' lets the LLM choose.")
+    urlTemplate: str = Field(default="", description="URL template. Supports tool args, e.g. https://api.x/{{id}}.")
+    headers: dict[str, str] = Field(default_factory=dict, description="Static request headers.")
+    bodyTemplate: str = Field(default="", description="Request body template.")
+    timeout: int = Field(default=30, ge=1, description="Request timeout in seconds.")
+
+
+class AIMongoToolData(_AIToolBase):
+    """MongoDB query tool. tool='mongo_query'. Read-only: find/find_one/count."""
+
+    tool: Literal["mongo_query"] = "mongo_query"
+    collection: str = Field(default="", description="MongoDB collection name.")
+    operation: Literal["find", "find_one", "count"] = Field(default="find", description="Read-only operation.")
+    filterTemplate: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Filter object. Values may reference tool args via {{arg}}.",
+    )
+    limit: int = Field(default=10, ge=1, description="Max documents returned (find only).")
+
+
+class AICustomCodeToolData(_AIToolBase):
+    """Custom JavaScript tool. tool='custom_code'. Goja sandbox; args + flow context available."""
+
+    tool: Literal["custom_code"] = "custom_code"
+    jsCode: str = Field(
+        default="// return value becomes the tool result",
+        description="JavaScript. return value (or exit(value)) is the tool result. args and flow context available.",
+    )
+
+
+# ═════════════════════════════════════════════════════════════════════════════
 # REGISTRY
 # ═════════════════════════════════════════════════════════════════════════════
 
@@ -461,6 +562,15 @@ NODE_DATA_MODELS: dict[str, type[_StrictData]] = {
     "AnswerInlineQueryNode": AnswerInlineQueryData,
     # subflow
     "SubFlowNode": SubFlowData,
+    # ai — agent node + providers + tools
+    "AIAgentNode": AIAgentData,
+    "AIOpenAIProviderNode": AIOpenAIProviderData,
+    "AIOllamaProviderNode": AIOllamaProviderData,
+    "AIGeminiProviderNode": AIGeminiProviderData,
+    "AIAnthropicProviderNode": AIAnthropicProviderData,
+    "AIHTTPToolNode": AIHTTPToolData,
+    "AIMongoToolNode": AIMongoToolData,
+    "AICustomCodeToolNode": AICustomCodeToolData,
 }
 
 
@@ -529,7 +639,7 @@ def render_summary_table() -> str:
             f"| `{type_name}` | **{req}** | {opt} |"
         )
     parts: list[str] = []
-    for cat in ("trigger", "send", "edit", "flow_control", "data", "integration", "interaction", "subflow"):
+    for cat in ("trigger", "send", "edit", "flow_control", "data", "integration", "interaction", "subflow", "ai"):
         if cat not in rows_by_cat:
             continue
         parts.append(f"\n### {cat}")
