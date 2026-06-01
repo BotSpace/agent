@@ -257,7 +257,12 @@ class BedrockClient(LLMClient):
         req = self._build_request(messages, options)
         t0 = time.monotonic()
         try:
-            response = await anyio.to_thread.run_sync(lambda: self._client.converse(**req))
+            # abandon_on_cancel=True: a /cancel (task.cancel) raises CancelledError
+            # at this await IMMEDIATELY instead of blocking until the boto thread
+            # (which may be mid throttle-retry) returns — so Stop is responsive.
+            response = await anyio.to_thread.run_sync(
+                lambda: self._client.converse(**req), abandon_on_cancel=True
+            )
         except ClientError as e:
             LLM_REQUESTS.labels(self.provider, options.model, "error").inc()
             LLM_REQUEST_DURATION.labels(self.provider, options.model).observe(time.monotonic() - t0)
@@ -300,7 +305,9 @@ class BedrockClient(LLMClient):
         req = self._build_request(messages, options)
         t0 = time.monotonic()
         try:
-            response = await anyio.to_thread.run_sync(lambda: self._client.converse_stream(**req))
+            response = await anyio.to_thread.run_sync(
+                lambda: self._client.converse_stream(**req), abandon_on_cancel=True
+            )
         except ClientError as e:
             LLM_REQUESTS.labels(self.provider, options.model, "error").inc()
             LLM_REQUEST_DURATION.labels(self.provider, options.model).observe(time.monotonic() - t0)
@@ -316,7 +323,9 @@ class BedrockClient(LLMClient):
 
         stream_iter = response["stream"]
         # boto3 EventStream is synchronous; iterate in a thread
-        events = await anyio.to_thread.run_sync(lambda: list(stream_iter))
+        events = await anyio.to_thread.run_sync(
+            lambda: list(stream_iter), abandon_on_cancel=True
+        )
         for event in events:
             if "messageStart" in event:
                 pass
