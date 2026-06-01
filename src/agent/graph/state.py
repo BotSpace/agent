@@ -39,6 +39,15 @@ class AgentState(TypedDict, total=False):
     pending_approval: dict[str, Any] | None
     pending_clarification: dict[str, Any] | None
 
+    approvals: Annotated[dict[str, bool], operator.or_]
+    """Consume-once approval flags keyed by a stable tool signature
+    (name + sorted arguments), NOT by tool_use id. Declared as a real channel
+    so it survives the interrupt/resume cycle on the Postgres checkpointer.
+    After the user approves, the model re-issues the call with a *new*
+    tool_use id, so an id-based key would never match — the signature does.
+    The flag is reset to False once consumed so a later identical call
+    re-gates and asks for approval again."""
+
     # ── budget snapshot (mirrors runtime.Budget) ────────────────────────
     budget: dict[str, Any] | None
 
