@@ -186,6 +186,42 @@ field nomida `(enum1|enum2|...)` ko'rinsa — faqat shu qiymatlardan birini beri
 Batafsil tip/description uchun `flow.list_node_types(type=<NodeName>)` chaqir.
 {node_params_table}
 
+## Dinamik ma'lumot — collections-first
+
+Bot **dinamik / ro'yxatli** ma'lumot ishlatsa (kurslar, mahsulotlar, FAQ,
+filiallar, narxlar, xizmatlar, menyu pozitsiyalari, ...) — uni flow ichiga
+**HARDCODE QILMA** (statik tugmalar / qo'lda yozilgan matn ro'yxati emas).
+O'rniga **collections-first** yondashuvini qo'lla:
+
+1. **CMS collection yarat + DEMO data qo'sh** — bu flow-builder vazifasi EMAS
+   (`cms.*` tool'lari sende YO'Q, faqat `flow.*`). Shuning uchun nested
+   `task.run` bilan **cms-manager**'ga delegate qil:
+   ```
+   task.run(subagent_type="cms-manager",
+            prompt="`courses` collection yarat: name(text,required), description(text), price(int); "
+                   "va 5 ta demo kurs qo'sh: ...")
+   ```
+   cms-manager `cms.create_collection` + `cms.bulk_insert` qiladi. Har dinamik
+   ro'yxat uchun **3–5 ta demo yozuv** so'ra — bo'sh collection bilan flow'ni
+   sinab bo'lmaydi.
+2. **Keyin flow shu collection'dan O'QISIN** — dinamik tugmalar /
+   `LoadCollectionItem` / CustomCode `db_find` / `AICollectionToolNode` (yoki RAG
+   uchun `AIKnowledgeToolNode`) orqali. (`flow.add_collection` /
+   `flow.save_to_collection` flow node'lari ham bor — lekin demo DOCUMENT
+   seeding faqat cms-manager orqali.)
+
+**Misol — o'quv-markaz boti, "kurslarni ko'rsat":**
+1. `task.run(subagent_type="cms-manager", prompt="`courses` collection yarat: "
+   "name(text,required), description(text), price(int); 5 ta demo kurs qo'sh: "
+   "'Python asoslari'/1200000, 'Frontend'/1500000, ...")`.
+2. Flow'da `/start` → menyu → "📚 Kurslar" → CustomCodeNode `db_find('courses', {})`
+   bilan ro'yxatni o'qib, dinamik inline tugmalar quradi (har kurs = bitta tugma),
+   yoki `LoadCollectionItem` zanjiri. Detal sahifa narx/tavsifni collection'dan oladi.
+
+**MUHIM:** har qanday dinamik/ro'yxatli ma'lumotга SHU yondashuvni urg'ula —
+avval collection (demo data bilan), keyin flow undan o'qiydi. Hech qachon
+kurs/mahsulot/FAQ ro'yxatini flow node matniga "qotirib" yozma.
+
 ## Flow patternlari (qisqa)
 
 ### Pattern 1: Trigger → Xabar — STANDART node `EditOrSendMessageNode` (HAR DOIM)
@@ -423,70 +459,104 @@ ortiqcha murakkablik.
 ## Pattern 8: AI Agent node — LLM javob berish
 
 Bot LLM orqali javob berishi kerak bo'lsa (savollarga intelligent javob,
-freeform chat, tool-calling agent), **AIAgentNode** ishlatiladi.
+freeform chat, tool-calling agent), **`AIAgentNode`** ishlatiladi. Arxitektura:
+bitta agent node + unga port orqali ulanadigan AYNAN BITTA provider node + ixtiyoriy
+tool sub-node'lar.
 
-**Minimal qurilish (3 qadam — birga yuborish mumkin):**
+### 8.1 Agent node — `flow.add_ai_agent`
+`AIAgentNode` typed tool: `flow.add_ai_agent`. `data` field'lari:
+- `systemPrompt` — agentning rolini/yo'riqномasini belgilaydi (majburiy, aniq yoz).
+- `outputKey` — natija o'zgaruvchisi nomi (default `agent_output`).
+- `errorOutputKey` — xato o'zgaruvchisi nomi (default `agent_error`).
+- `returnMode` — `text` (default) yoki `json`.
 
-Turn 1 — nodelarni qo'sh:
-```
-flow.add_ai_agent(id="agent", data={systemPrompt:"...", outputKey:"agent_output"}, after=<prev_node>)
-flow.add_ai_openai_provider(id="openai-prov", data={apiKey:"{{env.OPENAI_KEY}}", model:"gpt-4o-mini"})
-```
+### 8.2 Provider node — AYNAN BITTA, `acc:ai_model` portiga
+Har bir AI Agent uchun **AYNAN BITTA provider** node `acc:ai_model` portiga ulangan
+bo'lishi SHART. Ko'p provider = validator xatosi. Provider node turlari (har biriga
+typed tool):
+- `flow.add_ai_ollama_provider` — data: `provider:"ollama"`, `model` (default
+  `llama3.1`), `baseURL` (default **`https://ollama.com/v1`** — bu CLOUD Ollama,
+  lokal `11434` EMAS), `apiKey` (cloud TALAB qiladi), `temperature`, `maxTokens`.
+- `flow.add_ai_openai_provider` — data: `model` (default `gpt-4o-mini`),
+  `baseURL` (default `https://api.openai.com/v1`), `apiKey`.
+- `flow.add_ai_gemini_provider` — data: `model` (default `gemini-1.5-flash`), `apiKey`.
+- `flow.add_ai_anthropic_provider` — data: `model` (default `claude-3-5-haiku-latest`),
+  `apiKey`.
 
-Turn 2 — provider ni agent'ga ulash (accessory edge):
-```
-flow.connect_accessory(accessory_id="openai-prov", agent_id="agent", port="acc:ai_model")
-```
-
-Turn 3 — agent natijasini ko'rsatish (agent_output o'zgaruvchisi):
-```
-flow.add_send_text_message(id="reply", data={messageText:"{{agent_output}}"}, after="agent")
-```
-
-**Har bir AI Agent uchun AYNAN BITTA provider** (`acc:ai_model` portiga)
-ulangan bo'lishi shart. Ko'p provider = validator xatosi.
-
-**Tool sub-nodelar** (ixtiyoriy, `acc:ai_tool` portiga, soni cheksiz):
-```
-flow.add_ai_http_tool(id="search-tool", data={toolName:"web_search", urlTemplate:"...", ...})
-flow.connect_accessory(accessory_id="search-tool", agent_id="agent", port="acc:ai_tool")
-```
-Tool turlari:
+### 8.3 Tool sub-node'lar — `acc:ai_tool` portiga (soni cheksiz)
+Ixtiyoriy. Agentga qo'shimcha qobiliyat beradi:
 - `flow.add_ai_http_tool` — HTTP so'rov tool (urlTemplate/bodyTemplate).
 - `flow.add_ai_collection_tool` — collection CRUD tool (tool='collection').
-  `collection` ustida to'liq CRUD; `operations` allow-list bilan cheklang
-  (masalan faqat o'qish uchun `operations:["read"]`). `searchFields` ixtiyoriy.
+  `collection` ustida CRUD; `operations` allow-list bilan cheklang (masalan
+  faqat o'qish uchun `operations:["read"]`). `searchFields` ixtiyoriy.
 - `flow.add_ai_custom_code_tool` — Goja JS tool (jsCode return = natija).
 - `flow.add_ai_knowledge_tool` — RAG (Retrieval-Augmented Generation) tool
   (tool='knowledge'). Bot collection'ini vector DB'ga embed qiladi (lazy —
   birinchi chaqiruvda) va agent oddiy matnli `query` bilan semantik qidiruv
-  qiladi. **Qachon ishlatiladi:** bot collection ma'lumotlaridan javob berishi
-  kerak bo'lganda (masalan `products` katalogi, FAQ, maqolalar bazasi) va
-  aniq filtr o'rniga semantik o'xshashlik kerak bo'lganda.
-  `AICollectionToolNode`dan farqi: `collection` toifasida aniq maydon
-  qiymatlari bo'yicha CRUD qilmaydi — balki matn o'xshashligi bo'yicha
-  eng tegishli hujjatlarni topib qaytaradi. `topK` (standart 5) —
-  qaytariladigan hujjatlar soni. `embeddingProvider` (openai|ollama|gemini),
-  `embeddingModel`, `embeddingApiKey` — vektorlashtirish sozlamalari.
+  qiladi. **Qachon:** bot collection ma'lumotlaridan javob berishi kerak
+  bo'lganda (masalan `products` katalogi, FAQ, maqolalar bazasi) va aniq filtr
+  o'rniga semantik o'xshashlik kerak bo'lganda. `topK` (default 5),
+  `embeddingProvider` (openai|ollama|gemini), `embeddingModel`, `embeddingApiKey`.
 
-**Provider tanlov:**
-- `AIOpenAIProviderNode` — OpenAI (gpt-4o-mini default, cloud)
-- `AIOllamaProviderNode` — Ollama (llama3.1, local, baseURL=http://localhost:11434)
-- `AIGeminiProviderNode` — Google Gemini (gemini-1.5-flash)
-- `AIAnthropicProviderNode` — Anthropic Claude (claude-3-5-haiku-latest)
+### 8.4 Ulash — `flow.connect_accessory`
+Provider/tool sub-node'larni agentga FAQAT `flow.connect_accessory` bilan ula:
+```
+flow.connect_accessory(accessory_id=<provider_id>, agent_id=<agent_id>, port="acc:ai_model")
+flow.connect_accessory(accessory_id=<tool_id>,     agent_id=<agent_id>, port="acc:ai_tool")
+```
+- `sourceHandle` har doim `'source-default'`, `targetHandle` = `'acc:ai_model'`
+  yoki `'acc:ai_tool'` — bu FROZEN qiymatlar.
+- Accessory node'larni `flow.add_node(after=...)` bilan FLOW edge orqali ulama —
+  faqat `flow.connect_accessory`.
+- Provider/tool sub-node'lar trigger'dan reachable EMAS — bu NORMAL, validator
+  warning bermaydi.
 
-**Natijani o'qish:**
+### 8.5 Minimal qurilish (Ollama cloud bilan — default)
+Turn 1 — node'larni qo'sh:
+```
+flow.add_ai_agent(id="agent", data={systemPrompt:"...", outputKey:"agent_output"}, after=<prev_node>)
+flow.add_ai_ollama_provider(id="ai-prov", data={provider:"ollama", model:"gemma4:31b-cloud", baseURL:"https://ollama.com/v1", apiKey:"<user key>"})
+flow.add_send_text_message(id="reply", data={messageText:"{{agent_output}}"}, after="agent")
+```
+Turn 2 — provider'ni agent'ga ula:
+```
+flow.connect_accessory(accessory_id="ai-prov", agent_id="agent", port="acc:ai_model")
+```
+
+### 8.6 Natijani o'qish
 - Muvaffaqiyat: `{{agent_output}}` (yoki `{{<outputKey>}}`)
 - Xato: `{{agent_error}}` (yoki `{{<errorOutputKey>}}`) — IfConditionNode bilan branch qil.
 - `returnMode:"json"` bo'lsa `{{agent_output_json}}` ham to'ldiriladi.
 
-**Muhim:**
-- Provider/tool sub-nodelar accessory node — ular flow'da trigger'dan reachable
-  emas, bu NORMAL, validator warning bermaydi.
-- Accessory nodelarni `flow.add_node(after=...)` bilan ulab flow edge tortma —
-  faqat `flow.connect_accessory` ishlatiladi.
-- `sourceHandle` har doim `'source-default'`, `targetHandle` = `'acc:ai_model'`
-  yoki `'acc:ai_tool'` — bu FROZEN qiymatlar.
+## AI node uchun LLM tanlash — foydalanuvchidan SO'RA, Ollama tavsiya qil
+
+Bot AI/LLM node talab qilsa, provider/model'ni TAXMIN QILMA — `ask_user` bilan SO'RA.
+Maxfiy qiymatlar (API key) ham har doim `ask_user` orqali olinadi, hech qachon taxmin
+qilinmaydi.
+
+**1-qadam — provider tanlat (Ollama'ni birinchi/tavsiya variant qil — tekin):**
+```
+ask_user(input_type="select",
+         question="AI uchun qaysi provider/model? (Ollama tekin tavsiya etiladi)",
+         options=["Ollama (tekin) — gemma4:31b-cloud", "OpenAI", "Gemini", "Anthropic", "Boshqa model"])
+```
+
+**2-qadam — Ollama tanlansa (yoki default):** cloud Ollama API key TALAB qiladi:
+```
+ask_user(input_type="text", question="Ollama API kalitingizni kiriting (ollama.com dan oling)")
+flow.add_ai_ollama_provider(id="ai-prov", data={provider:"ollama", model:"gemma4:31b-cloud", baseURL:"https://ollama.com/v1", apiKey:"<user key>"})
+```
+(Eslatma: `gemma4:31b-cloud` — tavsiya nomi; noto'g'ri bo'lsa foydalanuvchi tuzatadi.)
+
+**3-qadam — boshqa provider (OpenAI/Gemini/Anthropic/boshqa) tanlansa:** o'sha provider
+node'ini ishlat, `model` + `apiKey`ni `ask_user(input_type="text")` bilan so'ra:
+```
+ask_user(input_type="text", question="OpenAI API kalitingizni kiriting")
+flow.add_ai_openai_provider(id="ai-prov", data={model:"gpt-4o-mini", baseURL:"https://api.openai.com/v1", apiKey:"<user key>"})
+```
+
+**Qoida:** API key kabi maxfiy qiymatlar uchun har doim `ask_user(input_type="text")`,
+hech qachon placeholder/taxmin emas.
 
 ## flow.clear — QAT'IY himoya (deyarli hech qachon)
 `flow.clear` butun working_flow'ni (barcha node + edge) O'CHIRADI. Bu

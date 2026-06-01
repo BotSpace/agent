@@ -53,6 +53,46 @@ def test_flow_builder_prompt_template_first_is_conditional_on_empty_flow():
     assert "`flow.clear` QILMA" in prompt
 
 
+def test_flow_builder_prompt_teaches_collections_first():
+    """Dynamic/list data must go through a CMS collection (seeded by cms-manager
+    via nested task.run), never hardcoded into the flow."""
+    prompt = REGISTRY["flow-builder"].system_prompt
+    assert "collections-first" in prompt
+    assert "Dinamik ma'lumot" in prompt
+    # Demo seeding is delegated to cms-manager (flow-builder has no cms.* tools).
+    assert "cms-manager" in prompt
+    assert "cms.bulk_insert" in prompt
+    assert 'subagent_type="cms-manager"' in prompt
+
+
+def test_flow_builder_prompt_ai_provider_ollama_is_cloud():
+    """Pattern 8 rewrite: Ollama default baseURL must be the CLOUD endpoint
+    (https://ollama.com/v1) requiring an apiKey — NOT local 11434."""
+    prompt = REGISTRY["flow-builder"].system_prompt
+    assert "flow.add_ai_ollama_provider" in prompt
+    assert "https://ollama.com/v1" in prompt
+    # The wrong local endpoint must not be presented as a baseURL/default.
+    assert "localhost:11434" not in prompt
+    assert "http://localhost" not in prompt
+    # All four provider typed tools are documented.
+    for tool in ("flow.add_ai_openai_provider", "flow.add_ai_gemini_provider",
+                 "flow.add_ai_anthropic_provider"):
+        assert tool in prompt
+    # connect_accessory ports are taught.
+    assert "acc:ai_model" in prompt
+    assert "acc:ai_tool" in prompt
+
+
+def test_flow_builder_prompt_asks_user_for_llm_choice():
+    """LLM provider/model and API keys must be asked via ask_user, with Ollama
+    recommended as the free default — never assumed."""
+    prompt = REGISTRY["flow-builder"].system_prompt
+    assert "ask_user" in prompt
+    assert "tekin tavsiya" in prompt
+    # API keys come from ask_user(input_type="text"), not placeholders.
+    assert 'input_type="text"' in prompt
+
+
 def test_flow_builder_spec_has_no_dead_budget_fields():
     spec = REGISTRY["flow-builder"]
     # Fix B: the dead metadata fields were removed (never enforced anywhere).
