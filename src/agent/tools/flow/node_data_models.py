@@ -330,10 +330,11 @@ class HTTPRequestData(_StrictData):
 
 
 class CustomCodeData(_StrictData):
-    code: str = Field(
+    jsCode: str = Field(
         description=(
-            "JavaScript executed by Goja VM. See prompt Pattern 7 for the full "
-            "runtime API (send_*, db_*, http_*, exit, set_context, ...)."
+            "JavaScript executed by Goja VM. Stored under data.jsCode — this exact "
+            "key is read by the engine and rendered by the constructor UI. See prompt "
+            "Pattern 7 for the full runtime API (send_*, db_*, http_*, exit, set_context, ...)."
         )
     )
     outputs: list[dict[str, str]] | None = Field(

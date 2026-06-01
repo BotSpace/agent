@@ -379,11 +379,12 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         type="CustomCodeNode",
         category="integration",
         description=(
-            "JavaScript kod ishga tushirish (Goja VM). MongoDB/HTTP async API mavjud. "
+            "JavaScript kod ishga tushirish (Goja VM). Kod data.jsCode da saqlanadi "
+            "(engine va UI shu kalitni o'qiydi). MongoDB/HTTP async API mavjud. "
             "data.outputs=[{name}] e'lon qilinsa, exit('name') bilan `output-{name}` "
             "source handle orqali tarmoqlanadi."
         ),
-        required_data=["code"],
+        required_data=["jsCode"],
         optional_data=["outputs"],
     ),
     "SendToAdminNode": NodeTypeSpec(
