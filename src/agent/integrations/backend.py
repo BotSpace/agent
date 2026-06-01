@@ -606,6 +606,17 @@ class BackendClient:
         d = await self._request("GET", f"/api/relase/{release_id}/", **_auth_kw(auth_claims))
         return _unwrap_item(d)
 
+    async def start_debug(
+        self, project_id: str | int, *, auth_claims: dict | None = None
+    ) -> dict[str, Any]:
+        """Start (or refresh) the project's DEBUG container — no bot token needed,
+        auto-expires (~30 min) via the backend's cleanup task. Same endpoint the
+        constructor's 'Debug Run' uses: GET /api/project/{id}/debug/."""
+        d = await self._request(
+            "GET", f"/api/project/{project_id}/debug/", **_auth_kw(auth_claims)
+        )
+        return _unwrap_item(d) if isinstance(d, dict) else {}
+
     async def get_release_logs(
         self,
         release_id: str | int,
