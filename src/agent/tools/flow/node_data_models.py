@@ -503,6 +503,36 @@ class AICustomCodeToolData(_AIToolBase):
     )
 
 
+class AIKnowledgeToolData(_StrictData):
+    """RAG knowledge retrieval tool. tool='knowledge'.
+
+    Embeds the bot collection into a vector DB (lazy, on first call) and lets the
+    agent retrieve semantically relevant documents by passing a plain-text `query`.
+    CROSS-STREAM CONTRACT with constructor + engine (AIKnowledgeToolNode) — keep keys exact.
+    """
+
+    tool: Literal["knowledge"] = "knowledge"
+    toolName: str = Field(default="knowledge", description="Function name given to the LLM (^[a-zA-Z0-9_]+$).")
+    collection: str = Field(description="Bot collection to index and search over.")
+    textFields: list[str] | None = Field(
+        default=None,
+        description="Collection fields to embed as text. None = all string fields.",
+    )
+    embeddingProvider: str = Field(
+        default="openai",
+        description="Embedding provider: openai | ollama | gemini.",
+    )
+    embeddingModel: str = Field(
+        default="text-embedding-3-small",
+        description="Embedding model id for the chosen provider.",
+    )
+    embeddingApiKey: str = Field(default="", description="API key for the embedding provider. May be {{env.KEY}}.")
+    embeddingBaseURL: str = Field(default="", description="Override endpoint URL for the embedding provider.")
+    vectorDbUrl: str = Field(default="", description="Vector DB connection URL (e.g. qdrant/weaviate). Empty = built-in.")
+    vectorDbApiKey: str = Field(default="", description="API key for the external vector DB.")
+    topK: int = Field(default=5, ge=1, description="Number of top documents to return per query.")
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # REGISTRY
 # ═════════════════════════════════════════════════════════════════════════════
@@ -580,6 +610,7 @@ NODE_DATA_MODELS: dict[str, type[_StrictData]] = {
     "AIHTTPToolNode": AIHTTPToolData,
     "AICollectionToolNode": AICollectionToolData,
     "AICustomCodeToolNode": AICustomCodeToolData,
+    "AIKnowledgeToolNode": AIKnowledgeToolData,
 }
 
 

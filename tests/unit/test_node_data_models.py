@@ -155,3 +155,63 @@ def test_render_summary_table_mentions_all_categories():
     # Spot-check: required field shown
     assert "messageText" in table
     assert "command" in table
+
+
+# ── AIKnowledgeToolNode tests ─────────────────────────────────────────────────
+
+
+def test_knowledge_tool_data_defaults():
+    """AIKnowledgeToolNode mirrors the engine/constructor AIKnowledgeToolData contract."""
+    from agent.tools.flow.node_data_models import AIKnowledgeToolData
+
+    inst = AIKnowledgeToolData.model_validate({"collection": "products"})
+    dumped = inst.model_dump()
+    assert dumped["tool"] == "knowledge"
+    assert dumped["toolName"] == "knowledge"
+    assert dumped["collection"] == "products"
+    assert dumped["textFields"] is None
+    assert dumped["embeddingProvider"] == "openai"
+    assert dumped["embeddingModel"] == "text-embedding-3-small"
+    assert dumped["embeddingApiKey"] == ""
+    assert dumped["embeddingBaseURL"] == ""
+    assert dumped["vectorDbUrl"] == ""
+    assert dumped["vectorDbApiKey"] == ""
+    assert dumped["topK"] == 5
+
+
+def test_knowledge_tool_data_custom_fields():
+    from agent.tools.flow.node_data_models import AIKnowledgeToolData
+
+    inst = AIKnowledgeToolData.model_validate(
+        {
+            "collection": "articles",
+            "textFields": ["title", "body"],
+            "embeddingProvider": "ollama",
+            "embeddingModel": "nomic-embed-text",
+            "topK": 10,
+        }
+    )
+    dumped = inst.model_dump()
+    assert dumped["textFields"] == ["title", "body"]
+    assert dumped["embeddingProvider"] == "ollama"
+    assert dumped["embeddingModel"] == "nomic-embed-text"
+    assert dumped["topK"] == 10
+
+
+def test_knowledge_tool_data_forbids_extra_fields():
+    from agent.tools.flow.node_data_models import AIKnowledgeToolData
+
+    with pytest.raises(Exception):
+        AIKnowledgeToolData.model_validate({"collection": "x", "unknown_key": "y"})
+
+
+def test_knowledge_tool_data_requires_collection():
+    from agent.tools.flow.node_data_models import AIKnowledgeToolData
+
+    with pytest.raises(Exception):
+        AIKnowledgeToolData.model_validate({})
+
+
+def test_knowledge_tool_node_in_registry():
+    assert "AIKnowledgeToolNode" in NODE_DATA_MODELS
+    assert "AIKnowledgeToolNode" in NODE_TYPES
