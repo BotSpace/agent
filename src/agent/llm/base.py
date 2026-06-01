@@ -69,6 +69,16 @@ class Message:
         return cls(role="system", content=[TextPart(text=text)])
 
     @classmethod
+    def system_parts(cls, static: str, dynamic: str) -> "Message":
+        """Two-block system message: cached static prefix + uncached dynamic suffix.
+
+        The static block carries the cache_control breakpoint (set by the LLM
+        client).  The dynamic block appears AFTER it so it is NOT included in
+        the cached prefix — it changes every request.
+        """
+        return cls(role="system", content=[TextPart(text=static), TextPart(text=dynamic)])
+
+    @classmethod
     def tool_result(cls, tool_use_id: str, content: str, is_error: bool = False) -> "Message":
         return cls(
             role="tool",

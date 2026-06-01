@@ -602,3 +602,46 @@ def summary_for_llm() -> str:
             req = ", ".join(spec.required_data) if spec.required_data else "—"
             lines.append(f"  {spec.type}: {spec.description}  required: {req}")
     return "\n".join(lines)
+
+
+# Stable category order — must not change between calls (byte-identical output).
+_CATEGORY_ORDER = ("trigger", "send", "edit", "flow_control", "data", "integration", "interaction", "subflow", "ai")
+
+
+def render_compact_catalog() -> str:
+    """Deterministic, compact node-type catalog for the cached system-prompt prefix.
+
+    Lists every node type with: type, category, 1-line description, is_trigger flag,
+    and a short source_handles summary.  NO full per-type field schemas (those stay
+    in the flow.list_node_types tool).
+
+    Ordering is fixed (category order then insertion order within each category).
+    No timestamps, no random or locale-dependent content — output is byte-identical
+    across calls.
+    """
+    # Group by category in stable insertion order.
+    buckets: dict[str, list[NodeTypeSpec]] = {cat: [] for cat in _CATEGORY_ORDER}
+    for spec in NODE_TYPES.values():
+        if spec.category in buckets:
+            buckets[spec.category].append(spec)
+
+    lines: list[str] = ["## Node tiplari kataloqi\n"]
+    for cat in _CATEGORY_ORDER:
+        items = buckets[cat]
+        if not items:
+            continue
+        lines.append(f"### {cat.upper()}\n")
+        for spec in items:
+            trigger_flag = " [trigger]" if spec.is_trigger else ""
+            accessory_flag = " [accessory]" if spec.is_accessory else ""
+            handles = spec.source_handles
+            if len(handles) == 1 and handles[0] == "source-handler":
+                handles_str = ""
+            else:
+                handles_str = f"  handles: {', '.join(handles)}"
+            lines.append(
+                f"- **{spec.type}**{trigger_flag}{accessory_flag} "
+                f"[{spec.category}]{handles_str}\n"
+                f"  {spec.description}\n"
+            )
+    return "".join(lines)
