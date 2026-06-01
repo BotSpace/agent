@@ -50,6 +50,20 @@ async def list_threads(
     return ThreadListResponse(threads=[ThreadSummary(**t) for t in threads])
 
 
+@router.delete("")
+async def delete_all_threads(
+    project_id: str,
+    user: CurrentUser = Depends(get_current_user),
+    store: RunStore = Depends(get_store),
+) -> dict[str, int]:
+    """Delete ALL of the caller's threads for this project (the 'Clear all
+    chats' button). Scoped to project_id + user_id."""
+    deleted = await store.delete_all_threads(
+        project_id=project_id, user_id=user.user_id
+    )
+    return {"deleted": deleted}
+
+
 @router.get("/{thread_id}", response_model=ThreadTurnsResponse)
 async def get_thread(
     project_id: str,
