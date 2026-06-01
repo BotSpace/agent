@@ -30,12 +30,14 @@ token portlashidan himoya).
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import logging
 import traceback
 import uuid
 from typing import Any
 
+from langgraph.types import Command
 from pydantic import BaseModel, Field
 
 from ...prompts.subagent_specs import REGISTRY, list_subagents, tool_allowed
@@ -304,6 +306,73 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
                 base["auth_claims"] = auth_claims  # type: ignore[typeddict-unknown-key]
 
         result = await graph.ainvoke(base, config=invoke_config)
+
+        # ── sub-graph interrupt RESUME loop ─────────────────────────────
+        # A sub-agent may itself hit an interrupt (ask_user → clarify,
+        # flow.clear/always_approve → approval). The main worker's resume loop
+        # only drives the MAIN graph, so historically a sub-graph interrupt was
+        # bubbled up as a text note and the MAIN run never registered a pending
+        # approval → approve_run returned HTTP 409. Instead, drive the SAME
+        # interactive loop the worker uses, but resume the SUB-graph in place:
+        #   1. register pending_* on the MAIN request_id (what the dashboard
+        #      POSTs approve/clarify to);
+        #   2. emit approval_required/clarification_required (already wrapped
+        #      with sub_agent_id/session via _wrap_emit);
+        #   3. await the per-request resolution future;
+        #   4. clear pending + emit *_resolved;
+        #   5. Command(resume=answer) → continue the sub-graph (checkpointer
+        #      persists its state). Loop until no more interrupts.
+        # Requires the worker-provided store + MAIN request_id + a running loop.
+        # When unavailable (e.g. dev/test without the worker), we leave the
+        # interrupt on `result` and fall through to the legacy bubbling path.
+        store = services.get("store")
+        main_request_id = services.get("request_id") or ctx.run_id
+        if store is not None and main_request_id:
+            from ...runtime.worker import _wait_resolution
+
+            try:
+                rloop = asyncio.get_running_loop()
+            except RuntimeError:
+                rloop = None
+            while result.get("__interrupt__") and rloop is not None:
+                iobj = result["__interrupt__"][0]
+                ipayload = getattr(iobj, "value", iobj)
+                if not isinstance(ipayload, dict):
+                    ipayload = {"question": str(ipayload)}
+                ikind = ipayload.get("kind", "clarify")
+                if ikind == "approval":
+                    await store.set_pending_approval(main_request_id, ipayload)
+                    await _wrap_emit("approval_required", ipayload)
+                else:
+                    await store.set_pending_clarification(main_request_id, ipayload)
+                    await _wrap_emit("clarification_required", ipayload)
+
+                answer = await _wait_resolution(main_request_id, rloop)
+
+                if ikind == "approval":
+                    await store.set_pending_approval(main_request_id, None)
+                    await _wrap_emit(
+                        "approval_resolved",
+                        {
+                            "tool_call_id": ipayload.get("tool_call_id"),
+                            "approved": bool(answer.get("approved"))
+                            if isinstance(answer, dict)
+                            else bool(answer),
+                        },
+                    )
+                else:
+                    await store.set_pending_clarification(main_request_id, None)
+                    await _wrap_emit(
+                        "clarification_resolved",
+                        {
+                            "tool_call_id": ipayload.get("tool_call_id"),
+                            "answer": str(answer),
+                        },
+                    )
+
+                result = await graph.ainvoke(
+                    Command(resume=answer), config=invoke_config
+                )
     except Exception as e:  # noqa: BLE001
         # To'liq traceback'ni log'ga yozamiz — UI'ga faqat qisqa xulosa boradi,
         # lekin debug uchun stack pod log'larida bo'lishi shart.
@@ -331,14 +400,15 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
             data={"subagent": spec.name, "sub_agent_id": sub_id, "session_id": session_id},
         )
 
-    # ── sub-graph interrupt bubbling ────────────────────────────────────
-    # A sub-agent may hit an interrupt (ask_user → clarify, flow.clear →
-    # approval). The worker's resume loop only drives the MAIN graph, so a
-    # sub-graph interrupt cannot be resumed here. Instead of dead-ending as a
-    # silent "no final answer" failure, surface the pending question/approval
-    # back to the MAIN agent so the DISPATCHER can ask the user (its own
-    # `ask_user` works end-to-end) or get approval, then re-issue task.run with
-    # the SAME session_id — the sub-agent resumes from its checkpoint.
+    # ── sub-graph interrupt bubbling (FALLBACK only) ────────────────────
+    # The resume loop above drives sub-graph interrupts interactively when the
+    # worker-provided store + MAIN request_id + a running loop are present
+    # (production path). This block is now only reached in the degraded case
+    # where those are unavailable (e.g. dev/test without the worker). It then
+    # surfaces the pending question/approval back to the MAIN agent so the
+    # DISPATCHER can ask the user (its own `ask_user` works end-to-end) or get
+    # approval, then re-issue task.run with the SAME session_id — the sub-agent
+    # resumes from its checkpoint.
     sub_interrupt = result.get("__interrupt__")
     if sub_interrupt:
         iobj = sub_interrupt[0]

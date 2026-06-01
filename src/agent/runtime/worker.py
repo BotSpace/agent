@@ -108,6 +108,14 @@ async def run_agent(
         # threads persist on the same Postgres saver and can resume across turns.
         # task.run must NOT close this — the worker owns its lifecycle (finally).
         cfg.services["checkpointer"] = checkpointer
+        # Sub-agents (task.run) need the run store + the MAIN request_id so they
+        # can drive their OWN interrupt-resume loop: a sub-graph approval /
+        # clarify interrupt is registered against the SAME request_id the
+        # dashboard POSTs approve/clarify to (see api/routes/runs.py), then
+        # resolved via submit_resolution. Without this the sub-agent's interrupt
+        # was dead-ended → approve_run saw pending_approval is None → HTTP 409.
+        cfg.services["store"] = store
+        cfg.services["request_id"] = request_id
         graph = build_graph(cfg, checkpointer=checkpointer)
 
         state = initial_state(
