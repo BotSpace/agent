@@ -175,3 +175,40 @@ def test_training_center_form_flow_is_valid():
     result = validate(flow)
 
     assert result.ok, result.render()
+
+
+def test_editorsend_supports_button_edges_directly():
+    # EditOrSendMessageNode supports button-edges just like SendTextMessageNode;
+    # the engine resolves "target-handler-{nodeId}-{text}" edges type-agnostically
+    # (controller.go pause list includes EditOrSendMessageNode). Before the fix
+    # the matching edge was wrongly flagged as unsupported_source_handle.
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="t", type="CommandTriggerNode", data={"command": "/start"}),
+            FlowNode(
+                id="menu",
+                type="EditOrSendMessageNode",
+                data={
+                    "messageText": "Kurs tanlang",
+                    "keyboard": {
+                        "active": "reply",
+                        "reply": [[{"id": "math", "text": "Matematika", "type": "reply"}]],
+                    },
+                },
+            ),
+            FlowNode(id="math", type="SendTextMessageNode", data={"messageText": "Matematika"}),
+        ],
+        edges=[
+            FlowEdge(id="e1", source="t", target="menu"),
+            FlowEdge(
+                id="e2",
+                source="menu",
+                target="math",
+                sourceHandle="target-handler-menu-Matematika",
+            ),
+        ],
+    )
+
+    result = validate(flow)
+
+    assert result.ok, result.render()
