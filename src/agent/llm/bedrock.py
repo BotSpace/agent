@@ -12,6 +12,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import boto3
+from botocore.config import Config as BotoConfig
 from botocore.exceptions import ClientError
 
 from ..observability.metrics import (
@@ -97,7 +98,21 @@ class BedrockClient(LLMClient):
             aws_secret_access_key=secret_access_key or None,
             region_name=region,
         )
-        self._client = session.client("bedrock-runtime")
+        # Bedrock on-demand Converse is rate-limited (RPM/TPM). The agent fans
+        # out across many sub-agent calls, which bursts into ThrottlingException
+        # ("Too many requests") and crashes the sub-agent. `adaptive` retry mode
+        # adds a client-side rate-limiter + exponential backoff with jitter, so
+        # bursts are smoothed out instead of failing. Note: this rides out
+        # transient/burst throttling, NOT a hard account quota ceiling — for
+        # sustained throttling, request a Bedrock quota increase for the model.
+        self._client = session.client(
+            "bedrock-runtime",
+            config=BotoConfig(
+                retries={"max_attempts": 10, "mode": "adaptive"},
+                connect_timeout=10,
+                read_timeout=120,
+            ),
+        )
         self._region = region
 
     # ── conversion ─────────────────────────────────────────────────────
