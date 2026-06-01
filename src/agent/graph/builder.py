@@ -27,6 +27,7 @@ except ImportError:  # pragma: no cover
 
 from ..llm import GenerateOptions, LLMClient, Message, ModelRoles, TextPart
 from ..prompts import build_system_message
+from ..prompts.system import build_dynamic_context_message
 from ..tools import ToolContext, ToolRegistry, has_incomplete_plan
 from .state import AgentState
 
@@ -111,9 +112,13 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
     # ── nodes ───────────────────────────────────────────────────────────
 
     async def llm_call(state: AgentState) -> dict[str, Any]:
+        # Static-only system message (cached prefix: CORE_IDENTITY + catalog).
         system = build_system_message(state)
         history = state.get("messages") or []
         history = _trim_history(history, max_chars=cfg.max_history_chars)
+        # Dynamic context injected as a TRAILING user message so it sits after
+        # the conversation history and never invalidates the rolling cache.
+        dynamic_ctx = build_dynamic_context_message(state)
         model = _pick_model(state, cfg.models)
         options = GenerateOptions(
             model=model,
@@ -122,7 +127,7 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
             tools=cfg.registry.specs(),
             thinking_budget=cfg.thinking_budget,
         )
-        result = await cfg.llm.generate([system, *history], options)
+        result = await cfg.llm.generate([system, *history, dynamic_ctx], options)
         await _emit(
             cfg.emit,
             "assistant_message",

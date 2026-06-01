@@ -3,9 +3,9 @@
 Verifies:
 1. render_compact_catalog() is deterministic and contains all node types.
 2. STATIC_SYSTEM_BLOCK does NOT contain per-type field-schema dumps.
-3. build_system_message() places cache_control on the STATIC block (index 0)
-   in both the Anthropic and OpenAI (OpenRouter) client paths.
-4. The dynamic flow-state text is NOT inside the cached block.
+3. build_system_message() returns a SINGLE-BLOCK static-only system message.
+   cache_control is placed on that block in both the Anthropic and OpenAI paths.
+4. The dynamic flow-state context appears as a TRAILING USER message (not in system).
 5. Token size estimate for the static block is in the expected range.
 """
 
@@ -18,6 +18,7 @@ from agent.llm.openai import OpenAIClient
 from agent.prompts.system import (
     STATIC_SYSTEM_BLOCK,
     build_dynamic_block,
+    build_dynamic_context_message,
     build_system_message,
 )
 
@@ -82,98 +83,154 @@ def test_static_block_no_dynamic_content():
     assert "saqlanmagan flow" not in STATIC_SYSTEM_BLOCK
 
 
-# ── 3a. build_system_message → Anthropic path cache_control placement ────────
+# ── 3a. build_system_message → single static block ───────────────────────────
+
+
+def test_build_system_message_is_single_static_block():
+    """build_system_message must return a SINGLE-BLOCK static-only system message.
+
+    The dynamic context has been moved to a trailing user message.
+    Passing state must not leak into the system message.
+    """
+    msg = build_system_message({"project_id": "proj-1", "user_id": "u-99"})
+    assert msg.role == "system"
+    assert len(msg.content) == 1, "system message must have exactly 1 block (static only)"
+    assert isinstance(msg.content[0], TextPart)
+    assert "proj-1" not in msg.content[0].text, "project_id must NOT appear in the static system block"
+    assert "u-99" not in msg.content[0].text, "user_id must NOT appear in the static system block"
+
+
+def test_build_dynamic_context_message_is_trailing_user():
+    """build_dynamic_context_message must return a user-role message with session context."""
+    dyn = build_dynamic_context_message({"project_id": "proj-trail", "user_id": "u-77"})
+    assert dyn.role == "user", "dynamic context must be a user-role message"
+    assert "proj-trail" in dyn.text, "project_id must appear in the dynamic context message"
+
+
+def test_dynamic_context_is_last_message_in_request():
+    """The dynamic-context message must be the LAST message in the assembled request."""
+    state = {"project_id": "p-order-check", "user_id": "u-1"}
+    system = build_system_message(state)
+    history = [Message.user_text("hello"), Message.assistant_text("hi")]
+    dynamic_ctx = build_dynamic_context_message(state)
+    request = [system, *history, dynamic_ctx]
+    assert request[-1] is dynamic_ctx, "dynamic_ctx must be the last message"
+    assert "p-order-check" in request[-1].text
+    # dynamic context must NOT appear in the static system prefix
+    assert "p-order-check" not in request[0].text
+
+
+# ── 3b. Anthropic path: system cache_control + no dynamic in system ───────────
 
 
 def test_anthropic_cache_control_on_static_block():
-    """Anthropic _to_anthropic_messages must place cache_control on block 0."""
-    msg = build_system_message({"project_id": "proj-1", "user_id": "u-99"})
-    # Confirm two-block message
-    assert len(msg.content) == 2
-    assert isinstance(msg.content[0], TextPart)
-    assert isinstance(msg.content[1], TextPart)
+    """Anthropic _to_anthropic_messages must place cache_control on the static system block."""
+    state = {"project_id": "proj-1", "user_id": "u-99"}
+    system_msg = build_system_message(state)
+    dynamic_msg = build_dynamic_context_message(state)
+    # Assemble full request: [system, history_user, dynamic_tail]
+    history_user = Message.user_text("hello")
+    request = [system_msg, history_user, dynamic_msg]
+    system_payload, _out = AnthropicClient._to_anthropic_messages(request)
 
-    system_payload, _ = AnthropicClient._to_anthropic_messages([msg])
-
-    assert isinstance(system_payload, list), "Expected list[dict] for two-block system"
-    assert len(system_payload) == 2
-
+    # System payload: single cached block (list with 1 dict)
+    assert isinstance(system_payload, list), "Expected list[dict] for system with cache_control"
+    assert len(system_payload) == 1
     block0 = system_payload[0]
-    block1 = system_payload[1]
-
-    # Cache breakpoint on static block
     assert block0.get("cache_control") == {"type": "ephemeral"}, (
-        "cache_control must be on block 0 (static)"
+        "cache_control must be on the static system block"
     )
-    # Dynamic block must NOT carry cache_control
-    assert "cache_control" not in block1, (
-        "cache_control must NOT be on block 1 (dynamic)"
+    # Dynamic context must NOT appear in the system payload
+    assert "proj-1" not in block0.get("text", ""), (
+        "project_id must NOT appear in the cached system block"
     )
 
 
-def test_anthropic_dynamic_block_contains_project_id():
-    """Dynamic block text must include session context, not static block."""
-    msg = build_system_message({"project_id": "proj-xyz", "user_id": "u-42"})
-    system_payload, _ = AnthropicClient._to_anthropic_messages([msg])
+def test_anthropic_dynamic_block_is_last_message_not_in_system():
+    """Dynamic context must appear in out[-1] (last user message), not in system."""
+    state = {"project_id": "proj-xyz", "user_id": "u-42"}
+    system_msg = build_system_message(state)
+    history_user = Message.user_text("what can you do?")
+    dynamic_msg = build_dynamic_context_message(state)
+    request = [system_msg, history_user, dynamic_msg]
+    system_payload, out = AnthropicClient._to_anthropic_messages(request)
 
-    assert isinstance(system_payload, list)
-    block0_text = system_payload[0]["text"]
-    block1_text = system_payload[1]["text"]
+    # system does NOT contain project_id
+    system_text = system_payload[0]["text"] if isinstance(system_payload, list) else (system_payload or "")
+    assert "proj-xyz" not in system_text, "project_id must NOT appear in the static cached block"
 
-    assert "proj-xyz" not in block0_text, "project_id must NOT appear in the static cached block"
-    assert "proj-xyz" in block1_text, "project_id must appear in the dynamic (uncached) block"
+    # last message in out contains project_id
+    assert out, "out must not be empty"
+    last_out = out[-1]
+    assert last_out["role"] == "user"
+    last_text = " ".join(
+        b.get("text", "") for b in last_out["content"] if isinstance(b, dict)
+    )
+    assert "proj-xyz" in last_text, "project_id must appear in the last (dynamic tail) message"
 
 
-def test_anthropic_flow_dirty_in_dynamic_block_only():
+def test_anthropic_flow_dirty_in_dynamic_tail_not_system():
     state = {"project_id": "p1", "flow_dirty": True, "baseline_flow": {"nodes": [{"id": "x"}], "edges": []}}
-    msg = build_system_message(state)
-    system_payload, _ = AnthropicClient._to_anthropic_messages([msg])
+    system_msg = build_system_message(state)
+    dynamic_msg = build_dynamic_context_message(state)
+    request = [system_msg, Message.user_text("fix"), dynamic_msg]
+    system_payload, out = AnthropicClient._to_anthropic_messages(request)
 
-    assert isinstance(system_payload, list)
-    block0_text = system_payload[0]["text"]
-    block1_text = system_payload[1]["text"]
+    system_text = system_payload[0]["text"] if isinstance(system_payload, list) else (system_payload or "")
+    assert "saqlanmagan" not in system_text, "dirty-flag text must NOT be in static cached system block"
 
-    assert "saqlanmagan" not in block0_text, "dirty-flag text must NOT be in static cached block"
-    assert "saqlanmagan" in block1_text, "dirty-flag text must be in dynamic block"
-
-
-# ── 3b. build_system_message → OpenAI/OpenRouter path cache_control placement ─
+    last_text = " ".join(
+        b.get("text", "") for b in out[-1]["content"] if isinstance(b, dict)
+    )
+    assert "saqlanmagan" in last_text, "dirty-flag text must be in the dynamic tail message"
 
 
-def _build_openai_system_blocks(state: dict) -> list[dict]:
-    """Helper: apply _inject_cache_markers and return the system message content."""
-    msg = build_system_message(state)
-    oai_messages = OpenAIClient._to_openai_messages([msg])
+# ── 3c. OpenAI/OpenRouter path: system cache_control ────────────────────────
+
+
+def _build_openai_full_request(state: dict, history: list | None = None) -> list[dict]:
+    """Build a full OpenAI-format request with system + history + dynamic tail."""
+    system_msg = build_system_message(state)
+    dynamic_msg = build_dynamic_context_message(state)
+    msgs = [system_msg] + (history or []) + [dynamic_msg]
+    oai_messages = OpenAIClient._to_openai_messages(msgs)
     OpenAIClient._inject_cache_markers(oai_messages)
-    sys_blocks = next(m for m in oai_messages if m["role"] == "system")
-    content = sys_blocks["content"]
+    return oai_messages
+
+
+def _get_system_blocks(oai_messages: list[dict]) -> list[dict]:
+    sys_msg = next(m for m in oai_messages if m["role"] == "system")
+    content = sys_msg["content"]
     assert isinstance(content, list)
     return content
 
 
 def test_openai_cache_control_on_static_block():
-    blocks = _build_openai_system_blocks({"project_id": "proj-1"})
-    # Two blocks expected
-    assert len(blocks) == 2, f"Expected 2 system blocks, got {len(blocks)}"
-
-    block0 = blocks[0]
-    block1 = blocks[1]
-
-    assert block0.get("cache_control") == {"type": "ephemeral"}, (
-        "OpenAI path: cache_control must be on block 0 (static)"
-    )
-    assert "cache_control" not in block1, (
-        "OpenAI path: cache_control must NOT be on block 1 (dynamic)"
+    oai_messages = _build_openai_full_request({"project_id": "proj-1"})
+    blocks = _get_system_blocks(oai_messages)
+    # Single block (static only)
+    assert len(blocks) == 1, f"Expected 1 system block (static only), got {len(blocks)}"
+    assert blocks[0].get("cache_control") == {"type": "ephemeral"}, (
+        "OpenAI path: cache_control must be on the static system block"
     )
 
 
-def test_openai_dynamic_block_contains_project_id():
-    blocks = _build_openai_system_blocks({"project_id": "proj-abc"})
-    assert "proj-abc" not in blocks[0]["text"], (
+def test_openai_dynamic_block_is_last_message_not_in_system():
+    oai_messages = _build_openai_full_request({"project_id": "proj-abc"})
+    blocks = _get_system_blocks(oai_messages)
+    # project_id must NOT be in system block
+    assert "proj-abc" not in blocks[0].get("text", ""), (
         "project_id must NOT appear in the static cached block (OpenAI path)"
     )
-    assert "proj-abc" in blocks[1]["text"], (
-        "project_id must appear in the dynamic block (OpenAI path)"
+    # project_id must appear in the last (dynamic tail) non-system message
+    non_sys = [m for m in oai_messages if m["role"] != "system"]
+    assert non_sys, "must have at least 1 non-system message"
+    last = non_sys[-1]
+    content = last.get("content", "")
+    if isinstance(content, list):
+        content = " ".join(b.get("text", "") for b in content if isinstance(b, dict))
+    assert "proj-abc" in str(content), (
+        "project_id must appear in the last (dynamic tail) message (OpenAI path)"
     )
 
 
@@ -198,13 +255,20 @@ def test_dynamic_block_no_catalog_types():
     assert "SendTextMessageNode" not in dyn
 
 
-# ── 5. Single-block legacy path (system_text) still works ─────────────────────
+# ── 5. Single-block system path returns a cached block ───────────────────────
 
 
-def test_anthropic_single_block_returns_plain_string():
+def test_anthropic_single_block_returns_cached_list():
     """When a plain system_text message is used, _to_anthropic_messages
-    should return a plain str (backward-compatible, no cache_control)."""
+    should return a list[dict] with cache_control on the single block.
+
+    This covers the new static-only system message shape from build_system_message().
+    """
     msg = Message.system_text("plain system text")
     system_payload, _ = AnthropicClient._to_anthropic_messages([msg])
-    assert isinstance(system_payload, str)
-    assert system_payload == "plain system text"
+    assert isinstance(system_payload, list), "Single-block system must return list[dict]"
+    assert len(system_payload) == 1
+    assert system_payload[0]["text"] == "plain system text"
+    assert system_payload[0].get("cache_control") == {"type": "ephemeral"}, (
+        "Single-block system must carry cache_control"
+    )
