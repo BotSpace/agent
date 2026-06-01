@@ -177,6 +177,50 @@ async def release_deploy(input: ReleaseDeployInput, ctx: ToolContext) -> ToolRes
     )
 
 
+# ── release.debug ─────────────────────────────────────────────────────────────
+
+
+_DEBUG_BOT_USERNAME = "botmother_test_robot"
+
+
+class ReleaseDebugInput(BaseModel):
+    project_id: str | int | None = None
+
+
+@tool(
+    name="release.debug",
+    description=(
+        "Run the bot in DEBUG mode (like the constructor's 'Debug Run'): brings up a "
+        "temporary debug container from the SAVED flow — NO bot token required — and "
+        "returns a Telegram link to test it. The debug container auto-expires after "
+        "~30 minutes. Use this so the user can try the bot immediately without "
+        "deploying to production or setting a token."
+    ),
+    input_model=ReleaseDebugInput,
+)
+async def release_debug(input: ReleaseDebugInput, ctx: ToolContext) -> ToolResult:
+    pid = _project_id(ctx, input.project_id)
+    if pid is None:
+        return ToolResult.error("No project_id available.")
+    auth = ctx.state.get("auth_claims")
+    try:
+        await _backend(ctx).start_debug(pid, auth_claims=auth)
+        project = await _backend(ctx).get_project(pid, auth_claims=auth)
+    except BackendError as e:
+        return ToolResult.error(_wrap_backend_err("Debug run", e))
+    debug_uuid = project.get("debug_uuid") or project.get("debug_webhook_uuid")
+    if not debug_uuid:
+        return ToolResult.error(
+            "Debug container started, but the project has no debug_uuid to build the test link."
+        )
+    link = f"https://t.me/{_DEBUG_BOT_USERNAME}?start={debug_uuid}"
+    return ToolResult.ok(
+        "Debug bot ishga tushdi (token shart emas, ~30 daqiqadan keyin avtomatik "
+        f"o'chadi). Sinab ko'rish uchun: {link}",
+        data={"debug_link": link, "debug_uuid": str(debug_uuid)},
+    )
+
+
 # ── plans.list ──────────────────────────────────────────────────────────────
 
 
@@ -393,6 +437,7 @@ def build_release_tools() -> list[Tool]:
     return [
         release_list,
         release_deploy,
+        release_debug,
         release_status,
         release_logs,
         plans_list,
