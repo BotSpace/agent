@@ -225,7 +225,7 @@ def test_customcode_declared_outputs_are_valid_source_handles():
                 id="code",
                 type="CustomCodeNode",
                 data={
-                    "code": "if (x) exit('ok'); else exit('fail');",
+                    "jsCode": "if (x) exit('ok'); else exit('fail');",
                     "outputs": [{"name": "ok"}, {"name": "fail"}],
                 },
             ),
