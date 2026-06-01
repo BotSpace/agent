@@ -879,8 +879,10 @@ class BackendClient:
             # Internal token sozlanmagan — silent skip, run muvaffaqiyatini buzmaymiz.
             logger.info("Token usage report skipped (BACKEND_INTERNAL_TOKEN not set)")
             return
-        # _request `bearer=None` bilan chaqirilganda _headers fallback'da
-        # X-Internal-Token qo'shadi.
+        # System-to-system: backend X-Internal-Token bilan BIRGA X-User-Id
+        # header'ini ham talab qiladi ("X-Internal-Token requires X-User-Id").
+        # Shu sabab user_id ni _request'ga uzatamiz — _headers ikkala header'ni
+        # qo'shadi (aks holda 401 authentication_failed bo'ladi).
         # Backend project_id ni IntegerField sifatida qabul qiladi — "global",
         # bo'sh string yoki noma'lum qiymatlar 400 qaytaradi. Faqat haqiqiy
         # numeric id'lar yuboriladi, qolgan holatlarda null.
@@ -898,6 +900,7 @@ class BackendClient:
                 "output_tokens": output_tokens,
                 "project_id": pid_payload,
             },
+            user_id=str(user_id),
         )
 
     async def list_internal_templates(self) -> list[dict[str, Any]]:
