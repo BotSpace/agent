@@ -13,11 +13,15 @@ Backend endpoint pattern (dashboard `services.ts`'dan olingan):
 
 Auth: agent o'z internal token bilan boradi (`X-Internal-Token` header), yoki
 foydalanuvchi access token'i forward qilinadi (`Authorization: Bearer ...`).
+
+Public config:
+- /api/v1/shared/config/public/   GET (AllowAny) — flat JSON with ai_agent.* keys
 """
 
 from __future__ import annotations
 
 import logging
+import time
 from functools import lru_cache
 from typing import Any
 
@@ -27,6 +31,50 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from ..config import get_settings
 
 logger = logging.getLogger(__name__)
+
+# ── Public config fetcher (TTL cache, no auth) ───────────────────────────────
+
+_PUBLIC_CONFIG_TTL = 60.0  # seconds
+_public_config_cache: dict[str, Any] = {}
+_public_config_fetched_at: float = 0.0
+
+
+async def fetch_public_config() -> dict[str, Any]:
+    """GET {BACKEND_BASE_URL}/api/v1/shared/config/public/ and cache for TTL.
+
+    Returns flat dict ``{"ai_agent.provider": "...", ...}``.
+    NEVER raises — on any network/parse error returns ``{}`` so caller can
+    fall back to env-based settings.
+    """
+    global _public_config_cache, _public_config_fetched_at
+
+    now = time.monotonic()
+    if _public_config_cache and (now - _public_config_fetched_at) < _PUBLIC_CONFIG_TTL:
+        return _public_config_cache
+
+    s = get_settings()
+    url = s.backend_base_url.rstrip("/") + "/api/v1/shared/config/public/"
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(url, headers={"Accept": "application/json"})
+            resp.raise_for_status()
+            data = resp.json()
+        if not isinstance(data, dict):
+            logger.warning("fetch_public_config: unexpected response type %s", type(data))
+            data = {}
+        _public_config_cache = data
+        _public_config_fetched_at = now
+        return data
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("fetch_public_config failed (falling back to env): %s", exc)
+        return {}
+
+
+def _invalidate_public_config_cache() -> None:
+    """Reset the in-process cache — useful in tests."""
+    global _public_config_cache, _public_config_fetched_at
+    _public_config_cache = {}
+    _public_config_fetched_at = 0.0
 
 
 class BackendError(RuntimeError):
