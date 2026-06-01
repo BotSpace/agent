@@ -34,6 +34,24 @@ from .base import (
 )
 
 
+def _oai_mark_message(msg: dict[str, Any]) -> None:
+    """Place cache_control on the last content block of an OpenAI message dict.
+
+    OpenAI/OpenRouter cache_control sits inside content blocks.
+    For string content, convert to block form first.
+    Modifies `msg` in-place.
+    """
+    content = msg.get("content")
+    if isinstance(content, str):
+        msg["content"] = [
+            {"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}
+        ]
+    elif isinstance(content, list) and content:
+        last_block = content[-1]
+        if isinstance(last_block, dict):
+            last_block["cache_control"] = {"type": "ephemeral"}
+
+
 def _wrap_for_langsmith(client: AsyncOpenAI) -> AsyncOpenAI:
     """If LangSmith tracing is enabled, wrap the OpenAI client so every
     chat-completions call is auto-traced. No-op when LangSmith isn't
@@ -229,23 +247,36 @@ class OpenAIClient(LLMClient):
 
     @staticmethod
     def _inject_cache_markers(oai_messages: list[dict[str, Any]]) -> None:
-        """Place a cache_control breakpoint on the STATIC (first) system block.
+        """Place cache_control breakpoints for rolling incremental prompt caching.
 
-        When the system message has two content blocks — [static, dynamic] — the
-        breakpoint MUST land on block 0 (static: CORE_IDENTITY + catalog) so the
-        dynamic per-session block is NOT included in the cached prefix.  Putting
-        it on the last block would invalidate the cache on every flow mutation.
+        Breakpoint 1 — static system prefix (CORE_IDENTITY + catalog):
+          Placed on the first (and only) content block of the system message.
+          When the system has a single string, it is converted to block form.
+          When the system has two content blocks (legacy static+dynamic split),
+          block 0 is marked.
+
+        Breakpoints 2-3 -- rolling conversation history:
+          The last message in `oai_messages` is the dynamic-context tail
+          (uncached; changes every turn).  The last and second-to-last
+          NON-SYSTEM messages that are NOT the tail are the most-recent stable
+          history messages.  We place cache_control on them so Anthropic/Qwen
+          cache the conversation history prefix up to that point.  The tail
+          itself is intentionally NOT marked.
+
+          Total breakpoints: 1 (system) + up to 2 (history) = 3 max.
+          This is within the 4-breakpoint budget.
 
         Providers that honor cache_control (Anthropic / Qwen / Gemini via
-        OpenRouter) will cache the prefix up to and including the marked block.
+        OpenRouter) will cache the prefix up to and including each marked block.
         Tool schemas in the `tools` array are part of the same prefix and get
         cached together by Anthropic (best-effort by other providers).
         """
+        # ── Breakpoint 1: system block ────────────────────────────────
         for m in oai_messages:
             if m.get("role") == "system":
                 content = m.get("content")
                 if isinstance(content, str):
-                    # Legacy single-string form — wrap as a single cached block.
+                    # Single-string form — convert to block form with cache_control.
                     m["content"] = [
                         {
                             "type": "text",
@@ -254,12 +285,27 @@ class OpenAIClient(LLMClient):
                         }
                     ]
                 elif isinstance(content, list) and content:
-                    # Two-block form: block 0 = static (cached), block 1 = dynamic.
-                    # Always mark block 0 regardless of list length.
+                    # Block-list form: mark block 0 (static prefix).
                     first = content[0]
                     if isinstance(first, dict):
                         first["cache_control"] = {"type": "ephemeral"}
-                return  # only first system message
+                break  # only first system message
+
+        # ── Breakpoints 2-3: last and second-to-last history messages ──
+        # non_system = all non-system messages in order.
+        # non_system[-1] = dynamic-context tail (do NOT mark).
+        # non_system[-2] = last history message (mark).
+        # non_system[-3] = second-to-last history message (mark, if exists).
+        non_system = [m for m in oai_messages if m.get("role") != "system"]
+        # Need at least: tail + 1 history message to place any rolling breakpoint.
+        if len(non_system) >= 2:
+            candidates = [-2, -3]
+            for idx in candidates:
+                try:
+                    target = non_system[idx]
+                except IndexError:
+                    continue
+                _oai_mark_message(target)
 
     # ── generate ───────────────────────────────────────────────────────
     async def generate(

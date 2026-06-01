@@ -31,6 +31,24 @@ from .base import (
 )
 
 
+def _mark_last_content_block(msg: dict) -> None:
+    """Place cache_control on the last content block of a converted message dict.
+
+    Modifies `msg` in-place.  Safe to call multiple times — the breakpoint
+    is idempotent (same value overwrites same value).
+    """
+    content = msg.get("content")
+    if isinstance(content, list) and content:
+        last_block = content[-1]
+        if isinstance(last_block, dict):
+            last_block["cache_control"] = {"type": "ephemeral"}
+    elif isinstance(content, str):
+        # Rare: plain-string content — convert to block form with cache_control.
+        msg["content"] = [
+            {"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}
+        ]
+
+
 _ALIAS_MAP = {
     # Internal short names → Anthropic API identifiers
     "claude-opus-4-7": "claude-opus-4-5-20251015",   # mavjud bo'lganga moslash
@@ -56,6 +74,8 @@ class AnthropicClient(LLMClient):
     @staticmethod
     def _to_anthropic_messages(
         messages: list[Message],
+        *,
+        inject_rolling_cache: bool = True,
     ) -> tuple[str | list[dict[str, Any]] | None, list[dict[str, Any]]]:
         """Convert internal messages to Anthropic API format.
 
@@ -63,10 +83,24 @@ class AnthropicClient(LLMClient):
 
         system is one of:
           - None              — no system message
-          - str               — legacy single-block (plain text, no caching)
-          - list[dict]        — multi-block; block 0 carries cache_control so
-                                the static prefix (CORE_IDENTITY + catalog) is
-                                cached and the dynamic block is NOT cached.
+          - str               — single-block (plain text); cache_control is added
+                                directly on the string-form system when possible,
+                                or left bare for callers that already handle it.
+          - list[dict]        — multi-block; block 0 carries cache_control (static
+                                CORE_IDENTITY + catalog cached prefix).
+
+        Rolling cache breakpoints (inject_rolling_cache=True, default):
+          The last message in `messages` is assumed to be the dynamic-context
+          tail (uncached, changes every turn).  Cache breakpoints are placed on
+          the last AND second-to-last history messages (i.e., out[-2] and out[-3])
+          using the Anthropic two-breakpoint rolling pattern.  The tail (out[-1])
+          is intentionally NOT marked.
+
+          Breakpoint budget: static-system (1) + rolling history (up to 2) = 3
+          total, well within the 4-breakpoint limit.
+
+          When there is no history (first turn with only dynamic tail), no
+          rolling breakpoints are placed.
         """
         system_parts: list[TextPart] = []
         out: list[dict[str, Any]] = []
@@ -105,19 +139,30 @@ class AnthropicClient(LLMClient):
             role = "user" if msg.role == "tool" else msg.role
             out.append({"role": role, "content": content})
 
+        # ── rolling cache breakpoints on history ──────────────────────
+        # Structure: out[-1] = dynamic-context tail (uncached).
+        # out[:-1] = conversation history.  Mark the last and second-to-last
+        # history messages.  Minimum 2 history messages required for both
+        # breakpoints; with only 1 history message we mark just that one.
+        if inject_rolling_cache and len(out) >= 2:
+            # Indices of the last and second-to-last HISTORY messages
+            # (excluding the dynamic tail at out[-1]).
+            candidates = [-2, -3]
+            for idx in candidates:
+                try:
+                    target = out[idx]
+                except IndexError:
+                    continue
+                _mark_last_content_block(target)
+
+        # ── system payload ─────────────────────────────────────────────
         if not system_parts:
             return None, out
 
-        if len(system_parts) == 1:
-            # Single block — return plain string for backward compatibility
-            # when no caching split is needed (e.g. tests that pass a raw
-            # system_text message).
-            return system_parts[0].text, out
-
-        # Multi-block (two-block) system: block 0 = static (cached prefix),
-        # block 1 = dynamic (uncached, per-request context).
-        # cache_control on block 0 tells Anthropic to cache up to and
-        # including that block; block 1 is excluded from the cached prefix.
+        # All system blocks are returned as list[dict].
+        # Block 0 (static CORE_IDENTITY + catalog) always carries cache_control.
+        # Multi-block form (legacy two-block) is still supported: block 0 cached,
+        # block 1+ uncached.
         system_blocks: list[dict[str, Any]] = []
         for i, p in enumerate(system_parts):
             block: dict[str, Any] = {"type": "text", "text": p.text}
@@ -166,8 +211,7 @@ class AnthropicClient(LLMClient):
             "messages": msgs,
         }
         if system_payload:
-            # system_payload is either a plain str (single block, no caching)
-            # or a list[dict] (multi-block with cache_control on block 0).
+            # system_payload is always list[dict] now — cache_control is on block 0.
             req["system"] = system_payload
         if options.tools:
             req["tools"] = AnthropicClient._tool_spec_for_api(options)

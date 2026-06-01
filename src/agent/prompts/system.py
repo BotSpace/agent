@@ -9,9 +9,18 @@ Main agent o'zi domen ishi qilmaydi. U:
 Sub-agent tool call'lari main history'ga kirmaydi — faqat qisqa xulosa.
 Dashboard ularni accordion'da ko'rsatadi.
 
-Cache strategiyasi:
-  STATIC_SYSTEM_BLOCK  = CORE_IDENTITY + compact node catalog  (cached prefix)
-  DYNAMIC_SYSTEM_BLOCK = joriy session kontekst                (uncached, changes per request)
+Cache strategiyasi (rolling incremental):
+  STATIC_SYSTEM_BLOCK  = CORE_IDENTITY + compact node catalog  (system, cached prefix, breakpoint 1)
+  conversation history = user/assistant/tool messages          (rolling, breakpoint 2-3)
+  dynamic context tail = joriy session kontekst                (LAST user message, uncached, changes per request)
+
+Request shape:
+  [ static-system (cached) ] → tools (cached) → [ conversation history (rolling cache) ] → [ dynamic-context tail (uncached) ]
+
+The dynamic block is a trailing "user" message so it never invalidates the
+conversation history cache.  For Anthropic: appended as an extra text block
+on a user-role Message.  For OpenAI/OpenRouter: appended as a {"role": "user"}
+dict — both paths work identically since neither rejects extra user messages.
 """
 
 from __future__ import annotations
@@ -197,11 +206,27 @@ def build_system_prompt(state: dict[str, Any] | None = None) -> str:
 
 
 def build_system_message(state: dict[str, Any] | None = None) -> Message:
-    """Return a two-block system Message ready for the LLM clients.
+    """Return the STATIC-ONLY system Message ready for the LLM clients.
 
-    Block 0 (index 0) — STATIC_SYSTEM_BLOCK: CORE_IDENTITY + compact catalog.
-      The LLM clients place the cache_control breakpoint here.
-    Block 1 (index 1) — dynamic context: session-level values (project_id, flow stats).
-      This block is AFTER the breakpoint so it is NOT part of the cached prefix.
+    Contains ONLY STATIC_SYSTEM_BLOCK (CORE_IDENTITY + compact catalog).
+    The LLM clients place a cache_control breakpoint on this block.
+
+    The dynamic flow-state context is NO LONGER embedded here.
+    It is injected as a trailing user message by build_dynamic_context_message()
+    so it sits AFTER the conversation history and never invalidates the cached prefix.
     """
-    return Message.system_parts(STATIC_SYSTEM_BLOCK, build_dynamic_block(state))
+    return Message.system_text(STATIC_SYSTEM_BLOCK)
+
+
+def build_dynamic_context_message(state: dict[str, Any] | None = None) -> Message:
+    """Return the per-request dynamic context as a trailing USER message.
+
+    This message is appended AFTER the conversation history in every LLM call:
+      [static-system] → tools → [history (cached)] → [this message (uncached)]
+
+    Using a user role is provider-correct for both Anthropic (which only
+    allows "user" / "assistant" in the messages array) and OpenAI/OpenRouter.
+    The dynamic content is small (project_id, flow stats, dirty flag) and
+    changes every turn, so it must NOT receive a cache_control breakpoint.
+    """
+    return Message.user_text(f"[context]\n{build_dynamic_block(state)}")
