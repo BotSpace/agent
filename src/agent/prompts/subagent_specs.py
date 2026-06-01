@@ -421,6 +421,17 @@ Tool turlari:
   `collection` ustida to'liq CRUD; `operations` allow-list bilan cheklang
   (masalan faqat o'qish uchun `operations:["read"]`). `searchFields` ixtiyoriy.
 - `flow.add_ai_custom_code_tool` — Goja JS tool (jsCode return = natija).
+- `flow.add_ai_knowledge_tool` — RAG (Retrieval-Augmented Generation) tool
+  (tool='knowledge'). Bot collection'ini vector DB'ga embed qiladi (lazy —
+  birinchi chaqiruvda) va agent oddiy matnli `query` bilan semantik qidiruv
+  qiladi. **Qachon ishlatiladi:** bot collection ma'lumotlaridan javob berishi
+  kerak bo'lganda (masalan `products` katalogi, FAQ, maqolalar bazasi) va
+  aniq filtr o'rniga semantik o'xshashlik kerak bo'lganda.
+  `AICollectionToolNode`dan farqi: `collection` toifasida aniq maydon
+  qiymatlari bo'yicha CRUD qilmaydi — balki matn o'xshashligi bo'yicha
+  eng tegishli hujjatlarni topib qaytaradi. `topK` (standart 5) —
+  qaytariladigan hujjatlar soni. `embeddingProvider` (openai|ollama|gemini),
+  `embeddingModel`, `embeddingApiKey` — vektorlashtirish sozlamalari.
 
 **Provider tanlov:**
 - `AIOpenAIProviderNode` — OpenAI (gpt-4o-mini default, cloud)
