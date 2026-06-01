@@ -10,8 +10,10 @@ Public config kalitlari (backend tomonidan belgilangan):
   ai_agent.region    — e.g. "us-west-2"
 
 Internal config kalitlari (X-Internal-Token kerak, secrets bilan):
-  ai_agent.api_key   — LLM provider API key (admindan boshqariladi)
-  ai_agent.base_url  — LLM provider base URL override
+  ai_agent.api_key               — LLM provider API key (admindan boshqariladi)
+  ai_agent.base_url              — LLM provider base URL override
+  ai_agent.aws_access_key_id     — Bedrock AWS access key id
+  ai_agent.aws_secret_access_key — Bedrock AWS secret access key
 
 Ustunlik tartibi (har kalit uchun):
   1. Backend internal-config qiymati — mavjud va bo'sh bo'lmasa
@@ -40,6 +42,19 @@ _PUBLIC_KEY_BASE_URL = "ai_agent.base_url"
 
 _INTERNAL_KEY_API_KEY = "ai_agent.api_key"
 _INTERNAL_KEY_BASE_URL = "ai_agent.base_url"
+_INTERNAL_KEY_AWS_ACCESS_KEY_ID = "ai_agent.aws_access_key_id"
+_INTERNAL_KEY_AWS_SECRET_ACCESS_KEY = "ai_agent.aws_secret_access_key"
+
+# Provider-default base URLs — used as the final fallback when neither internal
+# nor public config supplies a base_url. bedrock has no default (region-based).
+_PROVIDER_DEFAULT_BASE_URL: dict[str, str | None] = {
+    "openai": "https://api.openai.com/v1",
+    "openrouter": "https://openrouter.ai/api/v1",
+    "ollama": "https://ollama.com/v1",
+    "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
+    "anthropic": "https://api.anthropic.com",
+    "bedrock": None,
+}
 
 
 def _nonempty(value: object) -> str | None:
@@ -123,12 +138,50 @@ async def effective_api_key(provider: str | None = None) -> str | None:
     return None
 
 
+async def effective_aws_access_key_id() -> str | None:
+    """Return the active AWS access key id, internal-config over env.
+
+    Reads ``ai_agent.aws_access_key_id`` from the backend internal-config
+    endpoint. Falls back to ``settings.aws_access_key_id`` when internal config
+    is absent, empty, or unreachable. Never raises; empty string is treated as
+    "not set" (returns None).
+    """
+    internal_cfg = await fetch_internal_config()
+    from_internal = _nonempty(internal_cfg.get(_INTERNAL_KEY_AWS_ACCESS_KEY_ID))
+    if from_internal:
+        logger.info("AWS access_key_id from internal config")
+        return from_internal
+
+    s = get_settings()
+    return _nonempty(s.aws_access_key_id)
+
+
+async def effective_aws_secret_access_key() -> str | None:
+    """Return the active AWS secret access key, internal-config over env.
+
+    Reads ``ai_agent.aws_secret_access_key`` from the backend internal-config
+    endpoint. Falls back to ``settings.aws_secret_access_key`` when internal
+    config is absent, empty, or unreachable. Never raises; empty string is
+    treated as "not set" (returns None).
+    """
+    internal_cfg = await fetch_internal_config()
+    from_internal = _nonempty(internal_cfg.get(_INTERNAL_KEY_AWS_SECRET_ACCESS_KEY))
+    if from_internal:
+        logger.info("AWS secret_access_key from internal config")
+        return from_internal
+
+    s = get_settings()
+    return _nonempty(s.aws_secret_access_key)
+
+
 async def effective_base_url(provider: str | None = None) -> str | None:
-    """Return the active LLM base URL override, internal-config > public-config > None.
+    """Return the active LLM base URL, internal-config > public-config > provider default.
 
     Reads ``ai_agent.base_url`` from internal config first, then from public
-    config. Returns ``None`` when neither source provides a non-empty value so
-    the provider client uses its own default base URL.
+    config. When neither source provides a non-empty value, falls back to the
+    provider's default base URL (see ``_PROVIDER_DEFAULT_BASE_URL``). Returns
+    ``None`` only when the provider has no default (e.g. bedrock, region-based)
+    or the provider is unknown.
     """
     internal_cfg = await fetch_internal_config()
     from_internal = _nonempty(internal_cfg.get(_INTERNAL_KEY_BASE_URL))
@@ -142,7 +195,10 @@ async def effective_base_url(provider: str | None = None) -> str | None:
         logger.info("LLM base_url from public config (provider=%s): %s", provider, from_public)
         return from_public
 
-    return None
+    default = _PROVIDER_DEFAULT_BASE_URL.get(provider) if provider else None
+    if default:
+        logger.info("LLM base_url from provider default (provider=%s): %s", provider, default)
+    return default
 
 
 async def build_effective_client():
@@ -170,11 +226,13 @@ async def build_effective_client():
 
     if provider == "bedrock":
         region = await effective_region()
+        access_key_id = await effective_aws_access_key_id()
+        secret_access_key = await effective_aws_secret_access_key()
         logger.info("Building BedrockClient with effective region=%s", region)
         return BedrockClient(
             region=region,
-            access_key_id=s.aws_access_key_id,
-            secret_access_key=s.aws_secret_access_key,
+            access_key_id=access_key_id,
+            secret_access_key=secret_access_key,
         )
 
     api_key = await effective_api_key(provider)

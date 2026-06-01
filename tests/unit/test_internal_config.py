@@ -23,6 +23,8 @@ from agent.integrations.backend import (
 )
 from agent.integrations.dynamic_config import (
     effective_api_key,
+    effective_aws_access_key_id,
+    effective_aws_secret_access_key,
     effective_base_url,
 )
 
@@ -320,7 +322,7 @@ def test_effective_base_url_returns_none_when_absent(monkeypatch):
 
 
 def test_effective_base_url_ignores_empty_string(monkeypatch):
-    """Empty string in both configs must produce None (fall through to provider default)."""
+    """Empty string in both configs must produce None (no provider → no default)."""
     _invalidate_internal_config_cache()
     _invalidate_public_config_cache()
     monkeypatch.setattr(
@@ -333,6 +335,288 @@ def test_effective_base_url_ignores_empty_string(monkeypatch):
     )
     result = _run(effective_base_url())
     assert result is None
+
+
+# ── effective_base_url — provider defaults ────────────────────────────────────
+
+
+def test_effective_base_url_provider_default_openai(monkeypatch):
+    """No config → openai provider default base URL."""
+    _invalidate_internal_config_cache()
+    _invalidate_public_config_cache()
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.fetch_internal_config",
+        AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.fetch_public_config",
+        AsyncMock(return_value={}),
+    )
+    assert _run(effective_base_url("openai")) == "https://api.openai.com/v1"
+
+
+def test_effective_base_url_provider_default_openrouter(monkeypatch):
+    _invalidate_internal_config_cache()
+    _invalidate_public_config_cache()
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.fetch_internal_config",
+        AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.fetch_public_config",
+        AsyncMock(return_value={}),
+    )
+    assert _run(effective_base_url("openrouter")) == "https://openrouter.ai/api/v1"
+
+
+def test_effective_base_url_provider_default_gemini(monkeypatch):
+    _invalidate_internal_config_cache()
+    _invalidate_public_config_cache()
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.fetch_internal_config",
+        AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.fetch_public_config",
+        AsyncMock(return_value={}),
+    )
+    assert (
+        _run(effective_base_url("gemini"))
+        == "https://generativelanguage.googleapis.com/v1beta/openai/"
+    )
+
+
+def test_effective_base_url_provider_default_ollama(monkeypatch):
+    _invalidate_internal_config_cache()
+    _invalidate_public_config_cache()
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.fetch_internal_config",
+        AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.fetch_public_config",
+        AsyncMock(return_value={}),
+    )
+    assert _run(effective_base_url("ollama")) == "https://ollama.com/v1"
+
+
+def test_effective_base_url_provider_default_anthropic(monkeypatch):
+    _invalidate_internal_config_cache()
+    _invalidate_public_config_cache()
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.fetch_internal_config",
+        AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.fetch_public_config",
+        AsyncMock(return_value={}),
+    )
+    assert _run(effective_base_url("anthropic")) == "https://api.anthropic.com"
+
+
+def test_effective_base_url_bedrock_default_is_none(monkeypatch):
+    """bedrock has no default base URL (region-based)."""
+    _invalidate_internal_config_cache()
+    _invalidate_public_config_cache()
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.fetch_internal_config",
+        AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.fetch_public_config",
+        AsyncMock(return_value={}),
+    )
+    assert _run(effective_base_url("bedrock")) is None
+
+
+def test_effective_base_url_config_beats_provider_default(monkeypatch):
+    """An explicit internal/public base_url still overrides the provider default."""
+    _invalidate_internal_config_cache()
+    _invalidate_public_config_cache()
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.fetch_internal_config",
+        AsyncMock(return_value={"ai_agent.base_url": "https://override.example.com/v1"}),
+    )
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.fetch_public_config",
+        AsyncMock(return_value={}),
+    )
+    assert _run(effective_base_url("openai")) == "https://override.example.com/v1"
+
+
+# ── effective AWS credentials ─────────────────────────────────────────────────
+
+
+def test_effective_aws_access_key_id_uses_internal_config(monkeypatch):
+    """Internal config aws_access_key_id beats env settings."""
+    _invalidate_internal_config_cache()
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.fetch_internal_config",
+        AsyncMock(return_value={"ai_agent.aws_access_key_id": "AKIA-INTERNAL"}),
+    )
+    from agent.config import get_settings
+    s = get_settings()
+    monkeypatch.setattr(s, "aws_access_key_id", "AKIA-ENV", raising=False)
+
+    assert _run(effective_aws_access_key_id()) == "AKIA-INTERNAL"
+
+
+def test_effective_aws_access_key_id_falls_back_to_env(monkeypatch):
+    _invalidate_internal_config_cache()
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.fetch_internal_config",
+        AsyncMock(return_value={}),
+    )
+    from agent.config import get_settings
+    s = get_settings()
+    monkeypatch.setattr(s, "aws_access_key_id", "AKIA-ENV", raising=False)
+
+    assert _run(effective_aws_access_key_id()) == "AKIA-ENV"
+
+
+def test_effective_aws_access_key_id_ignores_empty_string(monkeypatch):
+    """Empty string in internal config falls back to env."""
+    _invalidate_internal_config_cache()
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.fetch_internal_config",
+        AsyncMock(return_value={"ai_agent.aws_access_key_id": "   "}),
+    )
+    from agent.config import get_settings
+    s = get_settings()
+    monkeypatch.setattr(s, "aws_access_key_id", "AKIA-ENV", raising=False)
+
+    assert _run(effective_aws_access_key_id()) == "AKIA-ENV"
+
+
+def test_effective_aws_access_key_id_none_when_unset(monkeypatch):
+    """Empty internal config and empty/None env → None (never raise)."""
+    _invalidate_internal_config_cache()
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.fetch_internal_config",
+        AsyncMock(return_value={}),
+    )
+    from agent.config import get_settings
+    s = get_settings()
+    monkeypatch.setattr(s, "aws_access_key_id", None, raising=False)
+
+    assert _run(effective_aws_access_key_id()) is None
+
+
+def test_effective_aws_secret_access_key_uses_internal_config(monkeypatch):
+    _invalidate_internal_config_cache()
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.fetch_internal_config",
+        AsyncMock(return_value={"ai_agent.aws_secret_access_key": "secret-internal"}),
+    )
+    from agent.config import get_settings
+    s = get_settings()
+    monkeypatch.setattr(s, "aws_secret_access_key", "secret-env", raising=False)
+
+    assert _run(effective_aws_secret_access_key()) == "secret-internal"
+
+
+def test_effective_aws_secret_access_key_falls_back_to_env(monkeypatch):
+    _invalidate_internal_config_cache()
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.fetch_internal_config",
+        AsyncMock(return_value={}),
+    )
+    from agent.config import get_settings
+    s = get_settings()
+    monkeypatch.setattr(s, "aws_secret_access_key", "secret-env", raising=False)
+
+    assert _run(effective_aws_secret_access_key()) == "secret-env"
+
+
+def test_effective_aws_secret_access_key_none_when_unset(monkeypatch):
+    _invalidate_internal_config_cache()
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.fetch_internal_config",
+        AsyncMock(return_value={"ai_agent.aws_secret_access_key": ""}),
+    )
+    from agent.config import get_settings
+    s = get_settings()
+    monkeypatch.setattr(s, "aws_secret_access_key", None, raising=False)
+
+    assert _run(effective_aws_secret_access_key()) is None
+
+
+# ── build_effective_client — bedrock wires effective AWS credentials ───────────
+
+
+def test_build_effective_client_bedrock_uses_internal_aws_credentials(monkeypatch):
+    """BedrockClient must receive AWS credentials from internal config."""
+    _invalidate_internal_config_cache()
+    _invalidate_public_config_cache()
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.fetch_public_config",
+        AsyncMock(return_value={"ai_agent.provider": "bedrock", "ai_agent.region": "us-west-2"}),
+    )
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.fetch_internal_config",
+        AsyncMock(return_value={
+            "ai_agent.aws_access_key_id": "AKIA-INTERNAL",
+            "ai_agent.aws_secret_access_key": "secret-internal",
+        }),
+    )
+
+    from agent.config import get_settings
+    s = get_settings()
+    monkeypatch.setattr(s, "aws_access_key_id", "AKIA-ENV", raising=False)
+    monkeypatch.setattr(s, "aws_secret_access_key", "secret-env", raising=False)
+
+    created: dict = {}
+
+    class FakeBedrockClient:
+        def __init__(self, *, region, access_key_id=None, secret_access_key=None):
+            created["region"] = region
+            created["access_key_id"] = access_key_id
+            created["secret_access_key"] = secret_access_key
+
+    import agent.llm.bedrock as bedrock_mod
+    monkeypatch.setattr(bedrock_mod, "BedrockClient", FakeBedrockClient)
+
+    from agent.integrations.dynamic_config import build_effective_client
+    _run(build_effective_client())
+
+    assert created["region"] == "us-west-2"
+    assert created["access_key_id"] == "AKIA-INTERNAL"
+    assert created["secret_access_key"] == "secret-internal"
+
+
+def test_build_effective_client_bedrock_falls_back_to_env_aws_credentials(monkeypatch):
+    """When internal config has no AWS keys, BedrockClient gets env credentials."""
+    _invalidate_internal_config_cache()
+    _invalidate_public_config_cache()
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.fetch_public_config",
+        AsyncMock(return_value={"ai_agent.provider": "bedrock"}),
+    )
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.fetch_internal_config",
+        AsyncMock(return_value={}),
+    )
+
+    from agent.config import get_settings
+    s = get_settings()
+    monkeypatch.setattr(s, "aws_access_key_id", "AKIA-ENV", raising=False)
+    monkeypatch.setattr(s, "aws_secret_access_key", "secret-env", raising=False)
+
+    created: dict = {}
+
+    class FakeBedrockClient:
+        def __init__(self, *, region, access_key_id=None, secret_access_key=None):
+            created["access_key_id"] = access_key_id
+            created["secret_access_key"] = secret_access_key
+
+    import agent.llm.bedrock as bedrock_mod
+    monkeypatch.setattr(bedrock_mod, "BedrockClient", FakeBedrockClient)
+
+    from agent.integrations.dynamic_config import build_effective_client
+    _run(build_effective_client())
+
+    assert created["access_key_id"] == "AKIA-ENV"
+    assert created["secret_access_key"] == "secret-env"
 
 
 # ── build_effective_client — api_key/base_url wired correctly ─────────────────
