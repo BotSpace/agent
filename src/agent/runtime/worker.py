@@ -23,7 +23,7 @@ from langgraph.types import Command
 
 from ..config import get_settings
 from ..graph import GraphConfig, build_graph, initial_state
-from ..llm import ModelRoles, build_client
+from ..integrations.dynamic_config import build_effective_client, effective_model_roles
 from ..memory import close_async_checkpointer, create_async_checkpointer
 from ..tools import build_main_registry
 from .store import RunStore
@@ -84,16 +84,22 @@ async def run_agent(
     async def emit(name: str, payload: dict[str, Any]) -> None:
         await store.emit(request_id, name, payload)
 
+    # Resolve effective provider/model/region ONCE per run (fetch+cache).
+    # Falls back to env settings if backend is unreachable.
+    llm_client = await build_effective_client()
+    models = await effective_model_roles()
+    effective_prov = llm_client.__class__.__name__
+
     await store.set_status(request_id, "running")
-    await emit("run_started", {"thread_id": rec.thread_id, "provider": s.llm_provider})
+    await emit("run_started", {"thread_id": rec.thread_id, "provider": effective_prov})
 
     checkpointer = None
     try:
         registry = build_main_registry()
         cfg = GraphConfig(
-            llm=build_client(s.llm_provider, s),
+            llm=llm_client,
             registry=registry,
-            models=ModelRoles.from_settings(s),
+            models=models,
             max_tokens=s.max_output_tokens,
             emit=emit,
             services={},
