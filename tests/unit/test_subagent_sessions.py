@@ -20,6 +20,7 @@ import pytest
 import agent.graph as graph_mod
 import agent.llm as llm_mod
 from agent.llm.base import Message, TextPart
+from agent.prompts.subagent_specs import REGISTRY
 from agent.tools.base import ToolContext
 from agent.tools.task import MAX_SUB_AGENT_DEPTH, TaskRunInput
 from agent.tools.task import task_run as _task_run_tool
@@ -121,9 +122,11 @@ async def test_fresh_session_seeds_and_returns_session_id(patched):
 
     base = patched.invoked_with[0]["base"]
     texts = _user_texts(base)
-    # Fresh seed injects the full sub-agent spec prompt + the task.
-    assert any("[Sub-agent: flow-builder]" in t for t in texts)
+    # The sub-agent spec prompt is now the SYSTEM message (cfg.system_block),
+    # NOT seeded into the user turn. The fresh user message carries only the task.
+    assert patched.last_cfg.system_block == REGISTRY["flow-builder"].full_prompt
     assert any("Build a /start menu" in t for t in texts)
+    assert not any("[Sub-agent: flow-builder]" in t for t in texts)
 
 
 @pytest.mark.asyncio
