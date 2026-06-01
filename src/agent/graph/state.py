@@ -27,6 +27,11 @@ class AgentState(TypedDict, total=False):
     pending_save: bool
     last_validation: dict[str, Any] | None
 
+    # ── cms awareness ───────────────────────────────────────────────────
+    collections: list[dict[str, Any]] | None
+    """Project CMS collections + field names: [{"name", "fields":[...]}].
+    Seeded at run start so the flow-builder can reference them correctly."""
+
     # ── planner ─────────────────────────────────────────────────────────
     current_plan: list[dict[str, Any]] | None
 

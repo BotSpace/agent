@@ -76,7 +76,12 @@ class Tool(Generic[InputModel]):
     input_model: type[BaseModel]
     handler: ToolFn
     destructive: bool = False
-    """Destructive bo'lsa, graph approval interrupt yaratadi."""
+    """Destructive bo'lsa, graph approval interrupt yaratadi (agar
+    cfg.approve_destructive=True bo'lsa)."""
+    always_approve: bool = False
+    """True bo'lsa — cfg.approve_destructive holatidan QAT'I NAZAR har doim
+    approval interrupt yaratadi (foydalanuvchi tasdiqlamasa bajarilmaydi).
+    Qaytarib bo'lmaydigan, butun ishni yo'q qiladigan amallar uchun (flow.clear)."""
     tags: list[str] = field(default_factory=list)
 
     def to_spec(self) -> ToolSpec:
@@ -101,6 +106,7 @@ def tool(
     description: str,
     input_model: type[BaseModel],
     destructive: bool = False,
+    always_approve: bool = False,
     tags: list[str] | None = None,
 ) -> Callable[[ToolFn], Tool]:
     """Decorator — Tool obyekti qaytadi."""
@@ -114,6 +120,7 @@ def tool(
             input_model=input_model,
             handler=fn,
             destructive=destructive,
+            always_approve=always_approve,
             tags=tags or [],
         )
 

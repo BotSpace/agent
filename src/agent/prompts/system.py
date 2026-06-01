@@ -25,10 +25,57 @@ dict — both paths work identically since neither rejects extra user messages.
 
 from __future__ import annotations
 
+import logging
+from pathlib import Path
 from typing import Any
 
 from ..flow.catalog import render_compact_catalog
 from ..llm.base import Message
+
+logger = logging.getLogger(__name__)
+
+_MODEL_ADDENDA_DIR = Path(__file__).parent / "model_addenda"
+
+
+def load_model_addendum(model: str) -> str:
+    """Return the extra system prompt for `model` from model_addenda/*.txt.
+
+    Scans the model_addenda dir for `.txt` files whose name (without extension,
+    case-insensitive) is a SUBSTRING of the model id. Longest matching name wins
+    (so `qwen3-coder.txt` beats `qwen.txt` for a qwen3-coder model). Returns ""
+    when nothing matches or on any read error — never raises.
+
+    Example: model="bedrock/qwen3-coder-480b" matches model_addenda/qwen.txt.
+    """
+    if not model:
+        return ""
+    model_lc = model.lower()
+    try:
+        candidates = sorted(
+            _MODEL_ADDENDA_DIR.glob("*.txt"),
+            key=lambda p: len(p.stem),
+            reverse=True,
+        )
+    except Exception:
+        return ""
+    for path in candidates:
+        if path.stem.lower() in model_lc:
+            try:
+                return path.read_text(encoding="utf-8").strip()
+            except Exception:
+                logger.warning("Failed to read model addendum %s", path, exc_info=True)
+                return ""
+    return ""
+
+
+def _executor_model_addendum() -> str:
+    """Addendum for the configured executor model (the model that runs tools)."""
+    try:
+        from ..config import get_settings
+
+        return load_model_addendum(get_settings().model_executor)
+    except Exception:
+        return ""
 
 CORE_IDENTITY = """\
 Sen — Botmother AI Agent (dispatcher). Foydalanuvchi bilan tabiiy tilda
@@ -57,6 +104,12 @@ buning o'rniga **specialized sub-agent'lar**ga vazifa berasan.
 - **`search.semantic`** — loyihaning uzoq-muddatli xotirasidan semantik qidiruv:
   oldingi flow misollari, o'tgan CRM segmentlari, loyiha qarorlari va Botmother
   doc parchalari. Avvalги ish/qaror yoki nazariy savol uchun ishlat.
+- **`ask_user(question, input_type, options?, placeholder?)`** — foydalanuvchidan
+  MA'LUMOT (qiymat yoki tanlov) kerak bo'lganda — TAXMIN QILMA, shu tool'ni chaqir.
+  `input_type="text"` erkin matn uchun, `"select"` bitta tanlov uchun (`options`
+  bilan), `"multiselect"` bir nechta tanlov uchun (`options` bilan). Bu ruxsat
+  so'rash EMAS — faqat yetishmayotgan ma'lumot. Run to'xtaydi va foydalanuvchi
+  javobi tool natijasi sifatida qaytadi.
 - **`task.run(subagent_type, prompt, propagate_flow, session_id?)`** — domen ishini
   sub-agent'ga uzatish. **Bu sening asosiy quroling.**
 
@@ -162,14 +215,22 @@ bog'liq bo'lsa — keyingi turn'da.
   Misol (yomon — har task.run oldida uzun matn yozma).
 - Final javob 1-3 qator yoki kichik jadval bo'lsin.
 
-## Mavjud flow — tozalama, avval ko'r
+## Mavjud flow — TOZALAMA. Avval ko'r, keyin INKREMENTAL tahrir qil. (KRITIK)
 Loyihaning saqlangan flow'i yangi suhbat boshida AVTOMATIK yuklanadi
-(`baseline_flow` server tomonidan to'ldiriladi). Demak flow bo'sh emas.
-- O'zgartirishdan oldin flow-builder'ga **avval `flow.get` bilan ko'rib chiq**,
-  keyin tahrir qil deb ayt. propagate_flow=true uzat.
-- **Hech qachon `flow.clear` qildirma yoki noldan qaytadan qurdirma** — faqat
-  foydalanuvchi aniq "qaytadan boshla / hammasini o'chir / yangidan qur" desa.
-- Aks holda mavjud flow ustidan inkremental edit qil (node qo'sh/o'zgartir).
+(`baseline_flow` / `load_saved_flow` server tomonidan to'ldiriladi). Demak flow
+ALLAQACHON mavjud va bo'sh EMAS — uni saqlab qol.
+
+- **Har tahrirdan OLDIN** flow-builder'ga **`flow.get` bilan joriy holatni
+  ko'rib chiq** deb ber, keyin tahrir qil. propagate_flow=true uzat.
+- **HECH QACHON `flow.clear` qildirma va HECH QACHON noldan qaytadan qurdirma.**
+  Foydalanuvchi yangi node/menyu/forma so'rasa — bu mavjud flow'ni o'chirish
+  EMAS, balki ustiga QO'SHISH. Mavjud flow ustidan inkremental edit qil
+  (node qo'sh / patch / connect).
+- `flow.clear` faqat foydalanuvchi AYNAN "qaytadan boshla / hammasini o'chir /
+  yangidan qur / flow'ni tozalab tashla" deb ANIQ aytsa. Bunda ham `flow.clear`
+  endi **APPROVAL talab qiladi** — foydalanuvchi tasdiqlamasa flow tozalanmaydi.
+- Shubha bo'lsa — TOZALAMA. Mavjud node'larni qoldirib, faqat so'ralgan
+  o'zgarishni qil.
 
 ## Flow o'zgargach — AVTOMATIK deploy
 flow-builder o'zgarishlarni MUVAFFAQIYATLI **saqlagandan** keyin va vazifa
@@ -198,7 +259,15 @@ Sub-agent (deploy-manager) ham bunga rioya qiladi.
 # ── Static cached prefix ──────────────────────────────────────────────────────
 # Built once at import time; byte-identical across all requests.
 # render_compact_catalog() is deterministic (no timestamps, no random content).
-STATIC_SYSTEM_BLOCK: str = CORE_IDENTITY + "\n\n" + render_compact_catalog()
+# A model-specific addendum (model_addenda/<id>.txt for the configured executor
+# model) is appended so it is part of the cached prefix and reaches Bedrock.
+_MODEL_ADDENDUM: str = _executor_model_addendum()
+STATIC_SYSTEM_BLOCK: str = (
+    CORE_IDENTITY
+    + "\n\n"
+    + render_compact_catalog()
+    + (("\n\n" + _MODEL_ADDENDUM) if _MODEL_ADDENDUM else "")
+)
 
 
 def build_dynamic_block(state: dict[str, Any] | None = None) -> str:
@@ -228,6 +297,22 @@ def build_dynamic_block(state: dict[str, Any] | None = None) -> str:
             "- DIQQAT: saqlanmagan flow o'zgarishlari mavjud. flow-builder ga "
             "save vazifasini berishni unutma."
         )
+    collections = state.get("collections") or []
+    if collections:
+        rendered = []
+        for c in collections:
+            if not isinstance(c, dict):
+                continue
+            name = c.get("name")
+            if not name:
+                continue
+            fields = c.get("fields") or []
+            if fields:
+                rendered.append(f"{name}({', '.join(str(f) for f in fields)})")
+            else:
+                rendered.append(str(name))
+        if rendered:
+            lines.append("- Available collections: " + "; ".join(rendered))
     return "\n".join(lines) + "\n"
 
 

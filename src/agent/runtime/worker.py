@@ -74,6 +74,7 @@ async def run_agent(
     request_id: str,
     baseline_flow: dict[str, Any] | None = None,
     auth_claims: dict[str, Any] | None = None,
+    collections: list[dict[str, Any]] | None = None,
 ) -> None:
     s = get_settings()
     rec = await store.get(request_id)
@@ -119,6 +120,8 @@ async def run_agent(
         )
         if auth_claims:
             state["auth_claims"] = auth_claims  # type: ignore[typeddict-unknown-key]
+        if collections:
+            state["collections"] = collections  # type: ignore[typeddict-unknown-key]
 
         config = {
             "configurable": {"thread_id": rec.thread_id},
@@ -215,6 +218,7 @@ def start_run_task(
     request_id: str,
     baseline_flow: dict[str, Any] | None = None,
     auth_claims: dict[str, Any] | None = None,
+    collections: list[dict[str, Any]] | None = None,
 ) -> asyncio.Task:
     task = asyncio.create_task(
         run_agent(
@@ -222,6 +226,7 @@ def start_run_task(
             request_id=request_id,
             baseline_flow=baseline_flow,
             auth_claims=auth_claims,
+            collections=collections,
         )
     )
     store.register_task(request_id, task)

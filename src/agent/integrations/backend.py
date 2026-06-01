@@ -939,6 +939,60 @@ def _flow_is_nonempty(flow: Any) -> bool:
     return isinstance(flow, dict) and bool(flow.get("nodes") or flow.get("edges"))
 
 
+async def load_project_collections(
+    project_id: str | int | None,
+    *,
+    auth_claims: dict[str, Any] | None = None,
+    client: BackendClient | None = None,
+) -> list[dict[str, Any]]:
+    """Fetch the project's CMS collections + their field names, compactly.
+
+    Returns `[{"name": str, "fields": [str, ...]}]` so the flow-builder knows
+    which collections (and fields) the cms-manager created and can reference
+    them correctly in flow nodes / expressions.
+
+    Robust by contract: NEVER raises. On any failure (no project, backend
+    error, malformed payload) it returns `[]` and logs a warning, so a backend
+    hiccup can't break runs. Per-collection field fetch failures are isolated —
+    one bad collection won't drop the others.
+    """
+    pid = "" if project_id is None else str(project_id)
+    if not pid or pid == "global":
+        return []
+    try:
+        backend = client or get_backend_client()
+        cols = await backend.cms_list_collections(pid, auth_claims=auth_claims)
+    except Exception:
+        logger.warning(
+            "Failed to list collections for project=%s; continuing without them",
+            pid,
+            exc_info=True,
+        )
+        return []
+
+    out: list[dict[str, Any]] = []
+    for c in cols or []:
+        name = c.get("name") if isinstance(c, dict) else None
+        if not name:
+            continue
+        fields: list[str] = []
+        try:
+            detail = await backend.cms_get_collection(pid, name, auth_claims=auth_claims)
+            for f in (detail.get("fields") or []) if isinstance(detail, dict) else []:
+                fname = f.get("name") if isinstance(f, dict) else None
+                if fname:
+                    fields.append(str(fname))
+        except Exception:
+            logger.warning(
+                "Failed to load fields for collection=%s (project=%s); listing name only",
+                name,
+                pid,
+                exc_info=True,
+            )
+        out.append({"name": str(name), "fields": fields})
+    return out
+
+
 async def load_saved_flow(
     project_id: str | int | None,
     *,

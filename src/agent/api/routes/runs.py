@@ -94,11 +94,14 @@ async def create_run(
 
     # Seed the run with the project's SAVED flow when the client omits one, so a
     # new conversation inspects/edits the existing flow instead of rebuilding it.
-    from ...integrations.backend import load_saved_flow
+    from ...integrations.backend import load_project_collections, load_saved_flow
 
     baseline_flow = await load_saved_flow(
         project_id, body_baseline=body.baseline_flow, auth_claims=user.claims
     )
+    # Seed CMS collections so the flow-builder knows what cms-manager created and
+    # can reference them correctly. never-raises → [] on any failure.
+    collections = await load_project_collections(project_id, auth_claims=user.claims)
 
     rec = await store.create(
         prompt=body.prompt,
@@ -111,6 +114,7 @@ async def create_run(
         request_id=rec.request_id,
         baseline_flow=baseline_flow,
         auth_claims=user.claims,
+        collections=collections,
     )
     return RunCreateResponse(request_id=rec.request_id, status="queued")
 
