@@ -34,10 +34,10 @@ configMaps:
     AGENT_PORT: "8100"
     AGENT_LOG_LEVEL: "INFO"
     AGENT_CORS_ORIGINS: "https://botspace.uz,https://botmother.uz,https://beta.botmother.uz"
-    AGENT_LLM_PROVIDER: "openrouter"
-    AGENT_MODEL_PLANNER: "qwen/qwen3.6-plus"
-    AGENT_MODEL_EXECUTOR: "qwen/qwen3.6-plus"
-    AGENT_MODEL_CRITIC: "qwen/qwen3.6-plus"
+    AGENT_LLM_PROVIDER: "bedrock"
+    AGENT_MODEL_PLANNER: "us.qwen.qwen3-coder-480b-a35b-v1:0"
+    AGENT_MODEL_EXECUTOR: "us.qwen.qwen3-coder-480b-a35b-v1:0"
+    AGENT_MODEL_CRITIC: "us.qwen.qwen3-coder-480b-a35b-v1:0"
     # Embedding model'lar OpenRouter'da yo'q — text-embedding endpoint'lari
     # uchun alohida OpenAI client ishlatiladi (kerak bo'lganida).
     AGENT_MODEL_EMBEDDING: "text-embedding-3-small"
