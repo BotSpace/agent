@@ -12,7 +12,9 @@ from itertools import pairwise
 from agent.llm.base import (
     Message,
     TextPart,
+    ToolResultPart,
     ToolUsePart,
+    normalize_tool_turns,
 )
 from agent.llm.bedrock import BedrockClient
 
@@ -142,6 +144,58 @@ def test_orphan_only_user_turn_is_removed_and_resequenced():
     # Merged assistant turn keeps the toolUse and the follow-up text.
     types = _block_types(out[1]["content"])
     assert "toolUse" in types and "text" in types
+
+
+def test_duplicate_tool_use_id_deduped_keep_last():
+    """The interrupt/resume flow can append a SECOND toolResult for a
+    tool_call_id that already has one (an "awaiting approval"/placeholder result
+    followed by the post-resume real result). After merge into one user turn
+    that is two ToolResultParts sharing an id → Converse rejects with
+    "contain duplicate Ids". normalize_tool_turns must keep only ONE — the LAST
+    (the resolved/final result).
+    """
+    msgs = [
+        Message.user_text("clarify please"),
+        Message(
+            role="assistant",
+            content=[ToolUsePart(id="tu1", name="ask_user", arguments={})],
+        ),
+        # placeholder (pre-resume) then real (post-resume) — same id, same turn.
+        Message.tool_result(tool_use_id="tu1", content="Awaiting user input..."),
+        Message.tool_result(tool_use_id="tu1", content="User clarification: yes"),
+    ]
+    out = normalize_tool_turns(msgs)
+    # Exactly one ToolResultPart for tu1, and it is the LAST (resolved) one.
+    results = [
+        p
+        for m in out
+        for p in m.content
+        if isinstance(p, ToolResultPart) and p.tool_use_id == "tu1"
+    ]
+    assert len(results) == 1
+    assert results[0].content == "User clarification: yes"
+
+
+def test_duplicate_tool_use_id_converse_no_validation_error():
+    """End-to-end through _to_bedrock_messages: a duplicate-id toolResult must
+    collapse to a single Converse toolResult block for that id."""
+    msgs = [
+        Message.user_text("clarify please"),
+        Message(
+            role="assistant",
+            content=[ToolUsePart(id="tu1", name="ask_user", arguments={})],
+        ),
+        Message.tool_result(tool_use_id="tu1", content="Awaiting user input..."),
+        Message.tool_result(tool_use_id="tu1", content="User clarification: yes"),
+    ]
+    _system, out = BedrockClient._to_bedrock_messages(msgs)
+    assert _roles(out) == ["user", "assistant", "user"]
+    result_ids = [
+        b["toolResult"]["toolUseId"]
+        for b in out[2]["content"]
+        if "toolResult" in b
+    ]
+    assert result_ids == ["tu1"]  # no duplicate id
 
 
 def test_system_blocks_preserved():
