@@ -325,6 +325,65 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
             data={"subagent": spec.name, "sub_agent_id": sub_id, "session_id": session_id},
         )
 
+    # ── sub-graph interrupt bubbling ────────────────────────────────────
+    # A sub-agent may hit an interrupt (ask_user → clarify, flow.clear →
+    # approval). The worker's resume loop only drives the MAIN graph, so a
+    # sub-graph interrupt cannot be resumed here. Instead of dead-ending as a
+    # silent "no final answer" failure, surface the pending question/approval
+    # back to the MAIN agent so the DISPATCHER can ask the user (its own
+    # `ask_user` works end-to-end) or get approval, then re-issue task.run with
+    # the SAME session_id — the sub-agent resumes from its checkpoint.
+    sub_interrupt = result.get("__interrupt__")
+    if sub_interrupt:
+        iobj = sub_interrupt[0]
+        ipayload = getattr(iobj, "value", iobj)
+        if not isinstance(ipayload, dict):
+            ipayload = {"question": str(ipayload)}
+        ikind = ipayload.get("kind", "clarify")
+        await _emit_to_parent(
+            "sub_agent_finished",
+            {
+                "sub_agent_id": sub_id,
+                "name": spec.name,
+                "session_id": session_id,
+                "ok": False,
+                "tool_calls": tool_call_count,
+                "summary": f"Sub-agent foydalanuvchidan {ikind} kutmoqda: "
+                f"{ipayload.get('question') or ipayload.get('reason') or ikind}",
+            },
+        )
+        await _cleanup()
+        if ikind == "approval":
+            note = (
+                f"[{spec.name}] needs APPROVAL for `{ipayload.get('tool_name', 'an operation')}` "
+                f"before continuing: {ipayload.get('reason', '')}. "
+                f"Ask the user to confirm (ask_user input_type='select', "
+                f"options=['Ha, davom et','Yo'q, bekor qil']). If they confirm, "
+                f"re-issue task.run with session_id={session_id} and tell the sub-agent "
+                f"the user approved; otherwise stop and pick another approach."
+            )
+        else:
+            opts = ipayload.get("options")
+            note = (
+                f"[{spec.name}] needs information from the user to continue: "
+                f"{ipayload.get('question', '')}. Ask the user via ask_user "
+                f"(input_type={ipayload.get('input_type', 'text')!r}"
+                + (f", options={opts}" if opts else "")
+                + f"), then re-issue task.run with session_id={session_id} and "
+                f"include the user's answer in the prompt so the sub-agent resumes."
+            )
+        return ToolResult.ok(
+            note,
+            data={
+                "subagent": spec.name,
+                "sub_agent_id": sub_id,
+                "session_id": session_id,
+                "sub_thread_id": sub_thread_id,
+                "pending": ikind,
+                "interrupt": ipayload,
+            },
+        )
+
     messages = result.get("messages") or []
     final_text = ""
     for m in reversed(messages):
