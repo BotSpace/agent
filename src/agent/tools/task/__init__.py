@@ -124,8 +124,12 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
 
     # Lazy import to avoid circular dep at module load time.
     from ...graph import GraphConfig, build_graph, initial_state
-    from ...llm import Message, ModelRoles, build_client
+    from ...llm import Message, ModelRoles
     from ...config import get_settings
+    from ...integrations.dynamic_config import (
+        build_effective_client,
+        effective_model_roles,
+    )
     from ...memory import close_async_checkpointer, create_async_checkpointer
     from ...tools import build_default_registry
     from ...tools.registry import ToolRegistry
@@ -137,7 +141,11 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
         if tool_allowed(t.name, spec.allowed_tools):
             sub_registry.register(t)
 
-    base_roles = ModelRoles.from_settings(s)
+    # Sub-agents must honour the SAME admin-managed dynamic config as the main
+    # dispatcher (provider/model/region from admin /settings/ai), not the static
+    # helm env — otherwise a provider/model switch never reaches the sub-agents
+    # where almost all token usage happens.
+    base_roles = await effective_model_roles()
     hint_model = {
         "planner": base_roles.planner,
         "executor": base_roles.executor,
@@ -242,7 +250,7 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
     }
 
     cfg = GraphConfig(
-        llm=build_client(s.llm_provider, s),
+        llm=await build_effective_client(),
         registry=sub_registry,
         models=sub_roles,
         max_tokens=s.max_output_tokens,
