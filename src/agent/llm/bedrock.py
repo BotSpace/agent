@@ -57,6 +57,21 @@ def resolve_bedrock_model(name: str) -> str:
     return _BEDROCK_ALIAS.get(name, name)
 
 
+# Bedrock Converse prompt-caching marker. Unlike the Anthropic native API
+# (which uses inline ``cache_control: {type: ephemeral}`` on content blocks),
+# Bedrock Converse caches by inserting a standalone ``cachePoint`` block into
+# the system / tools / messages arrays — everything BEFORE the marker is cached.
+_CACHE_POINT: dict[str, Any] = {"cachePoint": {"type": "default"}}
+
+
+def _bedrock_supports_caching(model_id: str) -> bool:
+    """Prompt caching via cachePoint is only valid for Anthropic Claude on
+    Bedrock (3.5v2 / 3.7 / 4.x). Other families (Qwen, Llama, Mistral, ...)
+    reject cachePoint blocks with a ValidationException, so gate on Claude.
+    """
+    return "anthropic.claude" in model_id.lower()
+
+
 # Bedrock tool name regex is [a-zA-Z0-9_-]+ — no dots allowed.
 # We swap "." → "--" on the way out and reverse it on tool_use callbacks.
 def _sanitize_tool_name(name: str) -> str:
@@ -165,8 +180,19 @@ class BedrockClient(LLMClient):
 
     def _build_request(self, messages: list[Message], options: GenerateOptions) -> dict[str, Any]:
         system, msgs = self._to_bedrock_messages(messages)
+        model_id = resolve_bedrock_model(options.model)
+        cache = _bedrock_supports_caching(model_id)
+
+        # Rolling conversation cache: a cachePoint at the END of the last
+        # message caches the whole prefix; on the next turn that prefix is
+        # identical (the breakpoint becomes the readable cache point), so it is
+        # read from cache and only the new tail is written. Combined with the
+        # static system + tools breakpoints this gives full prompt caching.
+        if cache and msgs:
+            msgs[-1] = {**msgs[-1], "content": [*msgs[-1]["content"], _CACHE_POINT]}
+
         req: dict[str, Any] = {
-            "modelId": resolve_bedrock_model(options.model),
+            "modelId": model_id,
             "messages": msgs,
             "inferenceConfig": {
                 "maxTokens": options.max_tokens,
@@ -174,11 +200,16 @@ class BedrockClient(LLMClient):
             },
         }
         if system:
-            req["system"] = system
+            # cachePoint after the static system blocks (CORE_IDENTITY + node
+            # catalog) — the largest, most stable chunk of the prompt.
+            req["system"] = [*system, _CACHE_POINT] if cache else system
         if options.stop_sequences:
             req["inferenceConfig"]["stopSequences"] = options.stop_sequences
         tc = self._tool_config(options)
         if tc is not None:
+            if cache and tc.get("tools"):
+                # cachePoint as the last tools entry caches all tool schemas.
+                tc = {**tc, "tools": [*tc["tools"], _CACHE_POINT]}
             req["toolConfig"] = tc
         return req
 
@@ -232,6 +263,8 @@ class BedrockClient(LLMClient):
         usage = Usage(
             input_tokens=usage_data.get("inputTokens", 0),
             output_tokens=usage_data.get("outputTokens", 0),
+            cache_read_tokens=usage_data.get("cacheReadInputTokens", 0) or 0,
+            cache_creation_tokens=usage_data.get("cacheWriteInputTokens", 0) or 0,
         )
         return GenerateResult(
             message=Message(role="assistant", content=parts),
@@ -325,6 +358,8 @@ class BedrockClient(LLMClient):
                 usage = Usage(
                     input_tokens=u.get("inputTokens", 0),
                     output_tokens=u.get("outputTokens", 0),
+                    cache_read_tokens=u.get("cacheReadInputTokens", 0) or 0,
+                    cache_creation_tokens=u.get("cacheWriteInputTokens", 0) or 0,
                 )
 
         LLM_REQUESTS.labels(self.provider, options.model, "success").inc()
