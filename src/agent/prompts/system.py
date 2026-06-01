@@ -25,10 +25,57 @@ dict — both paths work identically since neither rejects extra user messages.
 
 from __future__ import annotations
 
+import logging
+from pathlib import Path
 from typing import Any
 
 from ..flow.catalog import render_compact_catalog
 from ..llm.base import Message
+
+logger = logging.getLogger(__name__)
+
+_MODEL_ADDENDA_DIR = Path(__file__).parent / "model_addenda"
+
+
+def load_model_addendum(model: str) -> str:
+    """Return the extra system prompt for `model` from model_addenda/*.txt.
+
+    Scans the model_addenda dir for `.txt` files whose name (without extension,
+    case-insensitive) is a SUBSTRING of the model id. Longest matching name wins
+    (so `qwen3-coder.txt` beats `qwen.txt` for a qwen3-coder model). Returns ""
+    when nothing matches or on any read error — never raises.
+
+    Example: model="bedrock/qwen3-coder-480b" matches model_addenda/qwen.txt.
+    """
+    if not model:
+        return ""
+    model_lc = model.lower()
+    try:
+        candidates = sorted(
+            _MODEL_ADDENDA_DIR.glob("*.txt"),
+            key=lambda p: len(p.stem),
+            reverse=True,
+        )
+    except Exception:
+        return ""
+    for path in candidates:
+        if path.stem.lower() in model_lc:
+            try:
+                return path.read_text(encoding="utf-8").strip()
+            except Exception:
+                logger.warning("Failed to read model addendum %s", path, exc_info=True)
+                return ""
+    return ""
+
+
+def _executor_model_addendum() -> str:
+    """Addendum for the configured executor model (the model that runs tools)."""
+    try:
+        from ..config import get_settings
+
+        return load_model_addendum(get_settings().model_executor)
+    except Exception:
+        return ""
 
 CORE_IDENTITY = """\
 Sen — Botmother AI Agent (dispatcher). Foydalanuvchi bilan tabiiy tilda
@@ -212,7 +259,15 @@ Sub-agent (deploy-manager) ham bunga rioya qiladi.
 # ── Static cached prefix ──────────────────────────────────────────────────────
 # Built once at import time; byte-identical across all requests.
 # render_compact_catalog() is deterministic (no timestamps, no random content).
-STATIC_SYSTEM_BLOCK: str = CORE_IDENTITY + "\n\n" + render_compact_catalog()
+# A model-specific addendum (model_addenda/<id>.txt for the configured executor
+# model) is appended so it is part of the cached prefix and reaches Bedrock.
+_MODEL_ADDENDUM: str = _executor_model_addendum()
+STATIC_SYSTEM_BLOCK: str = (
+    CORE_IDENTITY
+    + "\n\n"
+    + render_compact_catalog()
+    + (("\n\n" + _MODEL_ADDENDUM) if _MODEL_ADDENDUM else "")
+)
 
 
 def build_dynamic_block(state: dict[str, Any] | None = None) -> str:

@@ -70,6 +70,8 @@ agent = "agent.cli:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/agent"]
+# Ensure model-specific prompt addenda (.txt) ship in the wheel.
+artifacts = ["src/agent/prompts/model_addenda/*.txt"]
 
 [tool.ruff]
 line-length = 110
