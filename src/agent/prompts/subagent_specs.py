@@ -526,6 +526,35 @@ bilan ushlab, `callback_query.data`'dan id'ni ajratib detal sahifani
 ko'rsat (bu yerda Approach B oqlanadi, chunki tugmalar dinamik va edge
 oldindan tortib bo'lmaydi).
 
+**Relation'li ma'lumotni O'QISH (collection'lararo bog'lanish):**
+
+CMS'da bir collection boshqasiga `relation` field orqali bog'lanadi —
+relation field document ichida referenced (ota) hujjat **`_id`'sini**
+saqlaydi, inson o'qiydigan nomni EMAS. Masalan `orders` hujjatida
+`product: "665f...ab12"` — bu `products` collection'idagi hujjat id'si.
+Foydalanuvchiga mahsulot nomini ko'rsatish uchun referenced collection'dan
+o'qib, uning **primary_field**'ini (masalan `name`) chiqar.
+
+CustomCodeNode bilan (orders ro'yxati, har order'da product nomi):
+
+    const res = db_find('orders', {});
+    const orders = (res && res.data) || [];
+    const lines = orders.map(function (o) {
+      // relation field referenced hujjat _id'sini saqlaydi
+      const p = db_find_one('products', { _id: o.product });
+      const name = (p && p.data && p.data.name) || "(noma'lum mahsulot)";
+      return "• " + name + " — " + o.qty + " dona";
+    });
+    send_message(lines.join("\\n") || "Buyurtma yo'q.");
+
+Eslatma: `db_find_one`'da referenced collection'ning `primary_field`'ini
+(yuqorida `name`) o'qiysiz — shu field cms-manager tomonidan ota collection
+yaratilganda `primary_field` sifatida belgilangan bo'ladi. Ko'p order uchun
+har biriga alohida `db_find_one` qilish o'rniga, kerakli id'larni yig'ib bitta
+`db_find('products', { _id: { "$in": ids } })` bilan o'qib, map qurish ham
+mumkin (N+1 so'rovni kamaytiradi). Alternativa: collection'dan semantik/CRUD
+javob kerak bo'lsa `AICollectionToolNode`/`AIKnowledgeToolNode` (Pattern 8).
+
 ## Pattern 8: AI Agent node — LLM javob berish
 
 Bot LLM orqali javob berishi kerak bo'lsa (savollarga intelligent javob,
@@ -761,6 +790,31 @@ va document'lar bilan ishlash.
 3. **Soft delete** — `cms.delete` har doim soft (restore mumkin).
 4. **Bulk insert** — ko'p document uchun (validation atomic).
 5. **Aggregate** — segmentation, group-by, statistika.
+
+## primary_field — display/title field
+`cms.create_collection` chaqirganda `primary_field`'ni belgila — bu collection
+boshqa collection'dan **relation** orqali ko'rsatilganda qaysi field title
+(ko'rinadigan nom) bo'lishini bildiradi. Misol: `products` collection uchun
+`primary_field="name"` — shunda `orders.product` relation'i `products`'ga
+bog'langanda mahsulot nomi ko'rinadi (xom `_id` emas). Odatda `name`/`title`/
+`label` kabi inson o'qiy oladigan field tanlanadi.
+
+## relation field — collection'lararo bog'lanish
+Boshqa collection'ga bog'lanish uchun field `kind="relation"` +
+`relation_collection=<referenced collection id>` bilan qo'shiladi.
+
+**MAJBURIY tartib (id zanjiri):**
+1. AVVAL referenced (ota) collection'ni yarat va `primary_field`'ini belgila —
+   `cms.create_collection` qaytargan `id`'ni ol.
+   Misol: `products` (`primary_field="name"`) → id=42.
+2. KEYIN bog'lovchi (bola) collection'da relation field'ni o'sha id bilan qo'sh.
+   Misol: `orders` collection'ida
+   `cms.add_field(field={name:"product", kind:"relation", relation_collection:42})`.
+   (Yoki `orders`'ni o'sha relation field bilan birga `cms.create_collection`'da
+   yarat — lekin `relation_collection` qiymati allaqachon mavjud collection id'si
+   bo'lishi SHART.)
+
+Hech qachon `relation_collection`'ga collection NOMINI yozma — faqat raqamli id.
 
 ## Hech qachon
 - Project, flow, deploy, env, broadcast ishlariga aralasha.
