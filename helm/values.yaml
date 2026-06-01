@@ -43,7 +43,7 @@ configMaps:
     AGENT_MODEL_EMBEDDING: "text-embedding-3-small"
     OPENROUTER_SITE_URL: "https://botspace.uz"
     OPENROUTER_APP_NAME: "Botmother Agent"
-    AWS_REGION: "us-east-1"
+    AWS_REGION: "us-west-2"
     AGENT_MAX_INPUT_TOKENS: "200000"
     AGENT_MAX_OUTPUT_TOKENS: "16384"
     AGENT_MAX_TOOL_CALLS: "80"
