@@ -89,8 +89,30 @@ class BedrockClient(LLMClient):
     def _to_bedrock_messages(
         messages: list[Message],
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Convert internal messages to a VALID Bedrock Converse message list.
+
+        Converse is far stricter than the OpenAI-compatible path:
+          1. Roles must strictly ALTERNATE (no two consecutive same-role msgs).
+          2. The first non-system message must be ``user``.
+          3. Every ``toolResult`` answering an assistant turn must live in the
+             SINGLE user message immediately following that assistant turn, and
+             the toolResult set must not exceed the prior turn's toolUse set
+             (one result per use, matching ``toolUseId``).
+
+        The internal format keeps each tool result in its own ``tool``-role
+        message, and parallel tool calls produce several of them in a row.  A
+        naive 1:1 conversion then emits consecutive ``user`` messages, each with
+        one toolResult, which Converse counts as "more toolResults than the
+        previous turn's toolUses" → ``ValidationException``.
+
+        Strategy: (a) convert each message to a block list, (b) merge adjacent
+        same-role messages into one, (c) prune orphan toolResults against the
+        preceding assistant turn's toolUseIds, (d) ensure the sequence leads
+        with ``user`` and strictly alternates.
+        """
         system_blocks: list[dict[str, Any]] = []
-        out: list[dict[str, Any]] = []
+        # Step 1 — flatten each internal message into (role, content-blocks).
+        flat: list[tuple[str, list[dict[str, Any]]]] = []
         for msg in messages:
             if msg.role == "system":
                 system_blocks.append({"text": msg.text})
@@ -98,7 +120,9 @@ class BedrockClient(LLMClient):
             content: list[dict[str, Any]] = []
             for part in msg.content:
                 if isinstance(part, TextPart):
-                    content.append({"text": part.text})
+                    # Drop empty text blocks — Converse rejects empty content.
+                    if part.text != "":
+                        content.append({"text": part.text})
                 elif isinstance(part, ToolUsePart):
                     content.append(
                         {
@@ -119,9 +143,67 @@ class BedrockClient(LLMClient):
                             }
                         }
                     )
+            if not content:
+                # An empty turn (e.g. assistant with only blank text) cannot be
+                # emitted; skipping it also avoids spurious same-role adjacency.
+                continue
             role = "user" if msg.role == "tool" else msg.role
-            out.append({"role": role, "content": content})
-        return system_blocks, out
+            flat.append((role, content))
+
+        # Step 2 — merge adjacent same-role messages into one Bedrock message.
+        # Collapses N consecutive toolResult `user` turns into one, and folds a
+        # trailing dynamic-context `user` text into the same user turn.
+        merged: list[dict[str, Any]] = []
+        for role, content in flat:
+            if merged and merged[-1]["role"] == role:
+                merged[-1]["content"].extend(content)
+            else:
+                merged.append({"role": role, "content": list(content)})
+
+        # Step 3 — prune orphan toolResults. Within a user turn, keep only
+        # toolResults whose toolUseId matches a toolUse from the immediately
+        # preceding assistant turn. Orphans (after interrupts/resumes such as
+        # ask_user / flow.clear) would make the toolResult count exceed the
+        # prior toolUse count and trigger the ValidationException.
+        for i, m in enumerate(merged):
+            if m["role"] != "user":
+                continue
+            prev_tool_use_ids: set[str] = set()
+            if i > 0 and merged[i - 1]["role"] == "assistant":
+                prev_tool_use_ids = {
+                    b["toolUse"]["toolUseId"]
+                    for b in merged[i - 1]["content"]
+                    if "toolUse" in b
+                }
+            kept: list[dict[str, Any]] = []
+            for block in m["content"]:
+                if "toolResult" in block:
+                    if block["toolResult"]["toolUseId"] in prev_tool_use_ids:
+                        kept.append(block)
+                    # else: orphan toolResult — drop it.
+                else:
+                    kept.append(block)
+            m["content"] = kept
+
+        # A turn may now be empty (its only block was an orphan toolResult).
+        merged = [m for m in merged if m["content"]]
+
+        # Re-merge: dropping empty turns can expose new same-role adjacency
+        # (e.g. assistant, [dropped user], assistant).
+        normalized: list[dict[str, Any]] = []
+        for m in merged:
+            if normalized and normalized[-1]["role"] == m["role"]:
+                normalized[-1]["content"].extend(m["content"])
+            else:
+                normalized.append(m)
+
+        # Step 4 — Converse requires the first message to be `user`. If the
+        # history starts with an assistant turn (rare; should not happen with a
+        # real conversation), drop leading assistant turns until a user leads.
+        while normalized and normalized[0]["role"] != "user":
+            normalized.pop(0)
+
+        return system_blocks, normalized
 
     @staticmethod
     def _tool_config(options: GenerateOptions) -> dict[str, Any] | None:
