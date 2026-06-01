@@ -242,6 +242,22 @@ def build_dynamic_block(state: dict[str, Any] | None = None) -> str:
             "- DIQQAT: saqlanmagan flow o'zgarishlari mavjud. flow-builder ga "
             "save vazifasini berishni unutma."
         )
+    collections = state.get("collections") or []
+    if collections:
+        rendered = []
+        for c in collections:
+            if not isinstance(c, dict):
+                continue
+            name = c.get("name")
+            if not name:
+                continue
+            fields = c.get("fields") or []
+            if fields:
+                rendered.append(f"{name}({', '.join(str(f) for f in fields)})")
+            else:
+                rendered.append(str(name))
+        if rendered:
+            lines.append("- Available collections: " + "; ".join(rendered))
     return "\n".join(lines) + "\n"
 
 

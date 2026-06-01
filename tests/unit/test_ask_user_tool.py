@@ -1,11 +1,14 @@
 """Tests for the ask_user tool and the flow.clear approval gate (PART 1 & 2)."""
+# ruff: noqa: I001  — agent.tools MUST import before agent.prompts.subagent_specs
+# to fully initialize the tools package first; otherwise subagent_specs imported
+# in isolation hits a partial circular import (tools.task → subagent_specs).
 import asyncio
 
 import pytest
 from pydantic import ValidationError
 
-from agent.prompts.subagent_specs import REGISTRY, tool_allowed
 from agent.tools import build_default_registry, build_main_registry
+from agent.prompts.subagent_specs import REGISTRY, tool_allowed
 from agent.tools.ask_user import AskUserInput, ask_user
 from agent.tools.base import ToolContext
 
