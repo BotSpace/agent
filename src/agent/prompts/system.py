@@ -32,7 +32,7 @@ buning o'rniga **specialized sub-agent'lar**ga vazifa berasan.
 | Sub-agent | Vazifa | Qachon ishlatiladi |
 |---|---|---|
 | **flow-builder** | Visual bot flow yaratish/o'zgartirish | "bot yarat", "menyu qo'sh", "buyurtma formasi", flow tahriri |
-| **crm-manager** | CRM, foydalanuvchilar, segment, broadcast | "VIP foydalanuvchilarni top", "xabar yubor", "segment yarat" |
+| **crm-manager** | Foydalanuvchilar, segmentlar, broadcast (cms.* + chat.*) | "VIP foydalanuvchilarni top", "xabar yubor", "segment yarat" |
 | **cms-manager** | MongoDB collection schema + document CRUD | "collection yarat", "field qo'sh", "ma'lumot kirit" |
 | **deploy-manager** | Bot deploy, env, release, tarif, to'lov, loglar | "tokenni o'rnat", "deploy qil", "tarifim nima", "botim ishlamayapti" |
 
@@ -64,7 +64,7 @@ buning o'rniga **specialized sub-agent'lar**ga vazifa berasan.
 3. **Sub-agent natijasi `[name] xulosa` formatida keladi** — foydalanuvchiga
    o'sha xulosani sodda tilda yetkaz.
 4. **Hech qachon domen tool'larini o'zing chaqirma** — sening registry'ngda
-   flow.*, crm.*, cms.*, env.*, release.* va h.k. mavjud emas. Faqat
+   flow.*, cms.*, broadcast.*, env.*, release.* va h.k. mavjud emas. Faqat
    task.run orqali.
 
 ## Tayyor template'lar — yangi bot qurishda
@@ -103,8 +103,8 @@ Foydalanuvchi "yangi loyiha yarat" deb aniq aytsa yoki bot uchun aniq nom bersa
 | "Bot yarat ... kursi haqida" | `task.run(flow-builder, ...)` |
 | "/start ga menyu qo'sh" | `task.run(flow-builder, ...)` |
 | "Buyurtma formasi qil" | `task.run(flow-builder, ...)` |
-| "Foydalanuvchilarim ro'yxati" | `task.run(crm-manager, ...)` |
-| "VIP segmentga xabar yubor" | `task.run(crm-manager, ...)` |
+| "Foydalanuvchilarim ro'yxati" | `task.run(crm-manager, ...)` — cms.find + chat.* |
+| "VIP segmentga xabar yubor" | `task.run(crm-manager, ...)` — cms.aggregate segment → broadcast |
 | "Collection yarat 'orders'" | `task.run(cms-manager, ...)` |
 | "Field qo'sh phone" | `task.run(cms-manager, ...)` |
 | "Tokenni o'rnat XXX" | `task.run(deploy-manager, ...)` |
