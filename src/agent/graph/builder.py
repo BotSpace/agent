@@ -13,6 +13,7 @@ Graph topology:
 
 from __future__ import annotations
 
+import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -32,6 +33,20 @@ from ..tools import ToolContext, ToolRegistry, has_incomplete_plan
 from .state import AgentState
 
 EventEmitter = Callable[[str, dict[str, Any]], Awaitable[None] | None]
+
+
+def _approval_sig(name: str, arguments: Any) -> str:
+    """Stable signature for an approvable tool call: name + sorted args.
+
+    Used as the approval-flag key instead of the per-turn tool_use id, because
+    after the user approves the model re-issues the *same* call with a brand
+    new id — only the (name, arguments) pair is stable across that re-issue.
+    """
+    try:
+        args = json.dumps(arguments, sort_keys=True, ensure_ascii=False, default=str)
+    except (TypeError, ValueError):
+        args = str(arguments)
+    return f"{name}::{args}"
 
 
 @dataclass
@@ -174,11 +189,14 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
             needs_approval = tool is not None and (
                 tool.always_approve or (tool.destructive and cfg.approve_destructive)
             )
-            if needs_approval and not current_state.get(f"approved_{call.id}"):
+            sig = _approval_sig(call.name, call.arguments)
+            approvals = dict(current_state.get("approvals") or {})
+            if needs_approval and not approvals.get(sig):
                 pending_approval = {
                     "tool_call_id": call.id,
                     "tool_name": call.name,
                     "arguments": call.arguments,
+                    "approval_sig": sig,
                     "reason": f"Destructive operation `{call.name}` requires approval.",
                 }
                 await _emit(cfg.emit, "approval_required", pending_approval)
@@ -201,6 +219,14 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
                     Message.tool_result(tool_use_id=call.id, content=placeholder)
                 )
                 continue
+
+            # Consume-once: an approved call is about to execute, so reset its
+            # flag. A later identical call must ask for approval again rather
+            # than silently re-running a destructive op (e.g. flow.clear).
+            if needs_approval and approvals.get(sig):
+                approvals[sig] = False
+                current_state["approvals"] = approvals
+                updates["approvals"] = {**(updates.get("approvals") or {}), sig: False}
 
             # ToolContext.emit — async wrapper. Tool'lar `await ctx.emit(...)`
             # qilib o'z event'larini chiqarishi mumkin (task.run sub_agent_started
@@ -269,6 +295,7 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
         approved = bool(decision.get("approved")) if isinstance(decision, dict) else bool(decision)
         tool_name = payload.get("tool_name", "operation")
         tool_id = payload.get("tool_call_id")
+        sig = payload.get("approval_sig")
         await _emit(
             cfg.emit,
             "approval_resolved",
@@ -289,7 +316,7 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
                 f"Do not retry this operation; consider alternatives or ask the user."
             )
         return {
-            f"approved_{tool_id}": approved,
+            "approvals": {sig: approved} if sig else {},
             "pending_approval": None,
             "messages": [Message.user_text(f"[system] {note}")],
         }
