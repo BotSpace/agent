@@ -212,3 +212,39 @@ def test_editorsend_supports_button_edges_directly():
     result = validate(flow)
 
     assert result.ok, result.render()
+
+
+def test_customcode_declared_outputs_are_valid_source_handles():
+    # CustomCodeNode with data.outputs=[{name}] exposes a dynamic
+    # `output-{name}` source handle per output (engine routes exit('name')
+    # via sourceHandle == "output-"+name). The validator must accept it.
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="t", type="CommandTriggerNode", data={"command": "/start"}),
+            FlowNode(
+                id="code",
+                type="CustomCodeNode",
+                data={
+                    "code": "if (x) exit('ok'); else exit('fail');",
+                    "outputs": [{"name": "ok"}, {"name": "fail"}],
+                },
+            ),
+            FlowNode(id="yes", type="SendTextMessageNode", data={"messageText": "OK"}),
+            FlowNode(id="no", type="SendTextMessageNode", data={"messageText": "Fail"}),
+        ],
+        edges=[
+            FlowEdge(id="e1", source="t", target="code"),
+            FlowEdge(id="e2", source="code", target="yes", sourceHandle="output-ok"),
+            FlowEdge(id="e3", source="code", target="no", sourceHandle="output-fail"),
+        ],
+    )
+
+    result = validate(flow)
+
+    assert result.ok, result.render()
+
+    # An output handle that was NOT declared is still rejected.
+    flow.edges[1].sourceHandle = "output-undeclared"
+    bad = validate(flow)
+    assert not bad.ok
+    assert any(i.code == "unsupported_source_handle" for i in bad.errors)
