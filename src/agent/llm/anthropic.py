@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import AsyncIterator
 from typing import Any
 
-from anthropic import AsyncAnthropic, APIStatusError
+from anthropic import APIStatusError, AsyncAnthropic
 
+from ..observability.metrics import (
+    LLM_REQUEST_DURATION,
+    LLM_REQUESTS,
+    local_token_breakdown,
+    record_llm_usage,
+)
 from .base import (
     ContentPart,
     GenerateOptions,
@@ -233,18 +240,38 @@ class AnthropicClient(LLMClient):
         messages: list[Message],
         options: GenerateOptions,
     ) -> GenerateResult:
+        local = local_token_breakdown(messages, options)
         req = self._build_request(messages, options)
+        t0 = time.monotonic()
         try:
             response = await self._client.messages.create(**req)
         except APIStatusError as e:
+            LLM_REQUESTS.labels(self.provider, options.model, "error").inc()
+            LLM_REQUEST_DURATION.labels(self.provider, options.model).observe(time.monotonic() - t0)
             raise LLMError(str(e), provider=self.provider, status=e.status_code) from e
 
+        LLM_REQUESTS.labels(self.provider, options.model, "success").inc()
+        LLM_REQUEST_DURATION.labels(self.provider, options.model).observe(time.monotonic() - t0)
+
         parts = self._from_anthropic_content(response.content)
+        raw_usage = response.usage
+        usage_dict = {
+            "input_tokens": getattr(raw_usage, "input_tokens", 0),
+            "output_tokens": getattr(raw_usage, "output_tokens", 0),
+            "cache_read_input_tokens": getattr(raw_usage, "cache_read_input_tokens", 0) or 0,
+            "cache_creation_input_tokens": getattr(raw_usage, "cache_creation_input_tokens", 0) or 0,
+        }
+        record_llm_usage(
+            provider=self.provider,
+            model=options.model,
+            usage=usage_dict,
+            local_breakdown=local,
+        )
         usage = Usage(
-            input_tokens=getattr(response.usage, "input_tokens", 0),
-            output_tokens=getattr(response.usage, "output_tokens", 0),
-            cache_creation_tokens=getattr(response.usage, "cache_creation_input_tokens", 0) or 0,
-            cache_read_tokens=getattr(response.usage, "cache_read_input_tokens", 0) or 0,
+            input_tokens=usage_dict["input_tokens"],
+            output_tokens=usage_dict["output_tokens"],
+            cache_creation_tokens=usage_dict["cache_creation_input_tokens"],
+            cache_read_tokens=usage_dict["cache_read_input_tokens"],
         )
         return GenerateResult(
             message=Message(role="assistant", content=parts),
@@ -259,11 +286,13 @@ class AnthropicClient(LLMClient):
         messages: list[Message],
         options: GenerateOptions,
     ) -> AsyncIterator[StreamEvent]:
+        local = local_token_breakdown(messages, options)
         req = self._build_request(messages, options)
         accumulated_parts: list[ContentPart] = []
         tool_buffers: dict[int, dict[str, Any]] = {}  # index → {id, name, json_str}
         stop_reason = "end_turn"
         usage = Usage()
+        t0 = time.monotonic()
 
         try:
             async with self._client.messages.stream(**req) as stream:
@@ -334,7 +363,23 @@ class AnthropicClient(LLMClient):
                                 getattr(event.message.usage, "cache_read_input_tokens", 0) or 0
                             )
         except APIStatusError as e:
+            LLM_REQUESTS.labels(self.provider, options.model, "error").inc()
+            LLM_REQUEST_DURATION.labels(self.provider, options.model).observe(time.monotonic() - t0)
             raise LLMError(str(e), provider=self.provider, status=e.status_code) from e
+
+        LLM_REQUESTS.labels(self.provider, options.model, "success").inc()
+        LLM_REQUEST_DURATION.labels(self.provider, options.model).observe(time.monotonic() - t0)
+        record_llm_usage(
+            provider=self.provider,
+            model=options.model,
+            usage={
+                "input_tokens": usage.input_tokens,
+                "output_tokens": usage.output_tokens,
+                "cache_read_input_tokens": usage.cache_read_tokens,
+                "cache_creation_input_tokens": usage.cache_creation_tokens,
+            },
+            local_breakdown=local,
+        )
 
         msg = Message(role="assistant", content=accumulated_parts)
         yield StreamStop(message=msg, stop_reason=stop_reason, usage=usage)

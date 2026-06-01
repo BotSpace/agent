@@ -3,16 +3,14 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from collections.abc import AsyncIterator
 from typing import Any
 
-import os
-
 from openai import APIStatusError, AsyncOpenAI
 
-from ..observability.metrics import record_llm_usage
-
+from ..observability.metrics import local_token_breakdown, record_llm_usage
 from .base import (
     ContentPart,
     GenerateOptions,
@@ -194,35 +192,8 @@ class OpenAIClient(LLMClient):
     def _local_breakdown(
         cls, messages: list[Message], options: GenerateOptions
     ) -> dict[str, int]:
-        """Estimate input tokens by category for Prometheus.
-
-        Uses a chars/4 heuristic so we don't pull tiktoken in just for
-        observability. The split is approximate but still useful to see
-        relative shares (system vs user vs tool_result)."""
-        system_chars = 0
-        user_chars = 0
-        tool_result_chars = 0
-        for m in messages:
-            if m.role == "system":
-                system_chars += len(m.text)
-            elif m.role == "user":
-                user_chars += len(m.text)
-            elif m.role == "tool":
-                for p in m.content:
-                    if isinstance(p, ToolResultPart):
-                        tool_result_chars += len(p.content)
-            # assistant text is fed back next turn but not really a category
-            # we bill — folded into user_chars conceptually
-        tool_schema_chars = 0
-        for t in options.tools or []:
-            tool_schema_chars += len(t.name) + len(t.description or "")
-            tool_schema_chars += len(json.dumps(t.input_schema))
-        return {
-            "system": (system_chars + 3) // 4,
-            "tool_schema": (tool_schema_chars + 3) // 4,
-            "user": (user_chars + 3) // 4,
-            "tool_result": (tool_result_chars + 3) // 4,
-        }
+        """Delegate to shared helper in metrics module."""
+        return local_token_breakdown(messages, options)
 
     def _build_request(self, messages: list[Message], options: GenerateOptions) -> dict[str, Any]:
         oai_messages = self._to_openai_messages(messages)
@@ -314,8 +285,8 @@ class OpenAIClient(LLMClient):
         options: GenerateOptions,
     ) -> GenerateResult:
         from ..observability.metrics import (
-            LLM_REQUESTS,
             LLM_REQUEST_DURATION,
+            LLM_REQUESTS,
         )
 
         local = self._local_breakdown(messages, options)
@@ -375,8 +346,8 @@ class OpenAIClient(LLMClient):
         options: GenerateOptions,
     ) -> AsyncIterator[StreamEvent]:
         from ..observability.metrics import (
-            LLM_REQUESTS,
             LLM_REQUEST_DURATION,
+            LLM_REQUESTS,
         )
 
         local = self._local_breakdown(messages, options)
