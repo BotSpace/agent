@@ -295,3 +295,70 @@ def test_unknown_node_type_rejected_on_acc_ai_tool():
     )
     result = validate(flow)
     assert any(i.code == "acc_wrong_node_type" for i in result.issues)
+
+
+def test_ai_provider_without_api_key_is_error():
+    """A cloud AI provider node with empty apiKey must fail validation — else the
+    LLM call returns empty and the bot sends nothing."""
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="t", type="CommandTriggerNode", data={"command": "/start"}),
+            FlowNode(id="agent", type="AIAgentNode", data={}),
+            FlowNode(
+                id="prov",
+                type="AIOpenAIProviderNode",
+                data={"model": "gpt-4o-mini", "baseURL": "https://api.openai.com/v1", "apiKey": ""},
+            ),
+            FlowNode(id="reply", type="SendTextMessageNode", data={"messageText": "{{agent_output}}"}),
+        ],
+        edges=[
+            FlowEdge(id="e1", source="t", target="agent"),
+            FlowEdge(id="e2", source="prov", target="agent", sourceHandle="source-default", targetHandle="acc:ai_model"),
+            FlowEdge(id="e3", source="agent", target="reply"),
+        ],
+    )
+    result = validate(flow)
+    assert any(i.code == "ai_provider_missing_api_key" for i in result.errors)
+
+
+def test_ai_provider_with_api_key_passes():
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="t", type="CommandTriggerNode", data={"command": "/start"}),
+            FlowNode(id="agent", type="AIAgentNode", data={}),
+            FlowNode(
+                id="prov",
+                type="AIOllamaProviderNode",
+                data={"model": "gemma4:31b-cloud", "baseURL": "https://ollama.com/v1", "apiKey": "sk-xxx"},
+            ),
+            FlowNode(id="reply", type="SendTextMessageNode", data={"messageText": "{{agent_output}}"}),
+        ],
+        edges=[
+            FlowEdge(id="e1", source="t", target="agent"),
+            FlowEdge(id="e2", source="prov", target="agent", sourceHandle="source-default", targetHandle="acc:ai_model"),
+            FlowEdge(id="e3", source="agent", target="reply"),
+        ],
+    )
+    assert not any(i.code == "ai_provider_missing_api_key" for i in validate(flow).issues)
+
+
+def test_local_ollama_without_api_key_is_exempt():
+    """Local Ollama (localhost) does not need a key."""
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="t", type="CommandTriggerNode", data={"command": "/start"}),
+            FlowNode(id="agent", type="AIAgentNode", data={}),
+            FlowNode(
+                id="prov",
+                type="AIOllamaProviderNode",
+                data={"model": "llama3.1", "baseURL": "http://localhost:11434", "apiKey": ""},
+            ),
+            FlowNode(id="reply", type="SendTextMessageNode", data={"messageText": "{{agent_output}}"}),
+        ],
+        edges=[
+            FlowEdge(id="e1", source="t", target="agent"),
+            FlowEdge(id="e2", source="prov", target="agent", sourceHandle="source-default", targetHandle="acc:ai_model"),
+            FlowEdge(id="e3", source="agent", target="reply"),
+        ],
+    )
+    assert not any(i.code == "ai_provider_missing_api_key" for i in validate(flow).issues)
