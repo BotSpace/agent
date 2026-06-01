@@ -54,12 +54,28 @@ class AnthropicClient(LLMClient):
 
     # ── conversion: internal → Anthropic ───────────────────────────────
     @staticmethod
-    def _to_anthropic_messages(messages: list[Message]) -> tuple[str | None, list[dict[str, Any]]]:
-        system_text: str | None = None
+    def _to_anthropic_messages(
+        messages: list[Message],
+    ) -> tuple[str | list[dict[str, Any]] | None, list[dict[str, Any]]]:
+        """Convert internal messages to Anthropic API format.
+
+        Returns (system, conversation_messages).
+
+        system is one of:
+          - None              — no system message
+          - str               — legacy single-block (plain text, no caching)
+          - list[dict]        — multi-block; block 0 carries cache_control so
+                                the static prefix (CORE_IDENTITY + catalog) is
+                                cached and the dynamic block is NOT cached.
+        """
+        system_parts: list[TextPart] = []
         out: list[dict[str, Any]] = []
         for msg in messages:
             if msg.role == "system":
-                system_text = (system_text + "\n\n" if system_text else "") + msg.text
+                # Collect TextPart blocks; ignore non-text parts in system.
+                for p in msg.content:
+                    if isinstance(p, TextPart):
+                        system_parts.append(p)
                 continue
             content: list[dict[str, Any]] = []
             for part in msg.content:
@@ -88,7 +104,27 @@ class AnthropicClient(LLMClient):
             # Anthropic — `tool` role yo'q, tool_result `user` ichida boradi
             role = "user" if msg.role == "tool" else msg.role
             out.append({"role": role, "content": content})
-        return system_text, out
+
+        if not system_parts:
+            return None, out
+
+        if len(system_parts) == 1:
+            # Single block — return plain string for backward compatibility
+            # when no caching split is needed (e.g. tests that pass a raw
+            # system_text message).
+            return system_parts[0].text, out
+
+        # Multi-block (two-block) system: block 0 = static (cached prefix),
+        # block 1 = dynamic (uncached, per-request context).
+        # cache_control on block 0 tells Anthropic to cache up to and
+        # including that block; block 1 is excluded from the cached prefix.
+        system_blocks: list[dict[str, Any]] = []
+        for i, p in enumerate(system_parts):
+            block: dict[str, Any] = {"type": "text", "text": p.text}
+            if i == 0:
+                block["cache_control"] = {"type": "ephemeral"}
+            system_blocks.append(block)
+        return system_blocks, out
 
     @staticmethod
     def _from_anthropic_content(blocks: list[Any]) -> list[ContentPart]:
@@ -122,15 +158,17 @@ class AnthropicClient(LLMClient):
 
     @staticmethod
     def _build_request(messages: list[Message], options: GenerateOptions) -> dict[str, Any]:
-        system_text, msgs = AnthropicClient._to_anthropic_messages(messages)
+        system_payload, msgs = AnthropicClient._to_anthropic_messages(messages)
         req: dict[str, Any] = {
             "model": resolve_model(options.model),
             "max_tokens": options.max_tokens,
             "temperature": options.temperature,
             "messages": msgs,
         }
-        if system_text:
-            req["system"] = system_text
+        if system_payload:
+            # system_payload is either a plain str (single block, no caching)
+            # or a list[dict] (multi-block with cache_control on block 0).
+            req["system"] = system_payload
         if options.tools:
             req["tools"] = AnthropicClient._tool_spec_for_api(options)
             if options.tool_choice == "any":
