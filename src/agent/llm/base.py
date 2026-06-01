@@ -194,6 +194,88 @@ StreamEvent = (
 )
 
 
+def normalize_tool_turns(messages: list[Message]) -> list[Message]:
+    """Normalize an internal Message list so it satisfies strict API requirements.
+
+    Both Anthropic Messages API and Bedrock Converse enforce:
+      1. Roles must strictly ALTERNATE (no two consecutive same-role messages).
+      2. The first non-system message must be ``user``.
+      3. Every ``tool_result``/``toolResult`` for an assistant turn must live in
+         the SINGLE user turn immediately following that assistant turn, and only
+         results matching the prior turn's tool_use ids are kept (orphans dropped).
+
+    This function operates on the internal ``Message`` list BEFORE any
+    provider-specific block formatting, so both providers can call it first and
+    then apply their own serialization.
+
+    Steps:
+      (a) ``tool``-role messages are re-labeled as ``user``.
+      (b) Adjacent same-role messages are merged (content parts concatenated).
+      (c) For each user turn: keep only ToolResultPart items whose
+          ``tool_use_id`` matches a ToolUsePart in the immediately preceding
+          assistant turn; drop the rest (orphans).
+      (d) Empty messages (no content parts) are removed.
+      (e) Step (b)+(d) are repeated once to handle new adjacency exposed by
+          orphan removal.
+      (f) Leading non-user (assistant) messages are dropped until the first
+          message is ``user``.
+
+    System messages are passed through unchanged.
+    """
+    # (a) re-label `tool` → `user`
+    relabeled: list[Message] = []
+    for msg in messages:
+        if msg.role == "tool":
+            relabeled.append(Message(role="user", content=list(msg.content)))
+        else:
+            relabeled.append(msg)
+
+    def merge_adjacent(msgs: list[Message]) -> list[Message]:
+        out: list[Message] = []
+        for msg in msgs:
+            if out and out[-1].role == msg.role and msg.role != "system":
+                out[-1].content.extend(msg.content)
+            else:
+                out.append(Message(role=msg.role, content=list(msg.content)))
+        return out
+
+    # (b) first merge pass — collapses consecutive same-role messages
+    merged = merge_adjacent(relabeled)
+
+    # (c) prune orphan ToolResultParts
+    for i, msg in enumerate(merged):
+        if msg.role != "user":
+            continue
+        prev_tool_use_ids: set[str] = set()
+        if i > 0 and merged[i - 1].role == "assistant":
+            prev_tool_use_ids = {
+                p.id
+                for p in merged[i - 1].content
+                if isinstance(p, ToolUsePart)
+            }
+        kept: list[ContentPart] = []
+        for part in msg.content:
+            if isinstance(part, ToolResultPart):
+                if part.tool_use_id in prev_tool_use_ids:
+                    kept.append(part)
+                # else: orphan — drop silently
+            else:
+                kept.append(part)
+        msg.content = kept
+
+    # (d) remove empty messages (only non-system empties matter)
+    non_empty = [m for m in merged if m.role == "system" or m.content]
+
+    # (e) re-merge to collapse adjacency exposed by orphan removal
+    re_merged = merge_adjacent(non_empty)
+
+    # (f) drop leading non-user (assistant) turns
+    while re_merged and re_merged[0].role not in ("user", "system"):
+        re_merged.pop(0)
+
+    return re_merged
+
+
 @runtime_checkable
 class LLMClient(Protocol):
     """Provider-agnostic protocol — har provider amalga oshiradi."""
