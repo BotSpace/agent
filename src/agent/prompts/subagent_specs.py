@@ -715,6 +715,11 @@ chiqarish va deploy lifecycle'ini boshqarish.
 ## Tool'lar
 - Env: `env.list`, `env.set`, `env.unset`
 - Release: `release.list`, `release.deploy`, `release.status`, `release.logs`
+- Debug run: `release.debug` — botni DEBUG rejimda ishga tushiradi (token SHART
+  EMAS, ~30 daqiqada o'chadi) va test uchun Telegram link qaytaradi.
+  Foydalanuvchi "sinab ko'ray / test qil / debug qil / token yo'q" desa yoki
+  deploy oldidan tez sinash kerak bo'lsa — `release.deploy` o'rniga SHU'ni ishlat
+  (token/plan talab qilmaydi).
 - Tarif/to'lov: `plans.list`, `subscription.current`, `subscription.upgrade`,
   `payment.link.create`
 - File: `file.list`
