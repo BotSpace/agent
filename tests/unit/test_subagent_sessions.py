@@ -13,6 +13,8 @@ resume-vs-fresh detection path is exercised deterministically.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 import agent.graph as graph_mod
@@ -189,6 +191,112 @@ async def test_depth_cap_enforced(patched):
     assert res.is_error
     assert "depth cap" in res.content.lower()
     assert patched.invoked_with == []
+
+
+class _InterruptOnceGraph:
+    """Interrupts on the FIRST ainvoke, then finishes on the Command(resume)."""
+
+    def __init__(self) -> None:
+        self.calls: list = []
+
+    async def ainvoke(self, base, config=None):
+        self.calls.append(base)
+        if len(self.calls) == 1:
+            # Simulate a sub-graph approval interrupt (flow.clear / always_approve).
+            iobj = SimpleNamespace(
+                value={
+                    "kind": "approval",
+                    "tool_name": "flow.clear",
+                    "tool_call_id": "tu-clear",
+                    "reason": "wipes the working flow",
+                }
+            )
+            return {"__interrupt__": [iobj]}
+        # Resumed: finish with a final assistant message.
+        return {
+            "messages": [Message(role="assistant", content=[TextPart(text="cleared")])]
+        }
+
+
+class _FakeStore:
+    """Records pending_* writes and (for approval) auto-resolves the waiting
+    future via submit_resolution — emulating the dashboard POSTing /approve."""
+
+    def __init__(self) -> None:
+        self.events: list = []
+
+    async def set_pending_approval(self, request_id, payload):
+        self.events.append(("set_pending_approval", request_id, payload))
+        if payload is not None:
+            # Dashboard side (async, like the real /approve HTTP POST): the
+            # future is registered by _wait_resolution AFTER this returns, so
+            # defer the resolution to a follow-up task that retries until the
+            # waiter exists.
+            self._resolve_soon(request_id, {"approved": True})
+
+    async def set_pending_clarification(self, request_id, payload):
+        self.events.append(("set_pending_clarification", request_id, payload))
+        if payload is not None:
+            self._resolve_soon(request_id, "yes")
+
+    def _resolve_soon(self, request_id, answer):
+        import asyncio as _asyncio
+
+        from agent.runtime.worker import submit_resolution
+
+        async def _deliver():
+            for _ in range(100):
+                if submit_resolution(request_id, answer):
+                    return
+                await _asyncio.sleep(0)
+
+        _asyncio.get_running_loop().create_task(_deliver())
+
+
+@pytest.mark.asyncio
+async def test_subgraph_approval_interrupt_resumes_no_409(patched, monkeypatch):
+    """A sub-agent approval interrupt must register pending_approval on the MAIN
+    request_id (so approve_run no longer sees None → 409), await resolution, then
+    RESUME the sub-graph in place — not bubble up."""
+    interrupt_graph = _InterruptOnceGraph()
+    monkeypatch.setattr(
+        graph_mod, "build_graph", lambda cfg, checkpointer=None: interrupt_graph
+    )
+
+    cp = _FakeCheckpointer()
+    store = _FakeStore()
+    ctx = _ctx(cp, services_extra={"store": store, "request_id": "MAIN-REQ-1"})
+
+    res = await _handler(
+        TaskRunInput(subagent_type="flow-builder", prompt="clear the flow"),
+        ctx,
+    )
+
+    # Sub-graph was resumed (2 invocations: initial + Command(resume)).
+    assert len(interrupt_graph.calls) == 2
+    from langgraph.types import Command as _Cmd
+
+    assert isinstance(interrupt_graph.calls[1], _Cmd)
+
+    # Pending approval was registered on the MAIN request_id, then cleared.
+    names = [(e[0], e[1], e[2]) for e in store.events]
+    assert ("set_pending_approval", "MAIN-REQ-1", store.events[0][2]) in names
+    assert store.events[0][2] is not None  # set
+    assert any(
+        e[0] == "set_pending_approval" and e[1] == "MAIN-REQ-1" and e[2] is None
+        for e in store.events
+    )  # cleared
+
+    # approval_required + approval_resolved were emitted (wrapped with sub id).
+    emitted_names = [n for n, _ in ctx._emitted]
+    assert "approval_required" in emitted_names
+    assert "approval_resolved" in emitted_names
+
+    # The sub-agent finished successfully (no 409 dead-end, no bubble note).
+    assert not res.is_error
+    assert "cleared" in res.content
+    # It did NOT take the legacy bubbling path (no "needs APPROVAL" note).
+    assert "needs APPROVAL" not in res.content
 
 
 @pytest.mark.asyncio
