@@ -256,6 +256,9 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
         max_tokens=s.max_output_tokens,
         emit=_wrap_emit,
         services=sub_services,
+        # Sub-agent's OWN spec prompt is the system message — NOT the dispatcher
+        # persona (which would make the model greet instead of doing the task).
+        system_block=spec.full_prompt,
         # Sub-agent ichida destructive tool'lar (release.deploy, flow.save,
         # cms.delete, ...) approval-interrupt orqali to'xtatilmaydi: foydalanuvchi
         # main agent'ga vazifa berganida (masalan "deploy qil") allaqachon
@@ -303,9 +306,9 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
             if auth_claims:
                 base["auth_claims"] = auth_claims
         else:
-            seeded_prompt = (
-                f"[Sub-agent: {spec.name}]\n{spec.full_prompt}\n\nTask: {input.prompt}"
-            )
+            # spec.full_prompt is now the system message (cfg.system_block), so
+            # the first user message carries ONLY the task — no duplication.
+            seeded_prompt = f"Task: {input.prompt}"
             base = initial_state(
                 run_id=f"{ctx.run_id}-sub-{spec.name}",
                 project_id=ctx.project_id,
