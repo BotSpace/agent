@@ -112,6 +112,31 @@ def validate(flow: FlowDocument) -> ValidationResult:
                     )
                 )
 
+        # AI provider talking to a CLOUD endpoint MUST carry an apiKey. Without
+        # it the engine's LLM call yields empty output → the bot sends an empty
+        # message → dead bot. Force the flow-builder to collect the key via
+        # ask_user before saving (local Ollama on localhost is exempt).
+        if node.type in _ACC_PORT_ACCEPTS["acc:ai_model"]:
+            api_key = str(node.data.get("apiKey") or "").strip()
+            base_url = str(node.data.get("baseURL") or "").lower()
+            is_local = (
+                "localhost" in base_url
+                or "127.0.0.1" in base_url
+                or "://ollama:" in base_url
+            )
+            if not api_key and not is_local:
+                issues.append(
+                    ValidationIssue(
+                        "error",
+                        "ai_provider_missing_api_key",
+                        f"`{node.type}` `{node.id}` has no `apiKey`. A cloud LLM "
+                        "provider needs one — ask the user for it (ask_user) and set "
+                        "data.apiKey before saving; otherwise the AI node returns "
+                        "empty output and the bot sends nothing.",
+                        node_id=node.id,
+                    )
+                )
+
     # ── 2. Edge-level checks ───────────────────────────────────────────
     nodes_by_id = {node.id: node for node in flow.nodes}
     edge_pairs: set[tuple[str, str, str | None]] = set()
