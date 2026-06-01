@@ -475,6 +475,7 @@ FLOW_BUILDER = SubAgentSpec(
     ),
     allowed_tools=[
         "plan.*",
+        "ask_user",
         "flow.*",
         "task.run",
     ],
@@ -517,6 +518,7 @@ Sen specialized **CRM Manager** sub-agentsan. Vazifang:
 """,
     allowed_tools=[
         "plan.*",
+        "ask_user",
         "cms.list_collections",
         "cms.get_collection",
         "cms.find",
@@ -558,6 +560,7 @@ va document'lar bilan ishlash.
 """,
     allowed_tools=[
         "plan.*",
+        "ask_user",
         "cms.*",
         "task.run",
     ],
@@ -629,6 +632,7 @@ qaytarsa:
 """,
     allowed_tools=[
         "plan.*",
+        "ask_user",
         "env.*",
         "release.*",
         "plans.*",

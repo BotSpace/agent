@@ -167,12 +167,14 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
             # Anthropic) require each tool_use to be answered with a
             # corresponding tool_result in the next user message. After the
             # user approves, the model will re-issue the tool_use call.
-            if (
-                tool is not None
-                and tool.destructive
-                and cfg.approve_destructive
-                and not current_state.get(f"approved_{call.id}")
-            ):
+            # `always_approve` tools (flow.clear) ALWAYS gate, regardless of
+            # cfg.approve_destructive — these wipe the whole working flow, so the
+            # user MUST approve. Other destructive tools gate only when the
+            # surrounding config opts in (cfg.approve_destructive).
+            needs_approval = tool is not None and (
+                tool.always_approve or (tool.destructive and cfg.approve_destructive)
+            )
+            if needs_approval and not current_state.get(f"approved_{call.id}"):
                 pending_approval = {
                     "tool_call_id": call.id,
                     "tool_name": call.name,

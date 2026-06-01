@@ -226,11 +226,15 @@ class FlowClearInput(BaseModel):
     name="flow.clear",
     description=(
         "Working flow'dan BARCHA node va edge'larni bir chaqiruvda o'chiradi. "
-        "Yangi bot qurish boshida ishlatish kerak (bittadan `flow.remove_node` "
-        "chaqirish o'rniga). Destructive — foydalanuvchi aniq so'rasagina chaqir."
+        "DIQQAT: butun mavjud flow'ni yo'q qiladi — faqat foydalanuvchi AYNAN "
+        "'qaytadan boshla / hammasini o'chir / yangidan qur' deb so'rasagina chaqir. "
+        "Bu amal foydalanuvchidan APPROVAL (tasdiq) talab qiladi va u rad etsa "
+        "bajarilmaydi. Oddiy tahrir uchun ishlatma — node qo'shish/o'zgartirish "
+        "uchun flow.add_*/flow.patch ishlat."
     ),
     input_model=FlowClearInput,
     destructive=True,
+    always_approve=True,
 )
 async def flow_clear(input: FlowClearInput, ctx: ToolContext) -> ToolResult:
     if not input.confirm:
