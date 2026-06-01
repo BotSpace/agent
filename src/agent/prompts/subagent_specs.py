@@ -530,6 +530,13 @@ flow.connect_accessory(accessory_id="ai-prov", agent_id="agent", port="acc:ai_mo
 
 ## AI node uchun LLM tanlash — foydalanuvchidan SO'RA, Ollama tavsiya qil
 
+**MAJBURIY:** AI agent node qurishdan OLDIN provider va API key'ni `ask_user`
+bilan ol. Provider node'ni **API key'siz YARATMA** (cloud uchun) — keysiz LLM
+chaqiruvi BO'SH chiqish beradi, bot bo'sh xabar yuboradi ("dead bot"). Validator
+ham buni rad etadi: cloud provider node'da `apiKey` bo'sh bo'lsa
+`flow.validate`/`flow.save` **xato** (`ai_provider_missing_api_key`) qaytaradi —
+demak keysiz flow'ni saqlay olmaysan. Avval key ol, keyin node yarat va save qil.
+
 Bot AI/LLM node talab qilsa, provider/model'ni TAXMIN QILMA — `ask_user` bilan SO'RA.
 Maxfiy qiymatlar (API key) ham har doim `ask_user` orqali olinadi, hech qachon taxmin
 qilinmaydi.
