@@ -128,6 +128,14 @@ class CreateCollectionInput(BaseModel):
     name: str = Field(description="snake_case, e.g. 'orders', 'leads'")
     label: str = ""
     description: str = ""
+    primary_field: str | None = Field(
+        default=None,
+        description=(
+            "relation orqali ko'rsatilganda title sifatida ishlatiladigan field "
+            "nomi, masalan 'name'. Boshqa collection bu collection'ga relation "
+            "field bilan bog'langanda shu field display qiymat bo'lib chiqadi."
+        ),
+    )
     fields: list[FieldSpec] = Field(default_factory=list)
     project_id: str | int | None = None
 
@@ -138,7 +146,9 @@ class CreateCollectionInput(BaseModel):
         "Create a new collection with an optional initial schema. Field `kind` "
         "must be one of: text, longtext, int, float, bool, datetime, date, "
         "email, url, phone, enum, json, array, relation, file, image, audio, "
-        "video, geo. RELATION kind requires `relation_collection` (collection id)."
+        "video, geo. RELATION kind requires `relation_collection` (collection id). "
+        "Set `primary_field` to the field used as the display/title when this "
+        "collection is referenced from another via a relation (e.g. 'name')."
     ),
     input_model=CreateCollectionInput,
 )
@@ -147,6 +157,10 @@ async def create_collection(input: CreateCollectionInput, ctx: ToolContext) -> T
     if pid is None:
         return ToolResult.error("No project_id.")
     body = input.model_dump(exclude={"project_id"})
+    # primary_field=None bo'lsa body'dan tushirib qoldiramiz (backend default'i
+    # buzilmasin); berilgan bo'lsa backend serializer'ga uzatiladi.
+    if body.get("primary_field") is None:
+        body.pop("primary_field", None)
     try:
         c = await _backend(ctx).cms_create_collection(pid, body, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
