@@ -22,6 +22,7 @@ from .node_data_models import (
     AICustomCodeToolData,
     AIGeminiProviderData,
     AIHTTPToolData,
+    AIKnowledgeToolData,
     AIOpenAIProviderData,
     AIOllamaProviderData,
     CallbackQueryTriggerData,
@@ -432,6 +433,7 @@ _ACC_PORT_ACCEPTS: dict[str, frozenset[str]] = {
     }),
     "acc:ai_tool": frozenset({
         "AIHTTPToolNode", "AICollectionToolNode", "AICustomCodeToolNode",
+        "AIKnowledgeToolNode",
     }),
 }
 
@@ -562,6 +564,21 @@ def build_flow_action_tools() -> list[Tool]:
             description=(
                 "Add a custom JavaScript tool sub-node for an AIAgentNode. "
                 "Connect to acc:ai_tool. jsCode return value becomes the tool result."
+            ),
+        ),
+        _make_popular_node_tool(
+            name="flow.add_ai_knowledge_tool",
+            type_name="AIKnowledgeToolNode",
+            data_model=AIKnowledgeToolData,
+            description=(
+                "Add a RAG knowledge retrieval tool sub-node for an AIAgentNode "
+                "(tool='knowledge'). Embeds the bot `collection` into a vector DB (lazy) "
+                "and lets the agent retrieve relevant docs via semantic search. "
+                "The agent calls it with a plain-text `query`. "
+                "Connect to acc:ai_tool after adding. "
+                "Required: collection. Optional: textFields, embeddingProvider "
+                "(openai|ollama|gemini), embeddingModel, embeddingApiKey, "
+                "embeddingBaseURL, vectorDbUrl, vectorDbApiKey, topK."
             ),
         ),
         # ── Core popular nodes ──────────────────────────────────────────

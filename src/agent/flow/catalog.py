@@ -579,6 +579,30 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         target_handles=[],
         is_accessory=True,
     ),
+    "AIKnowledgeToolNode": NodeTypeSpec(
+        type="AIKnowledgeToolNode",
+        category="ai",
+        description=(
+            "RAG knowledge retrieval tool sub-node. AIAgentNode'ning acc:ai_tool portiga ulanadi. "
+            "tool='knowledge'. Bot collection'ini vector DB'ga (lazy) embed qiladi va agent "
+            "semantic qidiruv orqali tegishli hujjatlarni olishi mumkin — agent uni "
+            "oddiy matnli `query` bilan chaqiradi. "
+            "embeddingProvider: openai|ollama|gemini. "
+            "topK: qaytariladigan hujjatlar soni (standart 5). "
+            "Edge: source=<this_id>, sourceHandle='source-default', "
+            "target=<agent_id>, targetHandle='acc:ai_tool'."
+        ),
+        required_data=["collection"],
+        optional_data=[
+            "tool", "toolName",
+            "textFields", "embeddingProvider", "embeddingModel",
+            "embeddingApiKey", "embeddingBaseURL",
+            "vectorDbUrl", "vectorDbApiKey", "topK",
+        ],
+        source_handles=["source-default"],
+        target_handles=[],
+        is_accessory=True,
+    ),
 }
 
 
