@@ -437,6 +437,40 @@ class RunStore:
         except Exception:  # noqa: BLE001
             return []
 
+    async def delete_thread(
+        self, *, project_id: str | None, user_id: str | None, thread_id: str
+    ) -> int:
+        """Delete a thread's runs (and, via FK cascade, their events) plus its
+        messages. Scoped by project_id/user_id so a user can only delete their
+        own threads. Returns the number of deleted runs. Never raises.
+        """
+        try:
+            await self.bootstrap()
+            where = ["thread_id = %s"]
+            params: list[Any] = [thread_id]
+            if project_id:
+                where.append("project_id = %s")
+                params.append(project_id)
+            if user_id:
+                where.append("user_id = %s")
+                params.append(user_id)
+            clause = " AND ".join(where)
+            async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
+                async with conn.cursor() as cur:
+                    # agent_messages has no FK cascade — remove its rows first.
+                    await cur.execute(
+                        f"DELETE FROM agent_messages WHERE request_id IN "
+                        f"(SELECT request_id FROM agent_runs WHERE {clause})",
+                        params,
+                    )
+                    # Deleting runs cascades to agent_events (ON DELETE CASCADE).
+                    await cur.execute(f"DELETE FROM agent_runs WHERE {clause}", params)
+                    deleted = cur.rowcount
+                await conn.commit()
+            return int(deleted or 0)
+        except Exception:  # noqa: BLE001
+            return 0
+
     async def get_thread_turns(
         self, *, project_id: str | None, user_id: str | None, thread_id: str
     ) -> list[dict[str, Any]]:
