@@ -60,6 +60,13 @@ class GraphConfig:
     emit: EventEmitter | None = None
     services: dict[str, Any] | None = None
     approve_destructive: bool = True
+    # System prompt override. When set (sub-agents pass their spec prompt here),
+    # this becomes the system message INSTEAD of the dispatcher persona. The main
+    # dispatcher leaves it None and uses build_system_message(). Sub-agents MUST
+    # set it — otherwise they inherit the dispatcher "greet & delegate" persona,
+    # which strong system-following models (Sonnet 4.6) obey, replying with a
+    # greeting instead of doing the delegated task.
+    system_block: str | None = None
     # Max chars of conversation history (excluding system prompt) sent
     # to the LLM per turn. When the history grows beyond this budget we
     # drop the OLDEST turns while keeping the latest user/assistant
@@ -128,7 +135,13 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
 
     async def llm_call(state: AgentState) -> dict[str, Any]:
         # Static-only system message (cached prefix: CORE_IDENTITY + catalog).
-        system = build_system_message(state)
+        # Sub-agents override it with their own spec prompt via cfg.system_block
+        # so they don't inherit the dispatcher "greet & delegate" persona.
+        system = (
+            Message.system_text(cfg.system_block)
+            if cfg.system_block
+            else build_system_message(state)
+        )
         history = state.get("messages") or []
         history = _trim_history(history, max_chars=cfg.max_history_chars)
         # Dynamic context injected as a TRAILING user message so it sits after

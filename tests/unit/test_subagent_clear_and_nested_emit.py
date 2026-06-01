@@ -121,6 +121,7 @@ def patched_nested(monkeypatch):
         # drives events THROUGH it exactly like the real sub-graph would.
         g = _NestedEmitGraph(cfg.emit)
         holder["graph"] = g
+        holder["cfg"] = cfg
         return g
 
     monkeypatch.setattr(graph_mod, "build_graph", _build_graph)
@@ -176,3 +177,19 @@ async def test_nested_child_tool_call_not_counted_by_parent(patched_nested):
     assert res.data["tool_calls"] == 1
     finished = [p for n, p in ctx._emitted if n == "sub_agent_finished"]
     assert finished and finished[-1]["tool_calls"] == 1
+
+
+@pytest.mark.asyncio
+async def test_subagent_system_block_is_spec_prompt_not_dispatcher(patched_nested):
+    """A sub-agent must run with ITS OWN spec prompt as the system message, not
+    the dispatcher persona — otherwise Sonnet-class models greet instead of
+    doing the delegated task (deploy-manager replied 'Salom!' bug)."""
+    ctx = _ctx(_FakeCheckpointer())
+    await _handler(
+        TaskRunInput(subagent_type="deploy-manager", prompt="deploy project 1185"),
+        ctx,
+    )
+    cfg = patched_nested["cfg"]
+    assert cfg.system_block == REGISTRY["deploy-manager"].full_prompt
+    # And it must NOT be the dispatcher persona.
+    assert "dispatcher" not in (cfg.system_block or "").lower()[:200]
