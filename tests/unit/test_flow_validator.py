@@ -248,3 +248,50 @@ def test_customcode_declared_outputs_are_valid_source_handles():
     bad = validate(flow)
     assert not bad.ok
     assert any(i.code == "unsupported_source_handle" for i in bad.errors)
+
+
+def test_knowledge_tool_node_accepted_on_acc_ai_tool():
+    """AIKnowledgeToolNode is a valid source for acc:ai_tool (no acc_wrong_node_type error)."""
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="t", type="CommandTriggerNode", data={"command": "/start"}),
+            FlowNode(id="agent", type="AIAgentNode", data={}),
+            FlowNode(id="prov", type="AIOpenAIProviderNode", data={}),
+            FlowNode(
+                id="knowledge",
+                type="AIKnowledgeToolNode",
+                data={"collection": "products"},
+            ),
+            FlowNode(id="reply", type="SendTextMessageNode", data={"messageText": "{{agent_output}}"}),
+        ],
+        edges=[
+            FlowEdge(id="e1", source="t", target="agent"),
+            FlowEdge(id="e2", source="prov", target="agent", sourceHandle="source-default", targetHandle="acc:ai_model"),
+            FlowEdge(id="e3", source="knowledge", target="agent", sourceHandle="source-default", targetHandle="acc:ai_tool"),
+            FlowEdge(id="e4", source="agent", target="reply"),
+        ],
+    )
+    result = validate(flow)
+    # No acc_wrong_node_type error for the knowledge tool
+    assert not any(i.code == "acc_wrong_node_type" for i in result.issues)
+
+
+def test_unknown_node_type_rejected_on_acc_ai_tool():
+    """A non-tool node type connected to acc:ai_tool raises acc_wrong_node_type."""
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="t", type="CommandTriggerNode", data={"command": "/start"}),
+            FlowNode(id="agent", type="AIAgentNode", data={}),
+            FlowNode(id="prov", type="AIOpenAIProviderNode", data={}),
+            FlowNode(id="wrong", type="SendTextMessageNode", data={"messageText": "bad"}),
+            FlowNode(id="reply", type="SendTextMessageNode", data={"messageText": "{{agent_output}}"}),
+        ],
+        edges=[
+            FlowEdge(id="e1", source="t", target="agent"),
+            FlowEdge(id="e2", source="prov", target="agent", sourceHandle="source-default", targetHandle="acc:ai_model"),
+            FlowEdge(id="e3", source="wrong", target="agent", sourceHandle="source-default", targetHandle="acc:ai_tool"),
+            FlowEdge(id="e4", source="agent", target="reply"),
+        ],
+    )
+    result = validate(flow)
+    assert any(i.code == "acc_wrong_node_type" for i in result.issues)
