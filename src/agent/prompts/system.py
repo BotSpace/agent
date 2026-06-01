@@ -36,6 +36,20 @@ logger = logging.getLogger(__name__)
 
 _MODEL_ADDENDA_DIR = Path(__file__).parent / "model_addenda"
 
+# Universal, model-INDEPENDENT autonomy guidance ("execute, don't ask for
+# permission"). Previously this lived as a Qwen-only addendum, which is why Qwen
+# behaved decisively while Sonnet/others greeted and asked. It applies to EVERY
+# model now (dispatcher + sub-agents share the same file).
+_AUTONOMY_FILE = Path(__file__).parent / "autonomy.txt"
+
+
+def load_autonomy_rule() -> str:
+    """Return the universal autonomy block; '' on any read error (never raises)."""
+    try:
+        return _AUTONOMY_FILE.read_text(encoding="utf-8").strip()
+    except Exception:
+        return ""
+
 
 def load_model_addendum(model: str) -> str:
     """Return the extra system prompt for `model` from model_addenda/*.txt.
@@ -278,11 +292,15 @@ Sub-agent (deploy-manager) ham bunga rioya qiladi.
 # render_compact_catalog() is deterministic (no timestamps, no random content).
 # A model-specific addendum (model_addenda/<id>.txt for the configured executor
 # model) is appended so it is part of the cached prefix and reaches Bedrock.
+_AUTONOMY_RULE: str = load_autonomy_rule()
 _MODEL_ADDENDUM: str = _executor_model_addendum()
 STATIC_SYSTEM_BLOCK: str = (
     CORE_IDENTITY
     + "\n\n"
     + render_compact_catalog()
+    # Autonomy applies to ALL models (was Qwen-only — the reason other models
+    # behaved worse). Model-specific addenda (if any) come after it.
+    + (("\n\n" + _AUTONOMY_RULE) if _AUTONOMY_RULE else "")
     + (("\n\n" + _MODEL_ADDENDUM) if _MODEL_ADDENDUM else "")
 )
 
