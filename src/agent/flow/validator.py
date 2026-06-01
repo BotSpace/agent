@@ -57,7 +57,7 @@ _ACC_PORT_ACCEPTS: dict[str, frozenset[str]] = {
         "AIGeminiProviderNode", "AIAnthropicProviderNode",
     }),
     "acc:ai_tool": frozenset({
-        "AIHTTPToolNode", "AIMongoToolNode", "AICustomCodeToolNode",
+        "AIHTTPToolNode", "AICollectionToolNode", "AICustomCodeToolNode",
     }),
 }
 

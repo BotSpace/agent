@@ -542,19 +542,21 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         target_handles=[],
         is_accessory=True,
     ),
-    "AIMongoToolNode": NodeTypeSpec(
-        type="AIMongoToolNode",
+    "AICollectionToolNode": NodeTypeSpec(
+        type="AICollectionToolNode",
         category="ai",
         description=(
-            "MongoDB query tool sub-node. AIAgentNode'ning acc:ai_tool portiga ulanadi. "
-            "tool='mongo_query'. Read-only: find/find_one/count. "
+            "Collection CRUD tool sub-node. AIAgentNode'ning acc:ai_tool portiga ulanadi. "
+            "tool='collection'. Bot collection ustida to'liq CRUD: create/read/update/delete. "
+            "operations — ruxsat etilgan amallar allow-list'i (masalan faqat ['read']). "
+            "searchFields — LLM filtrlay oladigan maydonlar (ixtiyoriy). "
             "Edge: source=<this_id>, sourceHandle='source-default', "
             "target=<agent_id>, targetHandle='acc:ai_tool'."
         ),
-        required_data=[],
+        required_data=["collection"],
         optional_data=[
             "tool", "toolName", "description", "parametersSchema",
-            "collection", "operation", "filterTemplate", "limit",
+            "operations", "searchFields",
         ],
         source_handles=["source-default"],
         target_handles=[],
