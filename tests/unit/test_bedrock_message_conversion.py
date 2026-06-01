@@ -215,3 +215,41 @@ def test_empty_text_blocks_dropped():
     ]
     _system, out = BedrockClient._to_bedrock_messages(msgs)
     assert sum(1 for b in out[0]["content"] if "text" in b) == 1
+
+
+# ── prompt caching (cachePoint) ────────────────────────────────────────────────
+from agent.llm.base import GenerateOptions, ToolSpec  # noqa: E402
+
+
+def _has_cache_point(blocks):
+    return any(isinstance(b, dict) and "cachePoint" in b for b in blocks)
+
+
+def _opts(model: str):
+    return GenerateOptions(
+        model=model,
+        max_tokens=128,
+        temperature=0.4,
+        tools=[ToolSpec(name="flow.add", description="d", input_schema={"type": "object"})],
+    )
+
+
+def test_claude_model_gets_cache_points_on_system_tools_and_last_message():
+    client = BedrockClient(region="us-west-2")
+    msgs = [Message.system_text("SYSTEM CATALOG"), Message.user_text("salom")]
+    req = client._build_request(msgs, _opts("claude-sonnet-4-6"))
+
+    assert _has_cache_point(req["system"]), "system must carry a cachePoint"
+    assert _has_cache_point(req["toolConfig"]["tools"]), "tools must carry a cachePoint"
+    assert _has_cache_point(req["messages"][-1]["content"]), "rolling cachePoint on last msg"
+
+
+def test_non_claude_model_gets_no_cache_points():
+    # Qwen / Llama / etc. reject cachePoint — must NOT be inserted.
+    client = BedrockClient(region="us-west-2")
+    msgs = [Message.system_text("SYSTEM CATALOG"), Message.user_text("salom")]
+    req = client._build_request(msgs, _opts("qwen.qwen3-coder-480b-a35b-v1:0"))
+
+    assert not _has_cache_point(req["system"])
+    assert not _has_cache_point(req["toolConfig"]["tools"])
+    assert not _has_cache_point(req["messages"][-1]["content"])
