@@ -930,3 +930,50 @@ class BackendClient:
 def get_backend_client(_settings_id: int = 0) -> BackendClient:
     s = get_settings()
     return BackendClient(s.backend_base_url, internal_token=s.backend_internal_token)
+
+
+def _flow_is_nonempty(flow: Any) -> bool:
+    return isinstance(flow, dict) and bool(flow.get("nodes") or flow.get("edges"))
+
+
+async def load_saved_flow(
+    project_id: str | int | None,
+    *,
+    body_baseline: dict[str, Any] | None = None,
+    auth_claims: dict[str, Any] | None = None,
+    client: BackendClient | None = None,
+) -> dict[str, Any] | None:
+    """Resolve the baseline flow for a new run.
+
+    A fresh conversation starts with an empty working_flow unless the client
+    passes baseline_flow. Without this the agent would rebuild from scratch and
+    effectively wipe the saved flow. So when `body_baseline` is missing/empty we
+    load the project's SAVED flow (`project["flow"]`) from the backend.
+
+    Robust by contract: NEVER raises. On any failure (no project, backend error,
+    malformed payload) it returns `body_baseline` unchanged and logs a warning,
+    so a backend hiccup can't break runs.
+    """
+    if _flow_is_nonempty(body_baseline):
+        return body_baseline
+    pid = "" if project_id is None else str(project_id)
+    if not pid or pid == "global":
+        return body_baseline
+    try:
+        backend = client or get_backend_client()
+        project = await backend.get_project(pid, auth_claims=auth_claims)
+        flow = project.get("flow")
+        if _flow_is_nonempty(flow):
+            logger.info(
+                "Seeded baseline_flow from saved project flow (project=%s, nodes=%d)",
+                pid,
+                len((flow or {}).get("nodes") or []),
+            )
+            return flow
+    except Exception:
+        logger.warning(
+            "Failed to load saved project flow for baseline; starting empty (project=%s)",
+            pid,
+            exc_info=True,
+        )
+    return body_baseline
