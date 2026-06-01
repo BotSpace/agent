@@ -415,6 +415,12 @@ ulangan bo'lishi shart. Ko'p provider = validator xatosi.
 flow.add_ai_http_tool(id="search-tool", data={toolName:"web_search", urlTemplate:"...", ...})
 flow.connect_accessory(accessory_id="search-tool", agent_id="agent", port="acc:ai_tool")
 ```
+Tool turlari:
+- `flow.add_ai_http_tool` — HTTP so'rov tool (urlTemplate/bodyTemplate).
+- `flow.add_ai_collection_tool` — collection CRUD tool (tool='collection').
+  `collection` ustida to'liq CRUD; `operations` allow-list bilan cheklang
+  (masalan faqat o'qish uchun `operations:["read"]`). `searchFields` ixtiyoriy.
+- `flow.add_ai_custom_code_tool` — Goja JS tool (jsCode return = natija).
 
 **Provider tanlov:**
 - `AIOpenAIProviderNode` — OpenAI (gpt-4o-mini default, cloud)

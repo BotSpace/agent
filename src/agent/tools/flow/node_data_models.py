@@ -472,17 +472,25 @@ class AIHTTPToolData(_AIToolBase):
     timeout: int = Field(default=30, ge=1, description="Request timeout in seconds.")
 
 
-class AIMongoToolData(_AIToolBase):
-    """MongoDB query tool. tool='mongo_query'. Read-only: find/find_one/count."""
+class AICollectionToolData(_AIToolBase):
+    """Collection CRUD tool. tool='collection'. Full CRUD on a bot collection.
 
-    tool: Literal["mongo_query"] = "mongo_query"
-    collection: str = Field(default="", description="MongoDB collection name.")
-    operation: Literal["find", "find_one", "count"] = Field(default="find", description="Read-only operation.")
-    filterTemplate: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Filter object. Values may reference tool args via {{arg}}.",
+    The LLM gets a single tool that can create/read/update/delete documents in
+    `collection`, restricted to the `operations` allow-list. CROSS-STREAM
+    CONTRACT with constructor + engine (AICollectionToolNode) — keep keys exact.
+    """
+
+    tool: Literal["collection"] = "collection"
+    toolName: str = Field(default="collection", description="Function name given to the LLM (^[a-zA-Z0-9_]+$).")
+    collection: str = Field(default="", description="Bot collection name the tool operates on.")
+    operations: list[str] = Field(
+        default_factory=lambda: ["create", "read", "update", "delete"],
+        description="Allow-list of CRUD operations the LLM may perform on the collection.",
     )
-    limit: int = Field(default=10, ge=1, description="Max documents returned (find only).")
+    searchFields: list[dict[str, str]] | None = Field(
+        default=None,
+        description="Optional fields the LLM can filter/search by, e.g. [{'name':'email','type':'string'}].",
+    )
 
 
 class AICustomCodeToolData(_AIToolBase):
@@ -570,7 +578,7 @@ NODE_DATA_MODELS: dict[str, type[_StrictData]] = {
     "AIGeminiProviderNode": AIGeminiProviderData,
     "AIAnthropicProviderNode": AIAnthropicProviderData,
     "AIHTTPToolNode": AIHTTPToolData,
-    "AIMongoToolNode": AIMongoToolData,
+    "AICollectionToolNode": AICollectionToolData,
     "AICustomCodeToolNode": AICustomCodeToolData,
 }
 
