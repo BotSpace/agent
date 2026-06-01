@@ -6,7 +6,6 @@ from .base import Tool, ToolContext, ToolResult, tool
 from .broadcast import build_broadcast_tools
 from .chat import build_chat_tools
 from .cms import build_cms_tools
-from .crm import build_crm_tools
 from .env import build_env_tools
 from .file import build_file_tools
 from .flow import build_flow_tools
@@ -32,7 +31,6 @@ def build_default_registry() -> ToolRegistry:
     reg.extend(build_env_tools())
     reg.extend(build_release_tools())
     reg.extend(build_file_tools())
-    reg.extend(build_crm_tools())
     reg.extend(build_cms_tools())
     reg.extend(build_broadcast_tools())
     reg.extend(build_chat_tools())
@@ -69,3 +67,4 @@ __all__ = [
     "has_incomplete_plan",
     "tool",
 ]
+

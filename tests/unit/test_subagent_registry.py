@@ -64,12 +64,22 @@ def test_deploy_manager_owns_release_env_billing():
             assert tool_allowed(n, spec.allowed_tools), f"deploy-manager missing {n}"
 
 
-def test_crm_manager_owns_crm_chat_broadcast():
+def test_crm_manager_owns_chat_broadcast_and_cms_reads():
     full = build_default_registry()
     spec = REGISTRY["crm-manager"]
+    # chat.* and broadcast.* must all be accessible
     for n in (t.name for t in full.all()):
-        if n.startswith(("crm.", "chat.", "broadcast.")):
+        if n.startswith(("chat.", "broadcast.")):
             assert tool_allowed(n, spec.allowed_tools), f"crm-manager missing {n}"
+    # Explicit cms read tools must be accessible
+    for n in ("cms.list_collections", "cms.get_collection", "cms.find",
+              "cms.get_document", "cms.aggregate"):
+        assert tool_allowed(n, spec.allowed_tools), f"crm-manager missing cms read tool {n}"
+    # cms write tools must NOT be accessible
+    for n in ("cms.insert", "cms.update", "cms.delete", "cms.bulk_insert",
+              "cms.create_collection", "cms.delete_collection",
+              "cms.add_field", "cms.update_field", "cms.remove_field"):
+        assert not tool_allowed(n, spec.allowed_tools), f"crm-manager must not have write tool {n}"
 
 
 def test_cms_manager_owns_cms():
@@ -84,9 +94,9 @@ def test_subagents_dont_overlap_on_domain():
     """A flow.* tool should only be in flow-builder, etc."""
     full = build_default_registry()
     all_names = [t.name for t in full.all()]
+    # crm.* namespace removed — no tools registered under it any more
     namespaces = {
         "flow.": "flow-builder",
-        "crm.": "crm-manager",
         "cms.": "cms-manager",
         "broadcast.": "crm-manager",
         "chat.": "crm-manager",
