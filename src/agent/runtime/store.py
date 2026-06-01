@@ -471,6 +471,36 @@ class RunStore:
         except Exception:  # noqa: BLE001
             return 0
 
+    async def delete_all_threads(
+        self, *, project_id: str | None, user_id: str | None
+    ) -> int:
+        """Delete ALL of a user's threads for a project (their runs + cascaded
+        events + messages). Scoped by project_id/user_id. Returns deleted run
+        count. Never raises. A project_id is required — refuse a global wipe."""
+        if not project_id:
+            return 0
+        try:
+            await self.bootstrap()
+            where = ["project_id = %s"]
+            params: list[Any] = [project_id]
+            if user_id:
+                where.append("user_id = %s")
+                params.append(user_id)
+            clause = " AND ".join(where)
+            async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        f"DELETE FROM agent_messages WHERE request_id IN "
+                        f"(SELECT request_id FROM agent_runs WHERE {clause})",
+                        params,
+                    )
+                    await cur.execute(f"DELETE FROM agent_runs WHERE {clause}", params)
+                    deleted = cur.rowcount
+                await conn.commit()
+            return int(deleted or 0)
+        except Exception:  # noqa: BLE001
+            return 0
+
     async def get_thread_turns(
         self, *, project_id: str | None, user_id: str | None, thread_id: str
     ) -> list[dict[str, Any]]:
