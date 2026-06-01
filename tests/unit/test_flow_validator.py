@@ -385,3 +385,49 @@ def test_ai_provider_with_env_placeholder_key_is_error():
         ],
     )
     assert any(i.code == "ai_provider_missing_api_key" for i in validate(flow).errors)
+
+
+def test_state_node_without_type_is_error():
+    """A StateNode that saves a value MUST declare `data.type`."""
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="t", type="CommandTriggerNode", data={"command": "/start"}),
+            FlowNode(id="s", type="StateNode", data={"key": "phone"}),  # no type
+        ],
+        edges=[FlowEdge(id="e1", source="t", target="s")],
+    )
+    result = validate(flow)
+    assert not result.ok
+    assert any(i.code == "state_type_required" for i in result.errors)
+
+
+def test_state_node_with_blank_type_is_error():
+    """An empty/blank `type` is as bad as a missing one."""
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="t", type="CommandTriggerNode", data={"command": "/start"}),
+            FlowNode(id="s", type="StateNode", data={"key": "phone", "type": "   "}),
+        ],
+        edges=[FlowEdge(id="e1", source="t", target="s")],
+    )
+    result = validate(flow)
+    assert not result.ok
+    assert any(i.code == "state_type_required" for i in result.errors)
+
+
+def test_state_node_with_type_passes():
+    """StateNode with a valid `type` does not raise state_type_required."""
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="t", type="CommandTriggerNode", data={"command": "/start"}),
+            FlowNode(
+                id="s",
+                type="StateNode",
+                data={"key": "phone", "type": "contact_phone_number"},
+            ),
+        ],
+        edges=[FlowEdge(id="e1", source="t", target="s")],
+    )
+    result = validate(flow)
+    assert result.ok, result.render()
+    assert not any(i.code == "state_type_required" for i in result.issues)
