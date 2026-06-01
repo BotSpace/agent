@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .ask_user import build_ask_user_tools
 from .base import Tool, ToolContext, ToolResult, tool
 from .broadcast import build_broadcast_tools
 from .chat import build_chat_tools
@@ -26,6 +27,7 @@ def build_default_registry() -> ToolRegistry:
     """
     reg = ToolRegistry()
     reg.extend(build_plan_tools())
+    reg.extend(build_ask_user_tools())
     reg.extend(build_flow_tools())
     reg.extend(build_project_tools())
     reg.extend(build_env_tools())
@@ -51,6 +53,7 @@ def build_main_registry() -> ToolRegistry:
     """
     reg = ToolRegistry()
     reg.extend(build_plan_tools())
+    reg.extend(build_ask_user_tools())
     reg.extend(build_project_tools())
     reg.extend(build_search_tools())
     reg.extend(build_task_tools())
