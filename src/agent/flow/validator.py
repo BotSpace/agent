@@ -346,9 +346,25 @@ def _missing_button_handles(node, present: set[str]) -> list[str]:
     return [handle for handle in _button_source_handles(node) if handle not in present]
 
 
+# Node types whose inline-keyboard buttons can route via button-edges
+# ("target-handler-{nodeId}-{text}"). Mirrors the engine's controller.go pause
+# list (MessageNode / EditMessageNode / EditOrSendMessageNode /
+# SendTextMessageNode); the engine resolves these edges type-agnostically, so
+# EditOrSendMessageNode supports button-edges directly — no global
+# CallbackQueryTriggerNode workaround is needed.
+_BUTTON_EDGE_NODE_TYPES = frozenset(
+    {
+        "SendTextMessageNode",
+        "EditOrSendMessageNode",
+        "EditMessageNode",
+        "MessageNode",
+    }
+)
+
+
 def _button_source_handles(node) -> list[str]:
     keyboard = node.data.get("keyboard")
-    if node.type != "SendTextMessageNode" or not isinstance(keyboard, dict):
+    if node.type not in _BUTTON_EDGE_NODE_TYPES or not isinstance(keyboard, dict):
         return []
 
     handles: list[str] = []
