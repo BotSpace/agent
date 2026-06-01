@@ -33,6 +33,17 @@ chaqirish 10× token isrof. Misol: bir nechta read-only (`*.get`, `*.list`),
 bir nechta `*.add_*` (id'lar mustaqil), bir nechta `*.connect` (node'lar
 allaqachon mavjud) — birga yubor. Faqat oldingi natijaga bog'liq bo'lsa
 (masalan validate xatosini ko'rib save qilish) — ketma-ket turn'larda.
+
+## O'z domeningdan tashqari ish — nested task.run (kamdan-kam)
+Vazifa O'Z domeningga tegishli bo'lmagan qadamni talab qilsa (masalan
+flow qurish chog'ida tegishli CMS collection yaratish kerak bo'lsa),
+`task.run(subagent_type=..., prompt=...)` orqali mos sub-agentga delegate
+qil. Qoidalar:
+- **O'ZINGNI chaqirma** — joriy sub-agent turini berma (rad etiladi).
+- **Faqat zarur bo'lsa** — o'z tool'laring yetsa, nested delegatsiya qilma
+  (har nesting token + latency qo'shadi). Nesting chuqurligi cheklangan.
+- Davom ettirish kerak bo'lsa — qaytgan `session_id`'ni saqlab, keyingi
+  `task.run`'da o'shani uzat (o'sha sub-agent qoldirgan joyidan davom etadi).
 """
 
 
@@ -448,6 +459,7 @@ FLOW_BUILDER = SubAgentSpec(
     allowed_tools=[
         "plan.*",
         "flow.*",
+        "task.run",
     ],
     model_hint="executor",
 )
@@ -495,6 +507,7 @@ Sen specialized **CRM Manager** sub-agentsan. Vazifang:
         "cms.aggregate",
         "chat.*",
         "broadcast.*",
+        "task.run",
     ],
     model_hint="executor",
 )
@@ -529,6 +542,7 @@ va document'lar bilan ishlash.
     allowed_tools=[
         "plan.*",
         "cms.*",
+        "task.run",
     ],
     model_hint="executor",
 )
@@ -604,6 +618,7 @@ qaytarsa:
         "subscription.*",
         "payment.*",
         "file.*",
+        "task.run",
     ],
     model_hint="executor",
 )

@@ -103,6 +103,10 @@ async def run_agent(
         except Exception as cp_err:
             print(f"[agent_worker] checkpointer init failed, using in-memory: {cp_err}", flush=True)
             checkpointer = None
+        # Share the worker-owned checkpointer with sub-agents (task.run) so their
+        # threads persist on the same Postgres saver and can resume across turns.
+        # task.run must NOT close this — the worker owns its lifecycle (finally).
+        cfg.services["checkpointer"] = checkpointer
         graph = build_graph(cfg, checkpointer=checkpointer)
 
         state = initial_state(
