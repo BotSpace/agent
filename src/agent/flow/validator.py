@@ -50,6 +50,12 @@ VARIABLE_RE = re.compile(r"\{\{\s*[\w\.\[\]]+\s*\}\}|\$[\w\.\[\]]+")
 # Accessory targetHandle prefix (contract §1.1)
 _ACC_PREFIX = "acc:"
 
+# Nodes whose sole job is to persist a value into state and therefore MUST carry
+# `data.type` (the value kind: text / contact_phone_number / *_file_id / user_id /
+# Custom / …). Triggers that auto-save via an optional `data.state` object are
+# intentionally NOT here — there `type` lives inside `data.state`, not `data`.
+_STATE_SAVING_NODE_TYPES = frozenset({"StateNode"})
+
 # Mapping: accessory targetHandle → accepted source node types (contract §1.1)
 _ACC_PORT_ACCEPTS: dict[str, frozenset[str]] = {
     "acc:ai_model": frozenset({
@@ -108,6 +114,29 @@ def validate(flow: FlowDocument) -> ValidationResult:
                         "error",
                         "missing_required_field",
                         f"`{node.type}` requires `data.{required}`",
+                        node_id=node.id,
+                    )
+                )
+
+        # State-saving nodes MUST declare `data.type` (what kind of value is
+        # captured — text/phone_number/file_id/Custom/…). Without it the engine
+        # cannot resolve what to store and saves nothing → broken form. The
+        # generic check above only catches a fully-absent key; here we also
+        # reject an empty/blank `type` and emit an actionable message.
+        if node.type in _STATE_SAVING_NODE_TYPES:
+            state_type = node.data.get("type")
+            if not (isinstance(state_type, str) and state_type.strip()):
+                issues.append(
+                    ValidationIssue(
+                        "error",
+                        "state_type_required",
+                        f"`{node.type}` `{node.id}` must set `data.type` "
+                        "(e.g. 'text', 'contact_phone_number', 'photo_file_id', "
+                        "'user_id', 'Custom', …) so the engine knows WHAT value to "
+                        "save into state. Note: for data arriving via a trigger "
+                        "(MessageTrigger / inline button), prefer the trigger's own "
+                        "`data.state = {key, type}` field instead of a separate "
+                        "StateNode.",
                         node_id=node.id,
                     )
                 )
