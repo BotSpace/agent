@@ -16,6 +16,10 @@ foydalanuvchi access token'i forward qilinadi (`Authorization: Bearer ...`).
 
 Public config:
 - /api/v1/shared/config/public/   GET (AllowAny) — flat JSON with ai_agent.* keys
+
+Internal config:
+- /api/v1/shared/config/internal/ GET (X-Internal-Token) — flat JSON with ALL keys
+  incl. secrets (e.g. ai_agent.api_key, ai_agent.base_url).
 """
 
 from __future__ import annotations
@@ -75,6 +79,65 @@ def _invalidate_public_config_cache() -> None:
     global _public_config_cache, _public_config_fetched_at
     _public_config_cache = {}
     _public_config_fetched_at = 0.0
+
+
+# ── Internal config fetcher (TTL cache, X-Internal-Token auth) ───────────────
+
+_INTERNAL_CONFIG_TTL = 60.0  # seconds
+_internal_config_cache: dict[str, Any] = {}
+_internal_config_fetched_at: float = 0.0
+
+
+async def fetch_internal_config() -> dict[str, Any]:
+    """GET {BACKEND_BASE_URL}/api/v1/shared/config/internal/ and cache for TTL.
+
+    Uses ``X-Internal-Token`` header (same token as ``report_token_usage``).
+    Returns flat dict with ALL config keys including secrets such as
+    ``ai_agent.api_key`` and ``ai_agent.base_url``.
+
+    NEVER raises — returns ``{}`` when:
+      - ``BACKEND_INTERNAL_TOKEN`` is not configured in settings
+      - Any network / HTTP / parse error occurs
+    """
+    global _internal_config_cache, _internal_config_fetched_at
+
+    now = time.monotonic()
+    if _internal_config_cache and (now - _internal_config_fetched_at) < _INTERNAL_CONFIG_TTL:
+        return _internal_config_cache
+
+    s = get_settings()
+    if not s.backend_internal_token:
+        logger.debug("fetch_internal_config: BACKEND_INTERNAL_TOKEN not set — skipping")
+        return {}
+
+    url = s.backend_base_url.rstrip("/") + "/api/v1/shared/config/internal/"
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(
+                url,
+                headers={
+                    "Accept": "application/json",
+                    "X-Internal-Token": s.backend_internal_token,
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        if not isinstance(data, dict):
+            logger.warning("fetch_internal_config: unexpected response type %s", type(data))
+            data = {}
+        _internal_config_cache = data
+        _internal_config_fetched_at = now
+        return data
+    except Exception as exc:
+        logger.warning("fetch_internal_config failed (falling back to env): %s", exc)
+        return {}
+
+
+def _invalidate_internal_config_cache() -> None:
+    """Reset the internal config in-process cache — useful in tests."""
+    global _internal_config_cache, _internal_config_fetched_at
+    _internal_config_cache = {}
+    _internal_config_fetched_at = 0.0
 
 
 class BackendError(RuntimeError):
