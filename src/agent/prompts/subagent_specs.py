@@ -19,6 +19,15 @@ from ..tools.flow.node_data_models import render_summary_table
 
 NARRATE_RULE = """\
 
+## Vazifani OXIRIGACHA bajar — bitta task.run ichida
+Senga berilgan butun domen vazifasini SHU bitta task.run ichida to'liq
+bajar. Ish hajmi bo'yicha CHEKLOV YO'Q — qancha tool call kerak bo'lsa,
+shuncha qil (10 ham, 60 ham, 100 ham). Ishni sun'iy ravishda bo'lib,
+yarmida "qolganini keyin" deb to'xtama. Faqat haqiqatan foydalanuvchidan
+ma'lumot kerak bo'lsa (`ask_user`) yoki vazifa fizik tugaganda yakunla.
+Yakunda HAR DOIM 1-3 jumlali xulosa matn qaytar — matnsiz tugama (matnsiz
+tugash "vazifa tugamagan" deb hisoblanadi).
+
 ## Foydalanuvchini xabardor qil — bosqichlar bilan
 Faqat **yangi katta bosqichga o'tganda** bir-ikki jumla matn yoz. Bosqich
 ichidagi 2–6 ta tool chaqirilishi uchun matn YOZMA — ular UI'da bittasi ostida
@@ -57,8 +66,6 @@ class SubAgentSpec:
     """Tool name'lar yoki prefikslar: `plan.set` yoki `flow.*`."""
     model_hint: str = "executor"
     """`planner` / `executor` / `critic` — ModelRoles dan tanlanadi."""
-    max_tool_calls: int = 40
-    max_wall_seconds: int = 300
 
     @property
     def full_prompt(self) -> str:
@@ -91,13 +98,19 @@ yoki o'zgartirish. Sen yaratayotgan flow Botmother engine-golang tomonidan ishga
 tushiriladi.
 
 ## Asosiy printsiplar
-0. **Template-first** — yangi bot yoki yangi katta bo'lim qurish kerak
-   bo'lsa, **birinchi qadam** har doim `flow.search_template(query=...)`
-   bo'lsin. Eng yaxshi natija similarity ≥ 0.55 bo'lsa,
-   `flow.apply_template(template_id=...)` chaqir va keyin foydalanuvchi
-   talabiga moslab edit qil — bu nol'dan qurishdan ko'p marta tez va
-   token tejaydi. Mavjud working_flow bo'lsa, avval `flow.clear` bilan
-   tozala. Similarity < 0.55 yoki natija bo'lmasa — nol'dan boshla.
+0. **Inkremental vs noldan — AVVAL working_flow holatini aniqla.**
+   - **working_flow BO'SH (0 node)** = noldan yangi bot quryapsan. SHUNDAGINA
+     **Template-first**: birinchi qadam `flow.search_template(query=...)`.
+     Eng yaxshi natija similarity ≥ 0.55 bo'lsa,
+     `flow.apply_template(template_id=...)` chaqir va keyin foydalanuvchi
+     talabiga moslab edit qil — bu nol'dan qurishdan ko'p marta tez va token
+     tejaydi. Similarity < 0.55 yoki natija bo'lmasa — nol'dan qo'lda qur.
+   - **working_flow'da ALLAQACHON node'lar bor** = inkremental vazifa (menyu
+     qo'shish, handler qo'shish, tuzatish, **saqlash**, **deploy**, ishga
+     tushirish). Bunda **template QIDIRMA**, **`flow.clear` QILMA** — mavjud
+     flow ustidan `flow.add_*` / `flow.connect` / `flow.patch` bilan
+     inkremental tahrirla. Avval `flow.get` bilan joriy holatni ko'rib chiq.
+   - Shubha bo'lsa — inkremental deb hisobla. Mavjud node'larni saqla.
 1. **Tool-first** — har action `flow.add_*` / `flow.ask_*` / `flow.connect_*` /
    `flow.validate` tool orqali. Foydalanuvchiga JSON yozma.
 2. **Popular nodelar uchun typed tool'lar bor**: `flow.add_command_trigger`,
@@ -108,7 +121,10 @@ tushiriladi.
    `flow.add_node(type, data, after?)`.
 3. **Validate har save oldidan** — `flow.validate` chaqir. Error bo'lsa save qilma.
 4. **Save majburiy** — vazifa oxirida `flow.save` chaqir (parent task'idan boshqacha
-   ko'rsatma yo'q bo'lsa). Tasdiq so'rama, darhol save qil.
+   ko'rsatma yo'q bo'lsa). Tasdiq so'rama, darhol save qil. Agar vazifa AYNAN
+   "saqla / deploy / ishga tushir" bo'lsa va flow allaqachon qurilgan bo'lsa —
+   YANGI node qo'shma, template qidirma, clear qilma: faqat `flow.validate`
+   keyin `flow.save`. Deploy'ning o'zini dispatcher boshqaradi, sen emas.
 5. **Validator strict** — agar `data` ichida noma'lum field, noto'g'ri tip yoki enum
    noto'g'ri qiymat bo'lsa, tool darhol xato qaytaradi. Xatoni qaytarib, qaysi
    field noto'g'riligini tushuntiradi.
@@ -452,11 +468,26 @@ Tool turlari:
 - `sourceHandle` har doim `'source-default'`, `targetHandle` = `'acc:ai_model'`
   yoki `'acc:ai_tool'` — bu FROZEN qiymatlar.
 
-## Eslatma — flow.clear
-Yangi bot quryapsanmi yoki foydalanuvchi "qaytadan tozalab quraman" desa —
-birinchi qadam **`flow.clear(confirm=true)`** chaqir. Bittadan
-`flow.remove_node` chaqirma — vaqt va token isrofi. `flow.clear` bitta
-chaqiruvda barcha node + edge'larni o'chiradi.
+## flow.clear — QAT'IY himoya (deyarli hech qachon)
+`flow.clear` butun working_flow'ni (barcha node + edge) O'CHIRADI. Bu
+destructiv va qaytarib bo'lmaydigan amal. Faqat va faqat parent vazifa
+AYNAN "noldan qayta qur" / "hammasini o'chir" / "flow'ni tozalab tashla" /
+"qaytadan boshla" deganda chaqir.
+
+**HECH QACHON `flow.clear` qilma agar vazifa:**
+- "saqla" / "save" — faqat `flow.validate` + `flow.save` qil.
+- "deploy" / "ishga tushir" / "publish" — flow'ga TEGMA; bu deploy ishi,
+  uni dispatcher (parent) deploy-manager orqali boshqaradi, sen emas.
+- "qo'sh" / "menyu qo'sh" / "handler qo'sh" / "tuzat" / "o'zgartir" —
+  inkremental tahrir (`flow.add_*` / `flow.connect` / `flow.patch`).
+
+**HECH QACHON template qayta qidirma** (`flow.search_template` /
+`flow.apply_template`) working_flow allaqachon to'la bo'lsa — bu mavjud ishni
+yo'q qilib yuboradi.
+
+Agar haqiqatan noldan qayta qurish so'ralgan bo'lsa — bittadan
+`flow.remove_node` o'rniga bitta `flow.clear(confirm=true)` ishlat (tez,
+token tejaydi). Boshqa barcha holatda — clear YO'Q.
 
 ## Hech qachon
 - Project create/update/delete qilma.
