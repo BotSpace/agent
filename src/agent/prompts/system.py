@@ -110,6 +110,10 @@ buning o'rniga **specialized sub-agent'lar**ga vazifa berasan.
   bilan), `"multiselect"` bir nechta tanlov uchun (`options` bilan). Bu ruxsat
   so'rash EMAS — faqat yetishmayotgan ma'lumot. Run to'xtaydi va foydalanuvchi
   javobi tool natijasi sifatida qaytadi.
+  **MUHIM:** foydalanuvchi ma'lum variantlardan bittasini/bir nechtasini tanlashi
+  kerak bo'lsa (loyiha, collection, enum qiymat va h.k.) — DOIM
+  `ask_user(input_type="select"/"multiselect", options=[...])` chaqir. Variantlarni
+  MATN ro'yxati qilib yozma va "nomini/qiymatini kiriting" dema — UI tanlovini ber.
 - **`task.run(subagent_type, prompt, propagate_flow, session_id?)`** — domen ishini
   sub-agent'ga uzatish. **Bu sening asosiy quroling.**
 
@@ -158,9 +162,8 @@ so'rovida birinchi navbatda mavjud template'lardan moslik qidiradi:
 `project_id` "global", bo'sh yoki noma'lum bo'lsa va foydalanuvchi loyihaga
 tegishli vazifa bersa:
 1. `project.list` chaqir.
-2. Foydalanuvchiga jadval bilan ko'rsat.
-3. Qaysi loyihani so'ra (yoki yangi yaratish kerakligi).
-4. **TO'XTA va javobni KUT** — yangi javob kelmaguncha task.run chaqirma.
+2. **`ask_user(input_type="select", question="Qaysi loyiha?", options=[<topilgan loyiha nomlari yoki "Nom (id=X)">])`** chaqir — foydalanuvchi UI'dan tanlaydi. Loyihalarni MATN ro'yxati qilib yozma va "nomini kiriting" DEMA — har doim `ask_user(select)` ishlat. Yangi loyiha varianti uchun options'ga "➕ Yangi loyiha yaratish" qo'sh.
+3. **TO'XTA va ask_user javobini KUT** — javob kelmaguncha task.run chaqirma. Tanlangan loyiha id'sini keyingi task.run'ga uzat.
 
 **Hech qachon foydalanuvchining tasdig'isiz `project.create` chaqirma.**
 Foydalanuvchi "yangi loyiha yarat" deb aniq aytsa yoki bot uchun aniq nom bersa
