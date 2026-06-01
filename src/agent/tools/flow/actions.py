@@ -18,10 +18,10 @@ from ..base import Tool, ToolContext, ToolResult
 from .node_data_models import (
     AIAgentData,
     AIAnthropicProviderData,
+    AICollectionToolData,
     AICustomCodeToolData,
     AIGeminiProviderData,
     AIHTTPToolData,
-    AIMongoToolData,
     AIOpenAIProviderData,
     AIOllamaProviderData,
     CallbackQueryTriggerData,
@@ -431,7 +431,7 @@ _ACC_PORT_ACCEPTS: dict[str, frozenset[str]] = {
         "AIGeminiProviderNode", "AIAnthropicProviderNode",
     }),
     "acc:ai_tool": frozenset({
-        "AIHTTPToolNode", "AIMongoToolNode", "AICustomCodeToolNode",
+        "AIHTTPToolNode", "AICollectionToolNode", "AICustomCodeToolNode",
     }),
 }
 
@@ -546,12 +546,13 @@ def build_flow_action_tools() -> list[Tool]:
             ),
         ),
         _make_popular_node_tool(
-            name="flow.add_ai_mongo_tool",
-            type_name="AIMongoToolNode",
-            data_model=AIMongoToolData,
+            name="flow.add_ai_collection_tool",
+            type_name="AICollectionToolNode",
+            data_model=AICollectionToolData,
             description=(
-                "Add a MongoDB query tool sub-node (read-only: find/find_one/count). "
-                "Connect to acc:ai_tool."
+                "Add a Collection CRUD tool sub-node for an AIAgentNode (tool='collection'). "
+                "Full CRUD on a bot `collection`; restrict via the `operations` allow-list "
+                "(create/read/update/delete). Connect to acc:ai_tool."
             ),
         ),
         _make_popular_node_tool(
