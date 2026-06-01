@@ -16,7 +16,9 @@ from __future__ import annotations
 import pytest
 
 import agent.graph as graph_mod
+import agent.integrations.dynamic_config as dyn_mod
 import agent.llm as llm_mod
+from agent.llm import ModelRoles
 from agent.llm.base import Message, TextPart
 from agent.prompts.subagent_specs import REGISTRY
 from agent.tools.base import ToolContext
@@ -122,7 +124,18 @@ def patched_nested(monkeypatch):
         return g
 
     monkeypatch.setattr(graph_mod, "build_graph", _build_graph)
-    monkeypatch.setattr(llm_mod, "build_client", lambda *a, **k: object())
+
+    # task.run now resolves its LLM via the dynamic-config helpers (PR #27),
+    # not the static llm.build_client. Mock those so the test never reaches a
+    # real provider client (which would need API keys / a backend).
+    async def _fake_build_client(*a, **k):
+        return object()
+
+    async def _fake_roles(*a, **k):
+        return ModelRoles(planner="m", executor="m", critic="m", embedding="m")
+
+    monkeypatch.setattr(dyn_mod, "build_effective_client", _fake_build_client)
+    monkeypatch.setattr(dyn_mod, "effective_model_roles", _fake_roles)
     return holder
 
 
