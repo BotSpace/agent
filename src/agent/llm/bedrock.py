@@ -7,12 +7,19 @@ shuning uchun bu provider asosan model-agnostik.
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import AsyncIterator
 from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
 
+from ..observability.metrics import (
+    LLM_REQUEST_DURATION,
+    LLM_REQUESTS,
+    local_token_breakdown,
+    record_llm_usage,
+)
 from .base import (
     ContentPart,
     GenerateOptions,
@@ -32,7 +39,6 @@ from .base import (
     ToolUseStop,
     Usage,
 )
-
 
 # Bedrock Claude 4-avlod modellari on-demand'da chaqirilmaydi — cross-region
 # inference profile (us. prefix) talab qilinadi.
@@ -182,15 +188,28 @@ class BedrockClient(LLMClient):
     ) -> GenerateResult:
         import anyio
 
+        local = local_token_breakdown(messages, options)
         req = self._build_request(messages, options)
+        t0 = time.monotonic()
         try:
             response = await anyio.to_thread.run_sync(lambda: self._client.converse(**req))
         except ClientError as e:
+            LLM_REQUESTS.labels(self.provider, options.model, "error").inc()
+            LLM_REQUEST_DURATION.labels(self.provider, options.model).observe(time.monotonic() - t0)
             raise LLMError(str(e), provider=self.provider) from e
+
+        LLM_REQUESTS.labels(self.provider, options.model, "success").inc()
+        LLM_REQUEST_DURATION.labels(self.provider, options.model).observe(time.monotonic() - t0)
 
         output_msg = response["output"]["message"]
         parts = self._from_bedrock_content(output_msg.get("content", []))
         usage_data = response.get("usage", {})
+        record_llm_usage(
+            provider=self.provider,
+            model=options.model,
+            usage=usage_data,
+            local_breakdown=local,
+        )
         usage = Usage(
             input_tokens=usage_data.get("inputTokens", 0),
             output_tokens=usage_data.get("outputTokens", 0),
@@ -210,10 +229,14 @@ class BedrockClient(LLMClient):
     ) -> AsyncIterator[StreamEvent]:
         import anyio
 
+        local = local_token_breakdown(messages, options)
         req = self._build_request(messages, options)
+        t0 = time.monotonic()
         try:
             response = await anyio.to_thread.run_sync(lambda: self._client.converse_stream(**req))
         except ClientError as e:
+            LLM_REQUESTS.labels(self.provider, options.model, "error").inc()
+            LLM_REQUEST_DURATION.labels(self.provider, options.model).observe(time.monotonic() - t0)
             raise LLMError(str(e), provider=self.provider) from e
 
         accumulated_parts: list[ContentPart] = []
@@ -221,6 +244,7 @@ class BedrockClient(LLMClient):
         tool_buffers: dict[int, dict[str, Any]] = {}
         stop_reason = "end_turn"
         usage = Usage()
+        raw_usage_data: dict[str, Any] = {}
         yield StreamStart()
 
         stream_iter = response["stream"]
@@ -278,10 +302,20 @@ class BedrockClient(LLMClient):
                 stop_reason = event["messageStop"].get("stopReason", "end_turn")
             elif "metadata" in event:
                 u = event["metadata"].get("usage", {})
+                raw_usage_data = u
                 usage = Usage(
                     input_tokens=u.get("inputTokens", 0),
                     output_tokens=u.get("outputTokens", 0),
                 )
+
+        LLM_REQUESTS.labels(self.provider, options.model, "success").inc()
+        LLM_REQUEST_DURATION.labels(self.provider, options.model).observe(time.monotonic() - t0)
+        record_llm_usage(
+            provider=self.provider,
+            model=options.model,
+            usage=raw_usage_data,
+            local_breakdown=local,
+        )
 
         yield StreamStop(
             message=Message(role="assistant", content=accumulated_parts),

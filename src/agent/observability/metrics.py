@@ -16,7 +16,13 @@ Labels deliberately small (model, provider) to keep cardinality bounded.
 
 from __future__ import annotations
 
+import json
+from typing import TYPE_CHECKING
+
 from prometheus_client import Counter, Histogram
+
+if TYPE_CHECKING:
+    from ..llm.base import GenerateOptions, Message
 
 
 LLM_INPUT_TOKENS = Counter(
@@ -58,6 +64,44 @@ def _estimate_tokens(text: str) -> int:
     return max(0, (len(text) + 3) // 4)
 
 
+def local_token_breakdown(
+    messages: list[Message],
+    options: GenerateOptions,
+) -> dict[str, int]:
+    """Estimate input tokens by category for Prometheus.
+
+    Uses a chars/4 heuristic so we don't pull tiktoken in just for
+    observability. The split is approximate but still useful to see
+    relative shares (system vs user vs tool_result).
+
+    Shared by all LLM providers (openai, bedrock, anthropic).
+    """
+    from ..llm.base import ToolResultPart
+
+    system_chars = 0
+    user_chars = 0
+    tool_result_chars = 0
+    for m in messages:
+        if m.role == "system":
+            system_chars += len(m.text)
+        elif m.role == "user":
+            user_chars += len(m.text)
+        elif m.role == "tool":
+            for p in m.content:
+                if isinstance(p, ToolResultPart):
+                    tool_result_chars += len(p.content)
+    tool_schema_chars = 0
+    for t in options.tools or []:
+        tool_schema_chars += len(t.name) + len(t.description or "")
+        tool_schema_chars += len(json.dumps(t.input_schema))
+    return {
+        "system": (system_chars + 3) // 4,
+        "tool_schema": (tool_schema_chars + 3) // 4,
+        "user": (user_chars + 3) // 4,
+        "tool_result": (tool_result_chars + 3) // 4,
+    }
+
+
 def record_llm_usage(
     *,
     provider: str,
@@ -67,7 +111,9 @@ def record_llm_usage(
 ) -> None:
     """Increment input/output counters from an LLM response's usage payload.
 
-    usage shape (OpenRouter-normalized OpenAI flavor):
+    Supports three usage dict shapes:
+
+    OpenAI / OpenRouter flavor:
         {
           "prompt_tokens": int,
           "completion_tokens": int,
@@ -77,17 +123,65 @@ def record_llm_usage(
           }
         }
 
+    Bedrock Converse flavor:
+        {
+          "inputTokens": int,
+          "outputTokens": int,
+          "cacheReadInputTokens": int,      # optional, cache READ
+          "cacheWriteInputTokens": int,     # optional, cache WRITE
+        }
+
+    Anthropic SDK flavor:
+        {
+          "input_tokens": int,
+          "output_tokens": int,
+          "cache_read_input_tokens": int,   # optional, cache READ
+          "cache_creation_input_tokens": int, # optional, cache WRITE
+        }
+
+    Missing cache fields default to 0 — tolerant of cache-less models.
+
     local_breakdown (optional): {"system": int, "tool_schema": int,
         "user": int, "tool_result": int} — locally-estimated category
         totals for this request, recorded alongside the provider counts.
     """
     if not usage:
         return
-    prompt_total = int(usage.get("prompt_tokens") or 0)
-    completion = int(usage.get("completion_tokens") or 0)
+
+    # Normalize to a common shape regardless of provider flavor.
+    # OpenAI/OpenRouter: prompt_tokens / completion_tokens
+    # Bedrock: inputTokens / outputTokens
+    # Anthropic SDK: input_tokens / output_tokens
+    prompt_total = int(
+        usage.get("prompt_tokens")
+        or usage.get("inputTokens")
+        or usage.get("input_tokens")
+        or 0
+    )
+    completion = int(
+        usage.get("completion_tokens")
+        or usage.get("outputTokens")
+        or usage.get("output_tokens")
+        or 0
+    )
+
+    # Cache READ tokens
     details = usage.get("prompt_tokens_details") or {}
-    cached_read = int(details.get("cached_tokens") or 0)
-    cache_write = int(details.get("cache_write_tokens") or 0)
+    cached_read = int(
+        details.get("cached_tokens")
+        or usage.get("cacheReadInputTokens")
+        or usage.get("cache_read_input_tokens")
+        or 0
+    )
+
+    # Cache WRITE tokens
+    cache_write = int(
+        details.get("cache_write_tokens")
+        or usage.get("cacheWriteInputTokens")
+        or usage.get("cache_creation_input_tokens")
+        or 0
+    )
+
     uncached = max(0, prompt_total - cached_read - cache_write)
 
     LLM_INPUT_TOKENS.labels(provider, model, "prompt_total").inc(prompt_total)
