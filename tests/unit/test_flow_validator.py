@@ -362,3 +362,26 @@ def test_local_ollama_without_api_key_is_exempt():
         ],
     )
     assert not any(i.code == "ai_provider_missing_api_key" for i in validate(flow).issues)
+
+
+def test_ai_provider_with_env_placeholder_key_is_error():
+    """An {{env.*}} placeholder is NOT a real key — the user must be asked.
+    The validator must reject it just like an empty key."""
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="t", type="CommandTriggerNode", data={"command": "/start"}),
+            FlowNode(id="agent", type="AIAgentNode", data={}),
+            FlowNode(
+                id="prov",
+                type="AIOpenAIProviderNode",
+                data={"model": "gpt-4o-mini", "apiKey": "{{env.OPENAI_KEY}}"},
+            ),
+            FlowNode(id="reply", type="SendTextMessageNode", data={"messageText": "{{agent_output}}"}),
+        ],
+        edges=[
+            FlowEdge(id="e1", source="t", target="agent"),
+            FlowEdge(id="e2", source="prov", target="agent", sourceHandle="source-default", targetHandle="acc:ai_model"),
+            FlowEdge(id="e3", source="agent", target="reply"),
+        ],
+    )
+    assert any(i.code == "ai_provider_missing_api_key" for i in validate(flow).errors)

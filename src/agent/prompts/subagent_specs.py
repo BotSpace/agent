@@ -563,7 +563,11 @@ flow.add_ai_openai_provider(id="ai-prov", data={model:"gpt-4o-mini", baseURL:"ht
 ```
 
 **Qoida:** API key kabi maxfiy qiymatlar uchun har doim `ask_user(input_type="text")`,
-hech qachon placeholder/taxmin emas.
+hech qachon placeholder/taxmin emas. **`apiKey`ga `{{env.OPENAI_KEY}}` yoki
+boshqa `{{env.*}}` / `{{...}}` placeholder QO'YMA** — bu haqiqiy kalit emas,
+foydalanuvchi o'zi kalitni berishni xohlaydi. Validator ham placeholder'li
+`apiKey`ni rad etadi (`ai_provider_missing_api_key`) — demak avval `ask_user`
+bilan haqiqiy kalitni ol, keyin `data.apiKey`ga AYNAN o'sha qiymatni yoz.
 
 ## flow.clear — QAT'IY himoya (deyarli hech qachon)
 `flow.clear` butun working_flow'ni (barcha node + edge) O'CHIRADI. Bu

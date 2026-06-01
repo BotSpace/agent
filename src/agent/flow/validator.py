@@ -124,15 +124,21 @@ def validate(flow: FlowDocument) -> ValidationResult:
                 or "127.0.0.1" in base_url
                 or "://ollama:" in base_url
             )
-            if not api_key and not is_local:
+            # A `{{...}}` template (e.g. {{env.OPENAI_KEY}}) is NOT a real key —
+            # the user wants to be ASKED for the key, not have env auto-used.
+            # Treat any placeholder as missing so the agent must call ask_user.
+            is_placeholder = api_key.startswith("{{") or api_key.startswith("{%")
+            if (not api_key or is_placeholder) and not is_local:
                 issues.append(
                     ValidationIssue(
                         "error",
                         "ai_provider_missing_api_key",
-                        f"`{node.type}` `{node.id}` has no `apiKey`. A cloud LLM "
-                        "provider needs one — ask the user for it (ask_user) and set "
-                        "data.apiKey before saving; otherwise the AI node returns "
-                        "empty output and the bot sends nothing.",
+                        f"`{node.type}` `{node.id}` has no real `apiKey`"
+                        + (" (a `{{...}}` placeholder is not allowed)" if is_placeholder else "")
+                        + ". A cloud LLM provider needs a REAL key — ASK THE USER "
+                        "(ask_user) and set data.apiKey to the value they give; do NOT "
+                        "use {{env.*}} or any placeholder, otherwise the AI node "
+                        "returns empty output and the bot sends nothing.",
                         node_id=node.id,
                     )
                 )
