@@ -175,8 +175,18 @@ Batafsil tip/description uchun `flow.list_node_types(type=<NodeName>)` chaqir.
 
 ## Flow patternlari (qisqa)
 
-### Pattern 1: Trigger → Xabar
-`CommandTriggerNode(command:"/start", global:true)` → `SendTextMessageNode`
+### Pattern 1: Trigger → Xabar — STANDART node `EditOrSendMessageNode` (HAR DOIM)
+`CommandTriggerNode(command:"/start", global:true)` → `EditOrSendMessageNode`
+
+**Barcha bot matn xabarlari uchun standart node — `EditOrSendMessageNode`.**
+Bu node callback_query bo'lsa mavjud xabarni tahrirlaydi, bo'lmasa (masalan
+`/start` javobi, oddiy matn) yangi xabar yuboradi — ya'ni `SendTextMessageNode`
+qila oladigan hamma narsani qiladi, ustiga inline oqimni toza saqlaydi. Shuning
+uchun `SendTextMessageNode` o'rniga DOIM `EditOrSendMessageNode` ishlat.
+
+**Yagona istisno — `SendTextMessageNode`:** faqat **reply keyboard** kerak
+bo'lganda (kontakt/joylashuv so'rash, Pattern 2a). Reply keyboard yangi xabar
+bilan keladi va edit orqali o'zgarmaydi, shuning uchun u yerda SendText.
 
 ### Pattern 2: Klaviatura turini tanlash — INLINE birinchi navbatda
 Botda menyu yoki tugmalar kerak bo'lsa, **standart variant — inline
@@ -228,27 +238,24 @@ Qachon B kerak: bir nechta uzoq joydagi node'lardan bitta menyu tugmasi
 ("🏠 Bosh menyu") chaqirilishi kerak bo'lsa — global trigger qulay.
 Boshqa hollarda A — toza, kam node, kam edge.
 
-### Pattern 2c: Inline tugma bosilgandan keyingi action — EditOrSendMessageNode
-Inline tugma bosilganda **xabarni o'rniga yangisini yuborma** —
-`EditOrSendMessageNode` ishlat. Bu node:
-- Agar inline tugma bosilgan bo'lsa (callback_query bor) — **mavjud xabarni
-  tahrirlaydi**. Telegram'da yangi xabar paydo bo'lmaydi, oqim toza qoladi.
-- Agar callback_query yo'q bo'lsa (oddiy yo'l, fallback) — yangi xabar yuboradi.
+### Pattern 2c: EditOrSendMessageNode — bot xabarlarining standart node'i
+`EditOrSendMessageNode` ikki rejimda ishlaydi:
+- callback_query bor (inline tugma bosilgan) — **mavjud xabarni tahrirlaydi**.
+  Telegram'da yangi xabar paydo bo'lmaydi, oqim toza qoladi.
+- callback_query yo'q (`/start`, oddiy matn, text-trigger javobi) — **yangi
+  xabar yuboradi** (SendText kabi).
 
-**Inline menyu zanjirida — `SendTextMessageNode` ishlatma**, har bosish
-yangi xabar bilan chat'ni to'ldiradi. To'g'ri tartib:
+Shu sababli butun bot oqimida — birinchi `/start` javobidan tortib inline menyu
+zanjirigacha — `EditOrSendMessageNode` ishlat. `SendTextMessageNode` ishlatma
+(yagona istisno: reply-keyboard kontakt/joylashuv — Pattern 2a). To'g'ri tartib:
 
-`menu (Send + inline)` → tugmalar → `courses-detail (EditOrSendMessageNode)` →
+`menu (EditOrSend + inline)` → tugmalar → `courses-detail (EditOrSendMessageNode)` →
 "⬅️ Ortga" tugmasi yana → `menu-edit (EditOrSendMessageNode, targetMessageNodeId="menu")`.
 
 `EditOrSendMessageData` field'lari: `messageText` (majburiy) + odatdagi
 `keyboard` / `parseMode` / `disableWebPagePreview`. Mavjud xabarni
 maxsus aniqlash kerak bo'lsa `targetMessageNodeId="<menu-node-id>"`
 belgila — engine o'sha node yuborgan oxirgi xabarni tahrirlaydi.
-
-**Istisno**: bot oqimida birinchi xabar (masalan `/start` javobi) — bu
-hali tahrirlanadigan xabar yo'q, shuning uchun `SendTextMessageNode`
-ishlat. Keyingi barcha inline-callback responsi `EditOrSendMessageNode`.
 
 ### Pattern 3: Ma'lumot yig'ish (form)
 `flow.ask_text`, `flow.ask_contact`, `flow.ask_buttons`, `flow.ask_location` ishlat.
@@ -389,13 +396,13 @@ ortiqcha murakkablik.
 2. `flow.ask_contact` — telefon raqamini so'rash (visual, form)
 3. **CustomCodeNode "phone-validate"** — `outputs: [{name:"ok"}, {name:"invalid"}]`
    ~10 qator: formatni tekshirish, normalizatsiya qilish, state'ga yozish
-4. `SendTextMessageNode` — "Noto'g'ri format, qaytadan kiriting" (visual,
+4. `EditOrSendMessageNode` — "Noto'g'ri format, qaytadan kiriting" (visual,
    `output-invalid` edge orqali ulanadi, qaytadan 2-qadamga loop)
 5. **CustomCodeNode "user-upsert"** — `outputs: [{name:"new"}, {name:"existing"}]`
    ~15 qator: `db_find_one` → mavjud bo'lsa `exit('existing')`,
    yo'q bo'lsa `db_insert` + admin chatga xabar + `exit('new')`
-6. `SendTextMessageNode` "Xush kelibsiz!" (visual, `output-new` edge)
-7. `SendTextMessageNode` "Qaytib keldingiz" (visual, `output-existing` edge)
+6. `EditOrSendMessageNode` "Xush kelibsiz!" (visual, `output-new` edge)
+7. `EditOrSendMessageNode` "Qaytib keldingiz" (visual, `output-existing` edge)
 
 3 ta CustomCodeNode + 4 ta visual node. 15+ visual zanjirdan ham, bitta
 100-qatorli monolitdan ham yaxshiroq.
