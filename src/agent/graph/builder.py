@@ -26,7 +26,7 @@ except ImportError:  # pragma: no cover
     from langgraph.checkpoint.memory import MemorySaver  # type: ignore[misc]
 
 from ..llm import GenerateOptions, LLMClient, Message, ModelRoles, TextPart
-from ..prompts import build_system_prompt
+from ..prompts import build_system_message
 from ..tools import ToolContext, ToolRegistry, has_incomplete_plan
 from .state import AgentState
 
@@ -111,7 +111,7 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
     # ── nodes ───────────────────────────────────────────────────────────
 
     async def llm_call(state: AgentState) -> dict[str, Any]:
-        system = Message.system_text(build_system_prompt(state))
+        system = build_system_message(state)
         history = state.get("messages") or []
         history = _trim_history(history, max_chars=cfg.max_history_chars)
         model = _pick_model(state, cfg.models)

@@ -8,12 +8,18 @@ Main agent o'zi domen ishi qilmaydi. U:
 
 Sub-agent tool call'lari main history'ga kirmaydi — faqat qisqa xulosa.
 Dashboard ularni accordion'da ko'rsatadi.
+
+Cache strategiyasi:
+  STATIC_SYSTEM_BLOCK  = CORE_IDENTITY + compact node catalog  (cached prefix)
+  DYNAMIC_SYSTEM_BLOCK = joriy session kontekst                (uncached, changes per request)
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from ..flow.catalog import render_compact_catalog
+from ..llm.base import Message
 
 CORE_IDENTITY = """\
 Sen — Botmother AI Agent (dispatcher). Foydalanuvchi bilan tabiiy tilda
@@ -145,27 +151,57 @@ Sub-agent (deploy-manager) ham bunga rioya qiladi.
 """
 
 
-def build_system_prompt(state: dict[str, Any] | None = None) -> str:
+# ── Static cached prefix ──────────────────────────────────────────────────────
+# Built once at import time; byte-identical across all requests.
+# render_compact_catalog() is deterministic (no timestamps, no random content).
+STATIC_SYSTEM_BLOCK: str = CORE_IDENTITY + "\n\n" + render_compact_catalog()
+
+
+def build_dynamic_block(state: dict[str, Any] | None = None) -> str:
+    """Return the per-request dynamic context block (NOT cached).
+
+    This is intentionally small — only session-level values that change
+    between requests (project_id, flow stats, dirty flag).
+    """
     state = state or {}
     project_id = state.get("project_id") or "—"
     user_id = state.get("user_id") or "—"
-    extra: list[str] = []
+    lines: list[str] = [
+        "## Kontekst",
+        f"- project_id: {project_id}",
+        f"- user_id: {user_id}",
+    ]
     if state.get("baseline_flow"):
         wf = state["baseline_flow"]
         n_nodes = len((wf or {}).get("nodes") or [])
         n_edges = len((wf or {}).get("edges") or [])
-        extra.append(
-            f"Joriy saqlangan flow: {n_nodes} node, {n_edges} edge. "
+        lines.append(
+            f"- Joriy saqlangan flow: {n_nodes} node, {n_edges} edge. "
             f"flow-builder'ga uzatish uchun propagate_flow=true."
         )
     if state.get("flow_dirty"):
-        extra.append(
-            "DIQQAT: saqlanmagan flow o'zgarishlari mavjud. flow-builder ga "
+        lines.append(
+            "- DIQQAT: saqlanmagan flow o'zgarishlari mavjud. flow-builder ga "
             "save vazifasini berishni unutma."
         )
+    return "\n".join(lines) + "\n"
 
-    prompt = CORE_IDENTITY
-    prompt += f"\n\n## Kontekst\n- project_id: {project_id}\n- user_id: {user_id}\n"
-    if extra:
-        prompt += "\n" + "\n".join(f"- {e}" for e in extra) + "\n"
-    return prompt
+
+def build_system_prompt(state: dict[str, Any] | None = None) -> str:
+    """Legacy single-string form — kept for tests / callers that need plain text.
+
+    For LLM requests use build_system_message() which returns a two-block Message
+    with the cache breakpoint on the static prefix.
+    """
+    return STATIC_SYSTEM_BLOCK + "\n\n" + build_dynamic_block(state)
+
+
+def build_system_message(state: dict[str, Any] | None = None) -> Message:
+    """Return a two-block system Message ready for the LLM clients.
+
+    Block 0 (index 0) — STATIC_SYSTEM_BLOCK: CORE_IDENTITY + compact catalog.
+      The LLM clients place the cache_control breakpoint here.
+    Block 1 (index 1) — dynamic context: session-level values (project_id, flow stats).
+      This block is AFTER the breakpoint so it is NOT part of the cached prefix.
+    """
+    return Message.system_parts(STATIC_SYSTEM_BLOCK, build_dynamic_block(state))

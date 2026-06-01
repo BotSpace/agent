@@ -72,7 +72,17 @@ class OpenAIClient(LLMClient):
         out: list[dict[str, Any]] = []
         for msg in messages:
             if msg.role == "system":
-                out.append({"role": "system", "content": msg.text})
+                text_parts = [p for p in msg.content if isinstance(p, TextPart)]
+                if len(text_parts) > 1:
+                    # Multi-block system message (static + dynamic split).
+                    # Keep as a list of content blocks so _inject_cache_markers
+                    # can place the breakpoint on block 0 (static prefix).
+                    out.append({
+                        "role": "system",
+                        "content": [{"type": "text", "text": p.text} for p in text_parts],
+                    })
+                else:
+                    out.append({"role": "system", "content": msg.text})
                 continue
             if msg.role == "tool":
                 # Each tool_result becomes a separate {role: "tool", ...} message
@@ -219,17 +229,23 @@ class OpenAIClient(LLMClient):
 
     @staticmethod
     def _inject_cache_markers(oai_messages: list[dict[str, Any]]) -> None:
-        """Wrap the FIRST system message as content-blocks with a final
-        cache_control breakpoint. Providers that honor cache_control
-        (Anthropic, Qwen via OpenRouter, Gemini standard) will cache
-        the prefix up to and including this block. The breakpoint
-        covers the system prompt — tool schemas in the `tools` array
-        are still part of the same prefix and cached together by
-        Anthropic and (best-effort) by other explicit-cache providers."""
+        """Place a cache_control breakpoint on the STATIC (first) system block.
+
+        When the system message has two content blocks — [static, dynamic] — the
+        breakpoint MUST land on block 0 (static: CORE_IDENTITY + catalog) so the
+        dynamic per-session block is NOT included in the cached prefix.  Putting
+        it on the last block would invalidate the cache on every flow mutation.
+
+        Providers that honor cache_control (Anthropic / Qwen / Gemini via
+        OpenRouter) will cache the prefix up to and including the marked block.
+        Tool schemas in the `tools` array are part of the same prefix and get
+        cached together by Anthropic (best-effort by other providers).
+        """
         for m in oai_messages:
             if m.get("role") == "system":
                 content = m.get("content")
                 if isinstance(content, str):
+                    # Legacy single-string form — wrap as a single cached block.
                     m["content"] = [
                         {
                             "type": "text",
@@ -238,10 +254,12 @@ class OpenAIClient(LLMClient):
                         }
                     ]
                 elif isinstance(content, list) and content:
-                    last = content[-1]
-                    if isinstance(last, dict):
-                        last["cache_control"] = {"type": "ephemeral"}
-                return  # only first system block
+                    # Two-block form: block 0 = static (cached), block 1 = dynamic.
+                    # Always mark block 0 regardless of list length.
+                    first = content[0]
+                    if isinstance(first, dict):
+                        first["cache_control"] = {"type": "ephemeral"}
+                return  # only first system message
 
     # ── generate ───────────────────────────────────────────────────────
     async def generate(
