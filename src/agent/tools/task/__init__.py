@@ -273,6 +273,9 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
             # working_flow'ni resume turida ham yangilaymiz (panel sinxron qolsin).
             if input.propagate_flow and ctx.state.get("working_flow"):
                 base["working_flow"] = ctx.state["working_flow"]
+            # CMS collections — sub-agent dynamic context shu ro'yxatni ko'rsatadi.
+            if ctx.state.get("collections"):
+                base["collections"] = ctx.state["collections"]
             auth_claims = ctx.state.get("auth_claims")
             if auth_claims:
                 base["auth_claims"] = auth_claims
@@ -292,6 +295,9 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
             )
             if input.propagate_flow and ctx.state.get("working_flow"):
                 base["working_flow"] = ctx.state["working_flow"]
+            # CMS collections — sub-agent dynamic context shu ro'yxatni ko'rsatadi.
+            if ctx.state.get("collections"):
+                base["collections"] = ctx.state["collections"]
             # Forward user auth so sub-agent backend calls don't fail with 401.
             auth_claims = ctx.state.get("auth_claims")
             if auth_claims:
