@@ -1,27 +1,43 @@
-"""Tests for model-specific prompt addenda (PART 4)."""
+"""Tests for the universal autonomy rule + the model-addenda mechanism.
+
+Autonomy guidance used to be a Qwen-only addendum (model_addenda/qwen.txt),
+which is why Qwen executed decisively while Sonnet/others greeted and asked.
+It is now a universal block (autonomy.txt) applied to the dispatcher (all
+models) AND every sub-agent. The model_addenda mechanism is kept for genuinely
+model-specific tweaks (the dir may be empty).
+"""
+# ruff: noqa: I001
 from pathlib import Path
 
+import agent.tools  # noqa: F401  — ensure tools package is initialized first
 from agent.prompts.system import (
+    _AUTONOMY_FILE,
     _MODEL_ADDENDA_DIR,
+    STATIC_SYSTEM_BLOCK,
+    load_autonomy_rule,
     load_model_addendum,
 )
+from agent.prompts.subagent_specs import REGISTRY
 
 
-def test_qwen_addendum_file_exists_and_non_empty():
-    p = _MODEL_ADDENDA_DIR / "qwen.txt"
-    assert p.exists()
-    text = p.read_text(encoding="utf-8").strip()
+def test_autonomy_file_exists_and_non_empty():
+    text = _AUTONOMY_FILE.read_text(encoding="utf-8").strip()
     assert text
-    # Must steer toward autonomy / not asking permission.
     low = text.lower()
     assert "autonom" in low or "avtonom" in low
     assert "ask_user" in low
 
 
-def test_load_model_addendum_substring_match():
-    # Any qwen-family model id should pick up qwen.txt.
-    for model in ("qwen", "Qwen3-Coder", "bedrock/qwen3-coder-480b-instruct"):
-        assert load_model_addendum(model).strip(), f"no addendum for {model}"
+def test_autonomy_is_universal_dispatcher_and_subagents():
+    # Dispatcher static block carries autonomy for EVERY model (was Qwen-only).
+    assert load_autonomy_rule()
+    assert "ask_user" in STATIC_SYSTEM_BLOCK.lower()
+    # Every sub-agent prompt carries it too (PR moved it out of model_addenda).
+    for name in ("flow-builder", "deploy-manager", "cms-manager", "crm-manager"):
+        assert "avtonom" in REGISTRY[name].full_prompt.lower(), name
+
+
+# ── model-addenda mechanism (dir may be empty, mechanism still works) ───────────
 
 
 def test_load_model_addendum_no_match_returns_empty():
@@ -30,8 +46,9 @@ def test_load_model_addendum_no_match_returns_empty():
     assert load_model_addendum("") == ""
 
 
-def test_load_model_addendum_longest_match_wins(tmp_path, monkeypatch):
-    # Two overlapping names: longer stem must win.
+def test_load_model_addendum_substring_and_longest_match(tmp_path, monkeypatch):
+    # The substring + longest-stem-wins matching still works for any future
+    # model-specific addendum files.
     d = tmp_path / "addenda"
     d.mkdir()
     (d / "qwen.txt").write_text("short", encoding="utf-8")
@@ -39,18 +56,7 @@ def test_load_model_addendum_longest_match_wins(tmp_path, monkeypatch):
     monkeypatch.setattr("agent.prompts.system._MODEL_ADDENDA_DIR", d)
     assert load_model_addendum("bedrock/qwen3-coder-480b") == "long"
     assert load_model_addendum("bedrock/qwen2-7b") == "short"
-
-
-def test_static_block_includes_addendum_when_qwen(monkeypatch):
-    # Simulate a qwen executor and rebuild the addendum lookup.
-    from agent.prompts import system as sysmod
-
-    monkeypatch.setattr(
-        "agent.config.get_settings",
-        lambda: type("S", (), {"model_executor": "bedrock/qwen3-coder"})(),
-    )
-    addendum = sysmod._executor_model_addendum()
-    assert "ask_user" in addendum.lower()
+    assert load_model_addendum("gpt-5.2") == ""
 
 
 def test_addenda_dir_is_a_directory():
