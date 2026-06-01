@@ -35,6 +35,7 @@ from .base import (
     ToolUseStart,
     ToolUseStop,
     Usage,
+    normalize_tool_turns,
 )
 
 
@@ -108,7 +109,15 @@ class AnthropicClient(LLMClient):
 
           When there is no history (first turn with only dynamic tail), no
           rolling breakpoints are placed.
+
+        Normalization: normalize_tool_turns() is called first so that parallel
+        tool calls + the rolling-cache trailing dynamic-context user message
+        never produce consecutive same-role messages, orphan tool_results are
+        dropped, and the sequence always leads with `user`.
         """
+        # ── normalize internal messages (tool→user, merge, prune orphans) ─
+        messages = normalize_tool_turns(messages)
+
         system_parts: list[TextPart] = []
         out: list[dict[str, Any]] = []
         for msg in messages:
@@ -142,9 +151,8 @@ class AnthropicClient(LLMClient):
                             "is_error": part.is_error,
                         }
                     )
-            # Anthropic — `tool` role yo'q, tool_result `user` ichida boradi
-            role = "user" if msg.role == "tool" else msg.role
-            out.append({"role": role, "content": content})
+            # After normalization all `tool`-role messages are already `user`.
+            out.append({"role": msg.role, "content": content})
 
         # ── rolling cache breakpoints on history ──────────────────────
         # Structure: out[-1] = dynamic-context tail (uncached).
