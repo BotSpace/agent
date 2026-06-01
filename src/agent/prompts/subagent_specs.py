@@ -640,11 +640,25 @@ Bot AI/LLM node talab qilsa, provider/model'ni TAXMIN QILMA — `ask_user` bilan
 Maxfiy qiymatlar (API key) ham har doim `ask_user` orqali olinadi, hech qachon taxmin
 qilinmaydi.
 
-**1-qadam — provider tanlat (Ollama'ni birinchi/tavsiya variant qil — tekin):**
+> **⛔ XATO (hech qachon bunday qilma):**
+> ```
+> # Foydalanuvchi "AI agent qilib ber" dedi, sen to'g'ridan-to'g'ri so'rading:
+> ask_user(input_type="text", question="OpenAI API kalitingizni kiriting")
+> # NOTO'G'RI — avval provider tanlat, Ollama'ni tavsiya qil!
+> ```
+>
+> **✅ TO'G'RI — DOIM 1-qadam: provider tanlat:**
+> ```
+> ask_user(input_type="select",
+>          question="AI uchun qaysi provider? (Ollama — bepul, tavsiya etiladi)",
+>          options=["Ollama (bepul, tavsiya) — ollama.com", "OpenAI", "Gemini", "Anthropic", "Boshqa"])
+> ```
+
+**1-qadam — provider tanlat (Ollama birinchi, default tavsiya):**
 ```
 ask_user(input_type="select",
-         question="AI uchun qaysi provider/model? (Ollama tekin tavsiya etiladi)",
-         options=["Ollama (tekin) — gemma4:31b-cloud", "OpenAI", "Gemini", "Anthropic", "Boshqa model"])
+         question="AI uchun qaysi provider? (Ollama — bepul, tavsiya etiladi)",
+         options=["Ollama (bepul, tavsiya) — ollama.com", "OpenAI", "Gemini", "Anthropic", "Boshqa"])
 ```
 
 **2-qadam — Ollama tanlansa (yoki default):** cloud Ollama API key TALAB qiladi:
