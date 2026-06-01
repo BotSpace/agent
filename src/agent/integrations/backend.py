@@ -62,7 +62,9 @@ async def fetch_public_config() -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(url, headers={"Accept": "application/json"})
             resp.raise_for_status()
-            data = resp.json()
+            # BaseViewSetMixin wraps payloads as {"status": true, "data": {...}};
+            # peel the envelope so we get the flat {key: value} config dict.
+            data = _unwrap_envelopes(resp.json())
         if not isinstance(data, dict):
             logger.warning("fetch_public_config: unexpected response type %s", type(data))
             data = {}
@@ -121,7 +123,8 @@ async def fetch_internal_config() -> dict[str, Any]:
                 },
             )
             resp.raise_for_status()
-            data = resp.json()
+            # Peel the {"status": true, "data": {...}} envelope to a flat dict.
+            data = _unwrap_envelopes(resp.json())
         if not isinstance(data, dict):
             logger.warning("fetch_internal_config: unexpected response type %s", type(data))
             data = {}
