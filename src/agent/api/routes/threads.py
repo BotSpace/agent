@@ -61,3 +61,24 @@ async def get_thread(
         project_id=project_id, user_id=user.user_id, thread_id=thread_id
     )
     return ThreadTurnsResponse(thread_id=thread_id, turns=turns)
+
+
+class ThreadDeleteResponse(BaseModel):
+    thread_id: str
+    deleted: int
+
+
+@router.delete("/{thread_id}", response_model=ThreadDeleteResponse)
+async def delete_thread(
+    project_id: str,
+    thread_id: str,
+    user: CurrentUser = Depends(get_current_user),
+    store: RunStore = Depends(get_store),
+) -> ThreadDeleteResponse:
+    """Permanently delete a thread (its runs + events + messages), scoped to the
+    caller. Without this the dashboard could only hide threads in localStorage,
+    so they reappeared on refresh from the backend thread list."""
+    deleted = await store.delete_thread(
+        project_id=project_id, user_id=user.user_id, thread_id=thread_id
+    )
+    return ThreadDeleteResponse(thread_id=thread_id, deleted=deleted)
