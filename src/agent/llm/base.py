@@ -213,7 +213,11 @@ def normalize_tool_turns(messages: list[Message]) -> list[Message]:
       (b) Adjacent same-role messages are merged (content parts concatenated).
       (c) For each user turn: keep only ToolResultPart items whose
           ``tool_use_id`` matches a ToolUsePart in the immediately preceding
-          assistant turn; drop the rest (orphans).
+          assistant turn; drop the rest (orphans). Within the turn, dedup
+          ToolResultParts that share the same ``tool_use_id`` — keep only the
+          LAST (it reflects the resolved/final result, e.g. the post-resume
+          result that replaces an "awaiting approval" placeholder). Converse
+          rejects duplicate ids ("contain duplicate Ids: tooluse_XXX").
       (d) Empty messages (no content parts) are removed.
       (e) Step (b)+(d) are repeated once to handle new adjacency exposed by
           orphan removal.
@@ -254,11 +258,23 @@ def normalize_tool_turns(messages: list[Message]) -> list[Message]:
                 if isinstance(p, ToolUsePart)
             }
         kept: list[ContentPart] = []
+        # Track index of a previously-kept ToolResultPart per tool_use_id so a
+        # later result for the SAME id REPLACES the earlier one (last-wins). This
+        # collapses the interrupt/resume duplicate where an "awaiting approval"
+        # placeholder result and the post-resume real result share one id.
+        result_idx_by_id: dict[str, int] = {}
         for part in msg.content:
             if isinstance(part, ToolResultPart):
-                if part.tool_use_id in prev_tool_use_ids:
+                if part.tool_use_id not in prev_tool_use_ids:
+                    # orphan — drop silently
+                    continue
+                prev_idx = result_idx_by_id.get(part.tool_use_id)
+                if prev_idx is not None:
+                    # duplicate id within this turn → keep the LAST (final) one
+                    kept[prev_idx] = part
+                else:
+                    result_idx_by_id[part.tool_use_id] = len(kept)
                     kept.append(part)
-                # else: orphan — drop silently
             else:
                 kept.append(part)
         msg.content = kept
