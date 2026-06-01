@@ -178,8 +178,21 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
             await result
 
     async def _wrap_emit(name: str, payload: dict[str, Any]) -> None:
-        """Sub-agent event'larini sub_agent_id bilan markirovka qilamiz."""
+        """Sub-agent event'larini sub_agent_id bilan markirovka qilamiz.
+
+        Nested boladan ko'tarilgan event allaqachon o'z `sub_agent_id`'siga
+        ega bo'ladi (masalan Flow Builder ichidan chaqirilgan CMS Manager).
+        Bunday event'ni O'ZGARTIRMASDAN o'tkazamiz — aks holda parent wrapper
+        bola id'sini o'chirib o'zinikini yozadi va dashboard'da CMS Manager
+        kartasi Flow Builder qadamlarini takrorlab ko'rsatadi (data mixing).
+        tool_call_count ham faqat SHU sub-agent o'zi chiqargan call'ni
+        sanaydi — nested bolaniki emas.
+        """
         nonlocal tool_call_count
+        if isinstance(payload, dict) and payload.get("sub_agent_id"):
+            # Nested boladan ko'tarilyapti — teginmasdan parent'ga uzat.
+            await _emit_to_parent(name, payload)
+            return
         if name == "tool_call":
             tool_call_count += 1
         if isinstance(payload, dict):
@@ -468,7 +481,7 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
             break
     final_text = (final_text or "").strip()
     # Agar sub-agent yakuniy assistant matnsiz tugagan bo'lsa — bu o'zining
-    # vazifasini bajara olmagani belgisi (masalan max_tool_calls limit, yoki
+    # vazifasini bajara olmagani belgisi (masalan recursion_limit, yoki
     # ichki xato, yoki tool real bajarilmadi). Main agent uchun bu xato.
     if not final_text:
         await _emit_to_parent(
