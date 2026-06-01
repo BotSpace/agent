@@ -20,6 +20,7 @@ from agent.integrations.backend import (
     _invalidate_internal_config_cache,
     _invalidate_public_config_cache,
     fetch_internal_config,
+    fetch_public_config,
 )
 from agent.integrations.dynamic_config import (
     effective_api_key,
@@ -697,3 +698,53 @@ def test_build_effective_client_openai_with_base_url_override(monkeypatch):
 
     assert captured.get("api_key") == "internal-openai-key"
     assert captured.get("base_url") == "https://custom-openai.example.com/v1"
+
+
+# ── envelope unwrapping (regression) ───────────────────────────────────────────
+# The backend wraps every payload as {"status": true, "data": {...}}
+# (BaseViewSetMixin). The fetchers must peel that envelope to the flat
+# {key: value} config dict — otherwise effective_provider/model never find their
+# keys and the agent silently falls back to the env provider (the bedrock bug).
+
+
+def test_fetch_public_config_unwraps_status_data_envelope(monkeypatch):
+    _invalidate_public_config_cache()
+    flat = {
+        "ai_agent.provider": "openrouter",
+        "ai_agent.model": "qwen/qwen3.6-plus",
+        "ai_agent.base_url": "https://openrouter.ai/api/v1",
+    }
+    enveloped = {"status": True, "data": flat}
+    mock_client = _mock_httpx_response(enveloped)
+    monkeypatch.setattr("httpx.AsyncClient", lambda **kw: mock_client)
+
+    result = _run(fetch_public_config())
+
+    assert result == flat
+    assert result.get("ai_agent.provider") == "openrouter"
+
+
+def test_fetch_internal_config_unwraps_status_data_envelope(monkeypatch):
+    _invalidate_internal_config_cache()
+    flat = {"ai_agent.api_key": "sk-x", "ai_agent.aws_access_key_id": "AKIA..."}
+    enveloped = {"status": True, "data": flat}
+    mock_client = _mock_httpx_response(enveloped)
+    monkeypatch.setattr("httpx.AsyncClient", lambda **kw: mock_client)
+    from agent.config import get_settings
+    s = get_settings()
+    monkeypatch.setattr(s, "backend_internal_token", "tok", raising=False)
+
+    result = _run(fetch_internal_config())
+
+    assert result == flat
+    assert result.get("ai_agent.api_key") == "sk-x"
+
+
+def test_fetch_public_config_passes_through_flat_response(monkeypatch):
+    # Backward-compat: a non-enveloped flat dict is returned unchanged.
+    _invalidate_public_config_cache()
+    flat = {"ai_agent.provider": "openai"}
+    mock_client = _mock_httpx_response(flat)
+    monkeypatch.setattr("httpx.AsyncClient", lambda **kw: mock_client)
+
+    assert _run(fetch_public_config()) == flat
