@@ -193,3 +193,14 @@ async def test_subagent_system_block_is_spec_prompt_not_dispatcher(patched_neste
     assert cfg.system_block == REGISTRY["deploy-manager"].full_prompt
     # And it must NOT be the dispatcher persona.
     assert "dispatcher" not in (cfg.system_block or "").lower()[:200]
+
+
+def test_autonomy_rule_is_universal_across_models_and_subagents():
+    """Autonomy guidance must reach the dispatcher (all models) AND every
+    sub-agent — previously it was a Qwen-only addendum, so other models greeted
+    / asked instead of executing."""
+    from agent.prompts.system import STATIC_SYSTEM_BLOCK
+
+    assert "AVTONOM" in STATIC_SYSTEM_BLOCK
+    for name in ("flow-builder", "deploy-manager", "cms-manager", "crm-manager"):
+        assert "AVTONOM" in REGISTRY[name].full_prompt, f"{name} missing autonomy"
