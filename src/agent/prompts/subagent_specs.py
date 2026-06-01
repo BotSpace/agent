@@ -13,8 +13,17 @@ Allowed-tools sintaksis: aniq nom (`plan.set`) yoki prefiks (`flow.*`).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from ..tools.flow.node_data_models import render_summary_table
+
+# Universal autonomy guidance, shared with the dispatcher system block. Appended
+# to every sub-agent's prompt so ALL models (not just Qwen) act decisively
+# instead of greeting / asking permission. '' on read error.
+try:
+    _AUTONOMY_RULE = (Path(__file__).parent / "autonomy.txt").read_text(encoding="utf-8").strip()
+except Exception:  # pragma: no cover
+    _AUTONOMY_RULE = ""
 
 
 NARRATE_RULE = """\
@@ -54,6 +63,10 @@ qil. Qoidalar:
 - Davom ettirish kerak bo'lsa — qaytgan `session_id`'ni saqlab, keyingi
   `task.run`'da o'shani uzat (o'sha sub-agent qoldirgan joyidan davom etadi).
 """
+
+# Make autonomy part of every sub-agent prompt (all models), not just Qwen.
+if _AUTONOMY_RULE:
+    NARRATE_RULE = NARRATE_RULE + "\n" + _AUTONOMY_RULE + "\n"
 
 
 @dataclass(frozen=True)
