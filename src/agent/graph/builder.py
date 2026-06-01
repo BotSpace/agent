@@ -237,8 +237,18 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
                     "data": result.data,
                 },
             )
+            for k, v in (result.state_updates or {}).items():
+                current_state[k] = v
+                updates[k] = v
             if result.interrupt:
                 pending_clarification = {**result.interrupt, "tool_call_id": call.id}
+                # Do NOT append a placeholder tool_result for the interrupting
+                # call: the graph pauses at `clarify_interrupt` before any LLM
+                # call, and on resume `clarify_interrupt` supplies the REAL
+                # tool_result for this same tool_call_id. Appending one here
+                # would yield two ToolResultParts with the same id once merged →
+                # Bedrock Converse "contain duplicate Ids" ValidationException.
+                continue
             tool_messages.append(
                 Message.tool_result(
                     tool_use_id=call.id,
@@ -246,9 +256,6 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
                     is_error=result.is_error,
                 )
             )
-            for k, v in (result.state_updates or {}).items():
-                current_state[k] = v
-                updates[k] = v
 
         if tool_messages:
             # Bedrock (and Anthropic) want all tool_result blocks for a turn
