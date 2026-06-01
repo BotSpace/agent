@@ -437,9 +437,12 @@ class FlowListNodeTypesInput(BaseModel):
 @tool(
     name="flow.list_node_types",
     description=(
-        "Return engine node catalog with strict per-type field schemas (types, enums, "
-        "required vs optional). Use `type=<NodeName>` to get the full schema for a "
-        "single type (recommended when adding a node). `category=<name>` filters."
+        "Return the FULL per-type field/validator schema for one or more node types. "
+        "The compact catalog (type names, categories, descriptions, handles) is already "
+        "in the system context — you do NOT need to call this tool to discover available "
+        "node types. Call it only when you need the detailed field schema before adding "
+        "a specific node: `type=<NodeName>` for a single type's full schema (types, "
+        "enums, required vs optional). `category=<name>` filters to a category."
     ),
     input_model=FlowListNodeTypesInput,
 )
