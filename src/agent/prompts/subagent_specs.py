@@ -661,12 +661,13 @@ ask_user(input_type="select",
          options=["Ollama (bepul, tavsiya) — ollama.com", "OpenAI", "Gemini", "Anthropic", "Boshqa"])
 ```
 
-**2-qadam — Ollama tanlansa (yoki default):** cloud Ollama API key TALAB qiladi:
+**2-qadam — Ollama tanlansa:** model nomini SO'RA (bo'sh qoldirma — bo'sh model Ollama'ning default modelini ishlatadi):
 ```
+ask_user(input_type="text", question="Qaysi Ollama modelini ishlatmoqchisiz? (masalan: gemma2, llama3.1, mistral)")
 ask_user(input_type="text", question="Ollama API kalitingizni kiriting (ollama.com dan oling)")
-flow.add_ai_ollama_provider(id="ai-prov", data={provider:"ollama", model:"gemma4:31b-cloud", baseURL:"https://ollama.com/v1", apiKey:"<user key>"})
+flow.add_ai_ollama_provider(id="ai-prov", data={provider:"ollama", model:"<user model>", baseURL:"https://ollama.com/v1", apiKey:"<user key>"})
 ```
-(Eslatma: `gemma4:31b-cloud` — tavsiya nomi; noto'g'ri bo'lsa foydalanuvchi tuzatadi.)
+**MUHIM:** `model` maydoni HECH QACHON bo'sh `""` bo'lmasin — bo'sh qolsa Ollama o'zining default modelini ishlatadi va foydalanuvchi kutmagan natija chiqadi.
 
 **3-qadam — boshqa provider (OpenAI/Gemini/Anthropic/boshqa) tanlansa:** o'sha provider
 node'ini ishlat, `model` + `apiKey`ni `ask_user(input_type="text")` bilan so'ra:
