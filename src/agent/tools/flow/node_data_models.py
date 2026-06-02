@@ -433,9 +433,10 @@ class AIOpenAIProviderData(_AIProviderBase):
 
 
 class AIOllamaProviderData(_AIProviderBase):
-    """Ollama provider. provider='ollama', default model='llama3.1', baseURL='http://localhost:11434'."""
+    """Ollama provider. provider='ollama', baseURL='https://ollama.com/v1' (cloud). Always ask user for model name."""
 
     provider: Literal["ollama"] = "ollama"
+    baseURL: str = Field(default="https://ollama.com/v1", description="Ollama endpoint. Cloud: https://ollama.com/v1")
 
 
 class AIGeminiProviderData(_AIProviderBase):
