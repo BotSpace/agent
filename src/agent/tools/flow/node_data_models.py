@@ -179,6 +179,7 @@ class SendMediaGroupData(_SendBase):
 
 class EditOrSendMessageData(_SendBase):
     messageText: str
+    parseMode: _PARSE_MODE | None = None
     targetMessageNodeId: str | None = Field(default=None,
         description="If set, edit that node's previous message. Else send new.")
 
