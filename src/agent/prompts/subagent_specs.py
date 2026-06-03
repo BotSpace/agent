@@ -645,7 +645,7 @@ flow.connect(
 
 ```python
 # SendTextMessageNode ("ask-phone") da reply keyboard bor:
-# keyboard: {active:"reply", reply:[[{text:"📱 Telefon yuborish", type:"request_contact"}]]}
+# keyboard_kind: "reply", rows: [[{text:"📱 Telefon yuborish", type:"request_contact"}]]
 # Tugmani capture node'ga ulash:
 flow.connect_button(
     source="ask-phone",
@@ -666,18 +666,16 @@ flow.add_node(
     data={
         "messageText": "Assalomu alaykum, {{first_name}}!\nNima qilmoqchisiz?",
         "parseMode": "HTML",
-        "keyboard": {
-            "active": "inline",
-            "inline": [
-                [
-                    {"text": "\U0001f4da Kurslar", "type": "callback", "value": "courses"},
-                    {"text": "\U0001f6d2 Buyurtmalar", "type": "callback", "value": "orders"}
-                ],
-                [
-                    {"text": "ℹ️ Biz haqimizda", "type": "callback", "value": "about"}
-                ]
+        "keyboard_kind": "inline",
+        "rows": [
+            [
+                {"text": "📚 Kurslar", "type": "callback", "value": "courses"},
+                {"text": "🛒 Buyurtmalar", "type": "callback", "value": "orders"}
+            ],
+            [
+                {"text": "ℹ️ Biz haqimizda", "type": "callback", "value": "about"}
             ]
-        }
+        ]
     },
     after="start"
 )
@@ -877,14 +875,12 @@ flow.add_node(
     data={
         "messageText": "Assalomu alaykum, {{first_name}}! 👋\nO'quv markazimizga xush kelibsiz.\nQuyidagi bo'limlardan birini tanlang:",
         "parseMode": "HTML",
-        "keyboard": {
-            "active": "inline",
-            "inline": [
-                [{"text": "📚 Kurslar", "type": "callback", "value": "courses"}],
-                [{"text": "💰 Narxlar", "type": "callback", "value": "prices"}],
-                [{"text": "📞 Aloqa", "type": "callback", "value": "contact"}]
-            ]
-        }
+        "keyboard_kind": "inline",
+        "rows": [
+            [{"text": "📚 Kurslar", "type": "callback", "value": "courses"}],
+            [{"text": "💰 Narxlar", "type": "callback", "value": "prices"}],
+            [{"text": "📞 Aloqa", "type": "callback", "value": "contact"}]
+        ]
     },
     after="start"
 )
@@ -913,10 +909,8 @@ flow.add_node(
     data={
         "messageText": "💰 <b>Narxlar ro'yxati:</b>\n\n📚 Python asoslari — 1 200 000 so'm\n🎨 Frontend (React) — 1 500 000 so'm\n⚙️ Django Backend — 1 800 000 so'm\n📊 Data Science — 2 000 000 so'm\n🐳 DevOps / Docker — 1 600 000 so'm\n\n💳 To'lov: naqd, karta, bo'lib to'lash",
         "parseMode": "HTML",
-        "keyboard": {
-            "active": "inline",
-            "inline": [[{"text": "⬅️ Ortga", "type": "callback", "value": "back-menu"}]]
-        }
+        "keyboard_kind": "inline",
+        "rows": [[{"text": "⬅️ Ortga", "type": "callback", "value": "back-menu"}]]
     }
 )
 flow.add_node(
@@ -925,10 +919,8 @@ flow.add_node(
     data={
         "messageText": "📞 <b>Aloqa ma'lumotlari:</b>\n\n☎️ Telefon: +998 90 123 45 67\n📍 Manzil: Toshkent, Chilonzor t., 7-uy\n🕐 Ish vaqti: Du–Sh, 09:00–20:00\n\n📩 Telegram: @edu_center_uz",
         "parseMode": "HTML",
-        "keyboard": {
-            "active": "inline",
-            "inline": [[{"text": "⬅️ Ortga", "type": "callback", "value": "back-menu"}]]
-        }
+        "keyboard_kind": "inline",
+        "rows": [[{"text": "⬅️ Ortga", "type": "callback", "value": "back-menu"}]]
     }
 )
 flow.add_node(
@@ -937,14 +929,12 @@ flow.add_node(
     data={
         "messageText": "Assalomu alaykum, {{first_name}}! 👋\nO'quv markazimizga xush kelibsiz.\nQuyidagi bo'limlardan birini tanlang:",
         "parseMode": "HTML",
-        "keyboard": {
-            "active": "inline",
-            "inline": [
-                [{"text": "📚 Kurslar", "type": "callback", "value": "courses"}],
-                [{"text": "💰 Narxlar", "type": "callback", "value": "prices"}],
-                [{"text": "📞 Aloqa", "type": "callback", "value": "contact"}]
-            ]
-        }
+        "keyboard_kind": "inline",
+        "rows": [
+            [{"text": "📚 Kurslar", "type": "callback", "value": "courses"}],
+            [{"text": "💰 Narxlar", "type": "callback", "value": "prices"}],
+            [{"text": "📞 Aloqa", "type": "callback", "value": "contact"}]
+        ]
     }
 )
 

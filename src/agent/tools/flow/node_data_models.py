@@ -93,8 +93,19 @@ _PARSE_MODE = Literal["HTML", "Markdown", "MarkdownV2"]
 class _SendBase(_StrictData):
     """Common optional fields for most send_* nodes."""
 
-    keyboard: dict[str, Any] | None = Field(default=None,
-        description="{active:'reply'|'inline', reply:[[{id,text,type}...]] | inline:[[...]]}.")
+    keyboard_kind: Literal["inline", "reply"] | None = Field(
+        default=None,
+        description="'inline' (default) or 'reply'. Set alongside rows.",
+    )
+    rows: list[list[dict[str, Any]]] | None = Field(
+        default=None,
+        description=(
+            "2-D button array. Each inner list = one row. "
+            "Inline button: {text, type:'callback', value:'cb_data'}. "
+            "URL button: {text, type:'url', value:'https://...'}. "
+            "Contact/location: {text, type:'request_contact'} or {text, type:'request_location'}."
+        ),
+    )
     recipients: dict[str, Any] | None = Field(default=None,
         description="{sendToSender:bool, additionalIds:[chat_ids]} — admin/group broadcasts.")
 
@@ -192,7 +203,8 @@ class EditOrSendMessageData(_SendBase):
 class EditMessageData(_StrictData):
     newText: str
     messageIdSource: Literal["this_message", "previous_node", "state_key"] | None = None
-    keyboard: dict[str, Any] | None = None
+    keyboard_kind: Literal["inline", "reply"] | None = None
+    rows: list[list[dict[str, Any]]] | None = None
     parseMode: _PARSE_MODE | None = None
     editType: Literal["text", "caption", "media"] | None = None
 
