@@ -169,7 +169,7 @@ class TestBedrockMetrics:
                 assert _counter_value(LLM_INPUT_TOKENS, "bedrock", "bedrock-test-generate", "prompt_total") == before_input + 42
                 assert _counter_value(LLM_REQUESTS, "bedrock", "bedrock-test-generate", "success") == before_req + 1
 
-        asyncio.get_event_loop().run_until_complete(run())
+        asyncio.run(run())
 
     def test_generate_error_increments_error_counter(self, bedrock_client) -> None:
         from botocore.exceptions import ClientError
@@ -187,7 +187,7 @@ class TestBedrockMetrics:
                     await bedrock_client.generate(msgs, opts)
                 assert _counter_value(LLM_REQUESTS, "bedrock", "bedrock-test-err", "error") == before + 1
 
-        asyncio.get_event_loop().run_until_complete(run())
+        asyncio.run(run())
 
     def test_stream_increments_tokens(self, bedrock_client) -> None:
         """stream() with mocked converse_stream response increments LLM metrics."""
@@ -221,7 +221,7 @@ class TestBedrockMetrics:
                 assert _counter_value(LLM_INPUT_TOKENS, "bedrock", "bedrock-test-stream", "prompt_total") == before_input + 55
                 assert _counter_value(LLM_REQUESTS, "bedrock", "bedrock-test-stream", "success") == before_req + 1
 
-        asyncio.get_event_loop().run_until_complete(run())
+        asyncio.run(run())
 
 
 # ── Anthropic provider metrics ─────────────────────────────────────────────
@@ -265,7 +265,7 @@ class TestAnthropicMetrics:
                 assert _counter_value(LLM_INPUT_TOKENS, "anthropic", "anthropic-test-generate", "prompt_total") == before_input + 100
                 assert _counter_value(LLM_REQUESTS, "anthropic", "anthropic-test-generate", "success") == before_req + 1
 
-        asyncio.get_event_loop().run_until_complete(run())
+        asyncio.run(run())
 
     def test_generate_error_increments_error_counter(self, anthropic_client) -> None:
         import httpx
@@ -292,4 +292,4 @@ class TestAnthropicMetrics:
                     await anthropic_client.generate(msgs, opts)
                 assert _counter_value(LLM_REQUESTS, "anthropic", "anthropic-test-err", "error") == before + 1
 
-        asyncio.get_event_loop().run_until_complete(run())
+        asyncio.run(run())
