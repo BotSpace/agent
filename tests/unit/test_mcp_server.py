@@ -246,3 +246,33 @@ async def test_build_bot_prompt():
     text = result.messages[0].content.text
     assert "pizza buyurtma bot" in text
     assert len(text) > 10_000  # guide + katalog + misollar
+
+
+# ── OAuth resource server (RFC 9728) ─────────────────────────────────────────
+
+
+def test_protected_resource_metadata_and_www_authenticate():
+    from starlette.testclient import TestClient
+
+    from agent.mcp.server import create_standalone_app, protected_resource_metadata
+
+    meta = protected_resource_metadata()
+    assert meta["resource"].endswith("/mcp")
+    assert meta["authorization_servers"]
+
+    app = create_standalone_app()
+    with TestClient(app, raise_server_exceptions=False) as client:
+        # Metadata endpoint ochiq
+        resp = client.get("/.well-known/oauth-protected-resource/mcp")
+        assert resp.status_code == 200
+        assert resp.json()["resource"] == meta["resource"]
+        # 401'da WWW-Authenticate resource_metadata'ga ko'rsatadi
+        resp2 = client.post(
+            "/mcp",
+            json={"jsonrpc": "2.0", "method": "initialize", "id": 1, "params": {}},
+            headers={"Accept": "application/json, text/event-stream"},
+        )
+        assert resp2.status_code == 401
+        www = resp2.headers.get("www-authenticate", "")
+        assert 'resource_metadata="' in www
+        assert "/.well-known/oauth-protected-resource/mcp" in www

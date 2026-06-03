@@ -93,6 +93,15 @@ class Settings(BaseSettings):
     internal_api_token: str | None = Field(
         default=None, alias="AGENT_INTERNAL_API_TOKEN"
     )
+    # MCP OAuth (resource server) — discovery metadata uchun tashqi URL'lar.
+    public_base_url: str = Field(
+        default="https://botspace.uz", alias="AGENT_PUBLIC_BASE_URL",
+        description="MCP resource'ning canonical bazasi — resource = {base}/mcp.",
+    )
+    oauth_issuer: str = Field(
+        default="https://api.botspace.uz", alias="AGENT_OAUTH_ISSUER",
+        description="OAuth authorization server (backend) issuer URL'i.",
+    )
 
     # ── memory / rag ────────────────────────────────────────────────────
     rag_enabled: bool = Field(default=True, alias="AGENT_RAG_ENABLED")
