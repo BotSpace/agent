@@ -42,9 +42,9 @@ flow.add_node(
         "parseMode": "HTML",
         "keyboard_kind": "inline",
         "rows": [
-            [{"text": "🛠 Xizmatlar", "type": "callback", "value": "services"}],
-            [{"text": "💰 Narxlar", "type": "callback", "value": "prices"}],
-            [{"text": "📞 Aloqa", "type": "callback", "value": "contact"}]
+            {"columns": [{"text": "🛠 Xizmatlar", "type": "callback", "value": "services"}]},
+            {"columns": [{"text": "💰 Narxlar", "type": "callback", "value": "prices"}]},
+            {"columns": [{"text": "📞 Aloqa", "type": "callback", "value": "contact"}]}
         ]
     },
     after="start"
@@ -56,7 +56,7 @@ flow.add_node(
         "messageText": "🛠 <b>Xizmatlarimiz:</b>\n\n• Veb-sayt yaratish\n• Mobil ilovalar\n• SMM xizmatlari\n• SEO optimizatsiya",
         "parseMode": "HTML",
         "keyboard_kind": "inline",
-        "rows": [[{"text": "⬅️ Ortga", "type": "callback", "value": "back-menu"}]]
+        "rows": [{"columns": [{"text": "⬅️ Ortga", "type": "callback", "value": "back-menu"}]}]
     }
 )
 flow.add_node(
@@ -66,7 +66,7 @@ flow.add_node(
         "messageText": "💰 <b>Narxlar:</b>\n\n• Veb-sayt — 5 000 000 so'mdan\n• Mobil ilova — 12 000 000 so'mdan\n• SMM (oylik) — 2 000 000 so'mdan",
         "parseMode": "HTML",
         "keyboard_kind": "inline",
-        "rows": [[{"text": "⬅️ Ortga", "type": "callback", "value": "back-menu"}]]
+        "rows": [{"columns": [{"text": "⬅️ Ortga", "type": "callback", "value": "back-menu"}]}]
     }
 )
 flow.add_node(
@@ -76,7 +76,7 @@ flow.add_node(
         "messageText": "📞 <b>Aloqa:</b>\n\n☎️ +998 90 123 45 67\n📍 Toshkent, Amir Temur ko'chasi 1\n🕐 Du–Sh, 09:00–18:00",
         "parseMode": "HTML",
         "keyboard_kind": "inline",
-        "rows": [[{"text": "⬅️ Ortga", "type": "callback", "value": "back-menu"}]]
+        "rows": [{"columns": [{"text": "⬅️ Ortga", "type": "callback", "value": "back-menu"}]}]
     }
 )
 # "⬅️ Ortga" 3 ta sahifadan bosiladi → BITTA global trigger oqlanadi (Qoida 3)
@@ -152,7 +152,7 @@ flow.add_node(
     data={
         "messageText": "📱 Telefon raqamingizni yuboring:",
         "keyboard_kind": "reply",
-        "rows": [[{"text": "📱 Telefon yuborish", "type": "request_contact"}]]
+        "rows": [{"columns": [{"text": "📱 Telefon yuborish", "type": "request_contact"}]}]
     }
 )
 flow.add_message_trigger(

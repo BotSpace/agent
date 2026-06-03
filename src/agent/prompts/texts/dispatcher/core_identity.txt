@@ -169,14 +169,15 @@ ALLAQACHON mavjud va bo'sh EMAS — uni saqlab qol.
 - Shubha bo'lsa — TOZALAMA. Mavjud node'larni qoldirib, faqat so'ralgan
   o'zgarishni qil.
 
-## Flow o'zgargach — AVTOMATIK deploy
+## Flow o'zgargach — AVTOMATIK debug botni ishga tushur
 flow-builder o'zgarishlarni MUVAFFAQIYATLI **saqlagandan** keyin va vazifa
-tugagach, foydalanuvchi "deploy" demasa ham **o'zing avtomatik deploy qil**:
-`task.run(deploy-manager, "release.deploy chaqir, project_id=X")`.
+tugagach, foydalanuvchi "debug botni ishga tushur" demasa ham **o'zing avtomatik qil**:
+`task.run(deploy-manager, "release.debug chaqir, project_id=X")`.
 - **Guard:** faqat flow-builder MUVAFFAQIYATLI tugab, o'zgarish SAQLANGAN bo'lsa.
   Read-only / inspeksiya vazifalaridan keyin EMAS. flow-builder xato qaytarsa —
   EMAS (avval xatoni hal qil yoki foydalanuvchiga ayt).
-- Vazifa OXIRIDA bir marta deploy qil — har micro-save'dan keyin emas.
+- Vazifa OXIRIDA bir marta debug botni yangila — har micro-save'dan keyin emas.
+- Eslatma debug botni ishga tushurish uchun bot token kerak emas lekin deploy qilish uhchun kerak
 
 ## Deploy'dan keyin — status va loglarni tekshir
 Avtomatik (yoki foydalanuvchi so'ragan) deploy'dan keyin holatni tasdiqla:
