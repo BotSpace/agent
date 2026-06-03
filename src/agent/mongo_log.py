@@ -48,11 +48,7 @@ def _get_col() -> Any:
         from .config import get_settings
 
         s = get_settings()
-        # Build URL with auth credentials if not already included
-        url = s.mongo_base_url
-        if "admin:admin123" not in url and "@" not in url.replace("mongodb://", "").replace("mongodb+srv://", ""):
-            url = url.replace("mongodb://", "mongodb://admin:admin123@", 1)
-        _client = AsyncIOMotorClient(url, serverSelectionTimeoutMS=3000)
+        _client = AsyncIOMotorClient(s.mongo_base_url, serverSelectionTimeoutMS=3000)
         _col = _client[_DB_NAME][_COL_NAME]
         logger.info("LLM Mongo logger connected to %s/%s", _DB_NAME, _COL_NAME)
     except Exception as exc:
@@ -97,7 +93,8 @@ def log_run_start(
             "user_id": user_id,
             "thread_id": thread_id,
             "prompt": prompt,
-            "messages": [],
+            # Full conversation in order: user, assistant, tool_call, tool_result, ...
+            "messages": [{"role": "user", "content": prompt, "ts": _now()}],
             "tool_calls": [],
             "final_response": None,
             "status": "running",
@@ -156,7 +153,7 @@ def log_assistant_message(
     async def _write() -> None:
         await _safe(col.update_one(
             {"_id": request_id},
-            {"$push": {"messages": entry}},
+            {"$push": {"messages": entry}},  # into chronological messages list
         ))
 
     _fire(_write())
@@ -172,19 +169,28 @@ def log_tool_call(
     if col is None:
         return
 
-    entry: dict[str, Any] = {
+    ts = _now()
+    tool_entry: dict[str, Any] = {
         "id": call_id,
         "name": name,
         "arguments": arguments,
         "result": None,
         "is_error": None,
-        "ts": _now(),
+        "ts": ts,
+    }
+    # Also appears in chronological messages for training data
+    msg_entry: dict[str, Any] = {
+        "role": "tool_call",
+        "id": call_id,
+        "name": name,
+        "arguments": arguments,
+        "ts": ts,
     }
 
     async def _write() -> None:
         await _safe(col.update_one(
             {"_id": request_id},
-            {"$push": {"tool_calls": entry}},
+            {"$push": {"tool_calls": tool_entry, "messages": msg_entry}},
         ))
 
     _fire(_write())
@@ -201,15 +207,27 @@ def log_tool_result(
     if col is None:
         return
 
+    ts = _now()
+    msg_entry: dict[str, Any] = {
+        "role": "tool_result",
+        "tool_call_id": call_id,
+        "name": name,
+        "content": content,
+        "is_error": is_error,
+        "ts": ts,
+    }
+
     async def _write() -> None:
-        # Update the matching tool_call entry's result field
         await _safe(col.update_one(
             {"_id": request_id, "tool_calls.id": call_id},
-            {"$set": {
-                "tool_calls.$.result": content,
-                "tool_calls.$.is_error": is_error,
-                "tool_calls.$.result_ts": _now(),
-            }},
+            {
+                "$set": {
+                    "tool_calls.$.result": content,
+                    "tool_calls.$.is_error": is_error,
+                    "tool_calls.$.result_ts": ts,
+                },
+                "$push": {"messages": msg_entry},
+            },
         ))
 
     _fire(_write())
