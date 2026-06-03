@@ -88,9 +88,10 @@ def test_flow_builder_prompt_asks_user_for_llm_choice():
     recommended as the free default — never assumed."""
     prompt = REGISTRY["flow-builder"].system_prompt
     assert "ask_user" in prompt
-    assert "tekin tavsiya" in prompt
-    # API keys come from ask_user(input_type="text"), not placeholders.
-    assert 'input_type="text"' in prompt
+    # Ollama bepul/default tavsiya sifatida tilga olinadi.
+    assert "Ollama" in prompt and ("bepul" in prompt or "tavsiya" in prompt)
+    # API key haqiqiy qiymat sifatida ask_user orqali olinadi (placeholder emas).
+    assert "ask_user" in prompt and "apiKey" in prompt
 
 
 def test_flow_builder_spec_has_no_dead_budget_fields():

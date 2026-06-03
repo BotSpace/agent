@@ -41,7 +41,6 @@ from langgraph.errors import GraphInterrupt
 from langgraph.types import Command
 from pydantic import BaseModel, Field
 
-from ...prompts.subagent_specs import REGISTRY, list_subagents, tool_allowed
 from ..base import Tool, ToolContext, ToolResult, tool
 
 logger = logging.getLogger(__name__)
@@ -98,6 +97,11 @@ async def _checkpointer_has_state(checkpointer: Any, config: dict[str, Any]) -> 
     input_model=TaskRunInput,
 )
 async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
+    # Lazy import — subagent_specs ham bu modulni (tools zanjiri orqali)
+    # yuklaydi; module-level import circular bo'lib, import tartibiga qarab
+    # ImportError berardi.
+    from ...prompts.subagent_specs import REGISTRY, list_subagents, tool_allowed
+
     spec = REGISTRY.get(input.subagent_type)
     if spec is None:
         available = ", ".join(r.name for r in list_subagents())

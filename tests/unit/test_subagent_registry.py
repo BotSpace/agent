@@ -107,12 +107,24 @@ def test_subagents_dont_overlap_on_domain():
         "payment.": "deploy-manager",
         "file.": "deploy-manager",
     }
+    # crm-manager ATAYLAB read-only cms query tool'lariga ega (segmentlash:
+    # cms.find/aggregate'dan telegram_id ro'yxati olib broadcast'ga uzatadi).
+    # Yozish (insert/update/delete/schema) faqat cms-manager'da qoladi.
+    ALLOWED_CROSS = {
+        ("crm-manager", "cms.list_collections"),
+        ("crm-manager", "cms.get_collection"),
+        ("crm-manager", "cms.find"),
+        ("crm-manager", "cms.get_document"),
+        ("crm-manager", "cms.aggregate"),
+    }
     for prefix, owner in namespaces.items():
         for name in all_names:
             if not name.startswith(prefix):
                 continue
             for sa_name, spec in REGISTRY.items():
                 if sa_name == owner:
+                    continue
+                if (sa_name, name) in ALLOWED_CROSS:
                     continue
                 assert not tool_allowed(name, spec.allowed_tools), (
                     f"{name} bleeds into {sa_name}; should be only in {owner}"
