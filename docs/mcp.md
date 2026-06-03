@@ -25,7 +25,7 @@ backend `POST /auth/token/exchange/` orqali qisqa muddatli JWT'ga almashtiriladi
 
 ```bash
 # Prod
-claude mcp add --transport http botspace https://agent.botspace.uz/mcp \
+claude mcp add --transport http botspace https://botspace.uz/mcp \
   --header "Authorization: Bearer bsp_xxxxxxxxxxxxxxxxxxxx"
 
 # Lokal dev (agent 8100-portda ishlayotgan bo'lsa)
