@@ -51,6 +51,14 @@ from uuid import uuid4
 import psycopg
 
 from ..config import get_settings
+from ..mongo_log import (
+    log_assistant_message,
+    log_run_complete,
+    log_run_fail,
+    log_run_start,
+    log_tool_call,
+    log_tool_result,
+)
 
 
 _SCHEMA = """\
@@ -183,6 +191,7 @@ class RunStore:
                         (project_id, user_id, rec.request_id, "user", prompt),
                     )
             await conn.commit()
+        log_run_start(rec.request_id, rec.project_id, rec.user_id, rec.thread_id, prompt)
         return rec
 
     async def get(
@@ -259,6 +268,7 @@ class RunStore:
                         (pid, uid, request_id, final_response),
                     )
             await conn.commit()
+        log_run_complete(request_id, final_response)
         await self._publish(request_id, None)  # close subscribers
 
     async def fail(self, request_id: str, error: str) -> None:
@@ -270,6 +280,7 @@ class RunStore:
                     (error, request_id),
                 )
             await conn.commit()
+        log_run_fail(request_id, error)
         await self._publish(request_id, None)
 
     async def set_pending_approval(self, request_id: str, payload: dict[str, Any] | None) -> None:
@@ -320,6 +331,29 @@ class RunStore:
             at=dt.datetime.utcnow().isoformat(),
         )
         await self._publish(request_id, ev)
+        # Mirror select events to MongoDB for LLM training data
+        if event_type == "assistant_message":
+            log_assistant_message(
+                request_id,
+                payload.get("text", ""),
+                model=payload.get("model"),
+                usage=payload.get("usage"),
+            )
+        elif event_type == "tool_call":
+            log_tool_call(
+                request_id,
+                call_id=payload.get("id", ""),
+                name=payload.get("name", ""),
+                arguments=payload.get("arguments") or {},
+            )
+        elif event_type == "tool_result":
+            log_tool_result(
+                request_id,
+                call_id=payload.get("tool_call_id", ""),
+                name=payload.get("name", ""),
+                content=str(payload.get("content", "")),
+                is_error=bool(payload.get("is_error", False)),
+            )
         return seq
 
     async def list_events(self, request_id: str, *, since_seq: int = 0) -> list[dict[str, Any]]:
