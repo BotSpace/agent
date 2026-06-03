@@ -433,22 +433,34 @@ _BUTTON_EDGE_NODE_TYPES = frozenset(
 
 
 def _button_source_handles(node) -> list[str]:
-    keyboard = node.data.get("keyboard")
-    if node.type not in _BUTTON_EDGE_NODE_TYPES or not isinstance(keyboard, dict):
+    if node.type not in _BUTTON_EDGE_NODE_TYPES:
         return []
 
     handles: list[str] = []
-    for group_name in ("reply", "inline"):
-        rows = keyboard.get(group_name)
-        if not isinstance(rows, list):
-            continue
-        for row in rows:
-            if not isinstance(row, list):
-                continue
-            for button in row:
-                if not isinstance(button, dict):
-                    continue
-                text = button.get("text")
-                if isinstance(text, str) and text:
-                    handles.append(f"target-handler-{node.id}-{text}")
+
+    def _add(button: object) -> None:
+        # collectionData (dynamic) columns have no fixed text — skip them.
+        if isinstance(button, dict) and isinstance(button.get("text"), str) and button["text"]:
+            handles.append(f"target-handler-{node.id}-{button['text']}")
+
+    # New format: keyboard_kind + rows:[{columns:[btn,...]}, ...]
+    rows_new = node.data.get("rows")
+    if isinstance(rows_new, list):
+        for row in rows_new:
+            if isinstance(row, dict):
+                for button in row.get("columns") or []:
+                    _add(button)
+            elif isinstance(row, list):  # tolerate bare 2-D rows too
+                for button in row:
+                    _add(button)
+
+    # Legacy format: keyboard:{active, inline:[[btn]], reply:[[btn]]}
+    keyboard = node.data.get("keyboard")
+    if isinstance(keyboard, dict):
+        for group_name in ("reply", "inline"):
+            for row in keyboard.get(group_name) or []:
+                if isinstance(row, list):
+                    for button in row:
+                        _add(button)
+
     return handles
