@@ -167,9 +167,12 @@ async def run_agent(
                 )
             else:
                 await store.set_pending_clarification(request_id, None)
+                answer_str = (
+                    ", ".join(answer) if isinstance(answer, list) else str(answer)
+                )
                 await emit(
                     "clarification_resolved",
-                    {"tool_call_id": payload.get("tool_call_id"), "answer": str(answer)},
+                    {"tool_call_id": payload.get("tool_call_id"), "answer": answer_str},
                 )
 
             result = await graph.ainvoke(Command(resume=answer), config=config)
