@@ -1,0 +1,33 @@
+## Botmother MCP — Telegram bot constructor (botspace.uz)
+
+This server exposes the full Botmother bot-builder platform: visual flow editing,
+project/env/release management, CMS collections (MongoDB), CRM chat history and
+broadcasts. You (the MCP client model) act as the bot builder.
+
+### Workflow for building/editing a bot
+1. `project_list` / `project_create` — find or create the project.
+2. `session_use_project(project_id)` — REQUIRED before any `flow_*` tool.
+   Loads the saved flow + CMS collections into the server-side session.
+3. BEFORE building anything non-trivial, read the guide:
+   `docs_guide(topic="flow")` — flow-builder rules (handles, triggers, AI nodes,
+   keyboards, state). `docs_guide(topic="node_catalog")` — all node types.
+   `docs_guide(topic="flow_examples")` — complete bot examples.
+4. Build: typed helpers (`flow_add_command_trigger`, `flow_add_send_text_message`,
+   `flow_ask_text`, `flow_add_if_condition`, ...) or generic `flow_add_node`;
+   wire with `flow_connect` / `flow_connect_branch` / `flow_connect_button`.
+   Use `flow_list_node_types(type=...)` for one type's exact field schema.
+5. ALWAYS finish with: `flow_validate` → fix errors → `flow_save`
+   (auto-layout is applied on save; nothing persists until `flow_save`).
+6. Data-driven bots: create collections FIRST (`cms_create_collection`,
+   `cms_add_field`, `cms_insert`/`cms_bulk_insert`), then reference them in
+   flow nodes (CollectionNode, LoadCollection*).
+7. Test/deploy: `release_debug` starts a debug bot container (~30 min, no token
+   needed); `release_deploy` is a production deploy; `release_logs` shows logs.
+
+### Key rules
+- Every flow needs at least one trigger node (`flow_add_command_trigger` /start etc.).
+- Branch edges use exact handles: IfCondition → true/false; LoadCollectionItem →
+  found/not_found; ForLoop → loop-body/no-items; Random → option_0..N;
+  buttons → flow_connect_button.
+- `session_status` shows the active project and unsaved changes (flow_dirty).
+- Per-user token budget is enforced by the platform (`subscription.*` tools).
