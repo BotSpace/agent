@@ -433,6 +433,74 @@ async def release_logs(input: ReleaseLogsInput, ctx: ToolContext) -> ToolResult:
     return ToolResult.ok(summary, data={"logs": snap})
 
 
+# ── release.debug_logs ────────────────────────────────────────────────────────
+
+
+class ReleaseDebugLogsInput(BaseModel):
+    project_id: str | int | None = Field(
+        default=None,
+        description="Project id (defaults to the active project).",
+    )
+    tail: int = Field(
+        default=200,
+        ge=1,
+        le=2000,
+        description="Number of trailing log lines to return.",
+    )
+    since_seconds: int | None = Field(
+        default=None,
+        description="Only return lines from the last N seconds (optional).",
+    )
+
+
+@tool(
+    name="release.debug_logs",
+    description=(
+        "Fetch a snapshot of the DEBUG bot container's recent pod logs (the one "
+        "started by release.debug). Use this when the debug bot misbehaves or "
+        "doesn't respond — node errors, crashes, webhook problems show up here. "
+        "Returns the last N lines (default 200) — NOT a live stream."
+    ),
+    input_model=ReleaseDebugLogsInput,
+)
+async def release_debug_logs(input: ReleaseDebugLogsInput, ctx: ToolContext) -> ToolResult:
+    pid = _project_id(ctx, input.project_id)
+    if pid is None:
+        return ToolResult.error(
+            "No project_id available. session_use_project yoki project_id bering."
+        )
+    try:
+        snap = await _backend(ctx).get_debug_logs(
+            pid,
+            tail=input.tail,
+            since_seconds=input.since_seconds,
+            auth_claims=ctx.state.get("auth_claims"),
+        )
+    except BackendError as e:
+        return ToolResult.error(_wrap_backend_err("Debug loglarini olish", e))
+
+    lines = snap.get("lines") if isinstance(snap, dict) else None
+    if not isinstance(lines, list):
+        lines = []
+    pod = snap.get("pod_name") if isinstance(snap, dict) else None
+    truncated = bool(snap.get("truncated")) if isinstance(snap, dict) else False
+
+    if not lines:
+        detail = snap.get("detail") if isinstance(snap, dict) else None
+        msg = detail or (
+            "No log lines available — debug konteyner ishlamayotgan bo'lishi mumkin. "
+            "Avval release.debug bilan ishga tushiring."
+        )
+        return ToolResult.ok(msg, data={"logs": snap})
+
+    head = "\n".join(lines[-50:])
+    summary = (
+        f"{len(lines)} line(s) from debug pod `{pod or '?'}`"
+        f"{' (truncated to tail)' if truncated else ''}.\n```\n{head}\n```"
+    )
+    return ToolResult.ok(summary, data={"logs": snap})
+
+
 def build_release_tools() -> list[Tool]:
     return [
         release_list,
@@ -440,6 +508,7 @@ def build_release_tools() -> list[Tool]:
         release_debug,
         release_status,
         release_logs,
+        release_debug_logs,
         plans_list,
         subscription_current,
         subscription_upgrade,
