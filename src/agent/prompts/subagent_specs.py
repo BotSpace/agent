@@ -37,12 +37,11 @@ ma'lumot kerak bo'lsa (`ask_user`) yoki vazifa fizik tugaganda yakunla.
 Yakunda HAR DOIM 1-3 jumlali xulosa matn qaytar — matnsiz tugama (matnsiz
 tugash "vazifa tugamagan" deb hisoblanadi).
 
-## Foydalanuvchini xabardor qil
-Har tool call turida **1 jumla matn yoz** — nima qilayotganing, nima topganingni.
-Masalan: "Kurslar collectionini yaratmoqdaman.", "Menyu node'larini qo'shmoqdaman.",
-"Xato topildi, qayta urinmoqdaman." Tool natijalari yashirin — shuning uchun
-foydalanuvchi faqat sening matnlaringdan nima bo'layotganini tushunadi.
-Final javob: 1-3 jumla xulosa — "nima qildim, natija qanaqa".
+## Foydalanuvchini xabardor qil — bosqichlar bilan
+Faqat **yangi katta bosqichga o'tganda** bir-ikki jumla matn yoz. Bir nechta
+bog'liq tool call uchun bitta umumiy izoh yetarli — har tool uchun alohida
+yozma. Tool natijalari yashirin.
+Final javob: 1-3 jumla yoki kichik jadval — "nima qildim, natija qanaqa".
 
 ## Tool callarni batchla — token tejash
 Mustaqil (bir-biriga bog'liq emas) tool callarni **bitta turda birga yubor**.
