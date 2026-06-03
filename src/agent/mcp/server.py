@@ -359,6 +359,29 @@ def build_mcp_asgi_app(registry: ToolRegistry | None = None) -> tuple[_MCPApp, S
     return _MCPApp(session_manager), session_manager
 
 
+class MCPPathNormalizer:
+    """`/mcp` (slashsiz) → `/mcp/` ASGI darajasida rewrite — redirect'siz.
+
+    Starlette Mount slashsiz path'ga 307 redirect qaytaradi va TLS-terminating
+    gateway ortida `Location` scheme'i `http://` bo'lib qoladi — MCP klientlar
+    (Claude Code) https→http downgrade redirect'ni rad etadi. Path'ni routing'dan
+    OLDIN to'g'irlash redirect'ni butunlay yo'q qiladi.
+    """
+
+    def __init__(self, app, prefix: str = "/mcp") -> None:
+        self.app = app
+        self._prefix = prefix
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and scope.get("path") == self._prefix:
+            scope = dict(scope)
+            scope["path"] = self._prefix + "/"
+            raw = scope.get("raw_path")
+            if isinstance(raw, bytes):
+                scope["raw_path"] = raw + b"/"
+        await self.app(scope, receive, send)
+
+
 def create_standalone_app(registry: ToolRegistry | None = None) -> Starlette:
     """`python -m agent.mcp` uchun mustaqil Starlette app — `/mcp` mount."""
     asgi_app, session_manager = build_mcp_asgi_app(registry)
@@ -373,7 +396,7 @@ def create_standalone_app(registry: ToolRegistry | None = None) -> Starlette:
 
     from starlette.routing import Route
 
-    return Starlette(
+    app = Starlette(
         debug=False,
         routes=[
             Route("/health", health),
@@ -381,9 +404,12 @@ def create_standalone_app(registry: ToolRegistry | None = None) -> Starlette:
         ],
         lifespan=lifespan,
     )
+    app.add_middleware(MCPPathNormalizer)
+    return app
 
 
 __all__ = [
+    "MCPPathNormalizer",
     "build_mcp_asgi_app",
     "build_mcp_server",
     "build_session_manager",
