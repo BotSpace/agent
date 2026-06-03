@@ -5,8 +5,9 @@ Every agent run is one document in `llm.conversations`:
     _id:            request_id (str),
     project_id, user_id, thread_id,
     prompt:         initial user message,
-    messages:       [{role, content, model?, usage?, ts}],
-    tool_calls:     [{id, name, arguments, result, is_error, ts}],
+    messages:       [{role, content, model?, usage?, subagent?, ts}],
+    tool_calls:     [{id, name, arguments, result, is_error, subagent?, ts}],
+    subagents_used: ["flow-builder", "cms-manager", ...],
     final_response: str | None,
     status:         "running" | "completed" | "failed",
     error:          str | None,
@@ -96,6 +97,7 @@ def log_run_start(
             # Full conversation in order: user, assistant, tool_call, tool_result, ...
             "messages": [{"role": "user", "content": prompt, "ts": _now()}],
             "tool_calls": [],
+            "subagents_used": [],
             "final_response": None,
             "status": "running",
             "error": None,
@@ -134,11 +136,27 @@ def log_run_fail(request_id: str, error: str) -> None:
     _fire(_write())
 
 
+def log_subagent_started(request_id: str, subagent_name: str) -> None:
+    """Record that a sub-agent was invoked — added to subagents_used list once."""
+    col = _get_col()
+    if col is None:
+        return
+
+    async def _write() -> None:
+        await _safe(col.update_one(
+            {"_id": request_id},
+            {"$addToSet": {"subagents_used": subagent_name}},
+        ))
+
+    _fire(_write())
+
+
 def log_assistant_message(
     request_id: str,
     text: str,
     model: str | None = None,
     usage: dict[str, Any] | None = None,
+    subagent: str | None = None,
 ) -> None:
     col = _get_col()
     if col is None:
@@ -149,11 +167,13 @@ def log_assistant_message(
         entry["model"] = model
     if usage:
         entry["usage"] = usage
+    if subagent:
+        entry["subagent"] = subagent
 
     async def _write() -> None:
         await _safe(col.update_one(
             {"_id": request_id},
-            {"$push": {"messages": entry}},  # into chronological messages list
+            {"$push": {"messages": entry}},
         ))
 
     _fire(_write())
@@ -164,6 +184,7 @@ def log_tool_call(
     call_id: str,
     name: str,
     arguments: dict[str, Any],
+    subagent: str | None = None,
 ) -> None:
     col = _get_col()
     if col is None:
@@ -178,7 +199,6 @@ def log_tool_call(
         "is_error": None,
         "ts": ts,
     }
-    # Also appears in chronological messages for training data
     msg_entry: dict[str, Any] = {
         "role": "tool_call",
         "id": call_id,
@@ -186,6 +206,9 @@ def log_tool_call(
         "arguments": arguments,
         "ts": ts,
     }
+    if subagent:
+        tool_entry["subagent"] = subagent
+        msg_entry["subagent"] = subagent
 
     async def _write() -> None:
         await _safe(col.update_one(
@@ -202,6 +225,7 @@ def log_tool_result(
     name: str,
     content: str,
     is_error: bool,
+    subagent: str | None = None,
 ) -> None:
     col = _get_col()
     if col is None:
@@ -216,6 +240,8 @@ def log_tool_result(
         "is_error": is_error,
         "ts": ts,
     }
+    if subagent:
+        msg_entry["subagent"] = subagent
 
     async def _write() -> None:
         await _safe(col.update_one(

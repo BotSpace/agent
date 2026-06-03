@@ -56,6 +56,7 @@ from ..mongo_log import (
     log_run_complete,
     log_run_fail,
     log_run_start,
+    log_subagent_started,
     log_tool_call,
     log_tool_result,
 )
@@ -332,12 +333,14 @@ class RunStore:
         )
         await self._publish(request_id, ev)
         # Mirror select events to MongoDB for LLM training data
+        subagent = payload.get("sub_agent_name") if isinstance(payload, dict) else None
         if event_type == "assistant_message":
             log_assistant_message(
                 request_id,
                 payload.get("text", ""),
                 model=payload.get("model"),
                 usage=payload.get("usage"),
+                subagent=subagent,
             )
         elif event_type == "tool_call":
             log_tool_call(
@@ -345,6 +348,7 @@ class RunStore:
                 call_id=payload.get("id", ""),
                 name=payload.get("name", ""),
                 arguments=payload.get("arguments") or {},
+                subagent=subagent,
             )
         elif event_type == "tool_result":
             log_tool_result(
@@ -353,7 +357,12 @@ class RunStore:
                 name=payload.get("name", ""),
                 content=str(payload.get("content", "")),
                 is_error=bool(payload.get("is_error", False)),
+                subagent=subagent,
             )
+        elif event_type == "sub_agent_started":
+            name = payload.get("name") if isinstance(payload, dict) else None
+            if name:
+                log_subagent_started(request_id, name)
         return seq
 
     async def list_events(self, request_id: str, *, since_seq: int = 0) -> list[dict[str, Any]]:
