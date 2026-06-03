@@ -41,11 +41,11 @@ async def file_list(input: FileListInput, ctx: ToolContext) -> ToolResult:
         {"id": f.get("id"), "name": f.get("name"), "url": f.get("url"), "size": f.get("size")}
         for f in items
     ]
-    names = ", ".join(str(f.get("name") or f.get("id")) for f in payload) or "(none)"
-    return ToolResult.ok(
-        f"{len(payload)} file(s): {names}",
-        data={"files": payload},
-    )
+    lines = [f"{len(payload)} file(s):"]
+    for f in payload:
+        size_kb = f"{round(f['size'] / 1024, 1)} KB" if f.get("size") else "?"
+        lines.append(f"  id={f['id']}  name={f['name']}  size={size_kb}  url={f.get('url', '')}")
+    return ToolResult.ok("\n".join(lines) if payload else "0 file(s).", data={"files": payload})
 
 
 class FileDeleteInput(BaseModel):
