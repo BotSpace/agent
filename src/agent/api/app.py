@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -57,8 +57,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     s = settings or get_settings()
     configure_logging(s.log_level)
 
+    # MCP server (`/mcp`) — Streamable HTTP, stateless. session_manager.run()
+    # lifespan'ga ulanishi SHART (aks holda handle_request RuntimeError beradi).
+    mcp_asgi_app = None
+    mcp_session_manager = None
+    if s.mcp_enabled:
+        try:
+            from ..mcp.server import build_mcp_asgi_app
+
+            mcp_asgi_app, mcp_session_manager = build_mcp_asgi_app()
+        except Exception:  # noqa: BLE001
+            logger.exception("MCP server qurib bo'lmadi — /mcp o'chiq qoldi")
+            mcp_asgi_app = None
+            mcp_session_manager = None
+
     @asynccontextmanager
     async def lifespan(_: FastAPI):
+        async with AsyncExitStack() as stack:
+            if mcp_session_manager is not None:
+                from ..mcp.server import mcp_lifespan
+
+                await stack.enter_async_context(mcp_lifespan(mcp_session_manager))
+            async with _core_lifespan():
+                yield
+
+    @asynccontextmanager
+    async def _core_lifespan():
         # Bootstrap database schema for runs + vector store
         store = get_run_store()
         await store.bootstrap()
@@ -127,6 +151,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(runs_router)
     app.include_router(threads_router)
+
+    # MCP Streamable HTTP — auth o'z middleware'ida (Authorization header), shu
+    # sabab FastAPI dependency'siz to'g'ridan-to'g'ri mount qilinadi.
+    if mcp_asgi_app is not None:
+        app.mount("/mcp", mcp_asgi_app)
 
     @app.get("/usage")
     async def usage(

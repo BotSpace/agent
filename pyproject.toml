@@ -40,6 +40,7 @@ dependencies = [
   "httpx>=0.27.0",
   "motor>=3.6.0",                       # async MongoDB (CRM tools)
   "tenacity>=9.0.0",                    # retry
+  "mcp>=1.9.0",                         # Model Context Protocol server (/mcp)
 
   # Auth & utils
   "PyJWT[crypto]>=2.10.0",
