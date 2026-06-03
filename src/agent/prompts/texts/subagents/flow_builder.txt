@@ -132,6 +132,17 @@ dinamik callback → Approach B. Ikkalasi ham ishlaydi — majburlamaymiz.
 `keyboard_kind: "inline"` yozib `rows: []` qoldirma — tugmasiz menyu ko'rinmaydi.
 Tugma aniq bo'lmasa `keyboard_kind` umuman yozma.
 
+### Pattern 2c: Reply keyboard'ni olib tashlash (`remove_keyboard`)
+Reply keyboard ishlatib bo'lingach (masalan kontakt olingandan keyin) u foydalanuvchi
+ekranida QOLIB KETADI. Keyingi send node'da `"remove_keyboard": true` qo'y —
+Telegram ReplyKeyboardRemove yuboriladi va pastdagi klaviatura o'chadi:
+```python
+{"messageText": "Rahmat! Kontakt qabul qilindi.", "remove_keyboard": true}
+```
+Qoidalar: faqat SEND node'larda ishlaydi (barcha Send*Node + EditOrSend'ning send
+branch'i); node'ning o'zida keyboard bo'lsa keyboard ustun (remove e'tiborsiz);
+edit'da Telegram qabul qilmaydi.
+
 **Non-global trigger — parent node bo'lsa yaxshi:**
 `global: false` trigger oldingi nodening output'idan reachable bo'lganда ishlaydi.
 Agar reachable qila olmasang yoki tugma ko'p joydan bosilsa — `global: true` ishlat

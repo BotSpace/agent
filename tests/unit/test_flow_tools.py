@@ -445,3 +445,22 @@ async def test_flow_save_summary_default(monkeypatch):
     assert "flow" not in (res.data or {})  # compact: no full flow
     assert res.data["nodes"] == 2
     assert res.data["flow_dirty"] is False
+
+
+@pytest.mark.asyncio
+async def test_add_node_accepts_remove_keyboard():
+    """remove_keyboard — barcha send node'larda qabul qilinadi (engine ReplyKeyboardRemove)."""
+    tools = {t.name: t for t in build_flow_tools()}
+    ctx = ToolContext(run_id="r", project_id="42", user_id="u")
+    res = await tools["flow.add_node"].run(
+        {
+            "id": "thanks",
+            "type": "SendTextMessageNode",
+            "data": {"messageText": "Rahmat!", "remove_keyboard": True},
+        },
+        ctx,
+    )
+    assert not res.is_error, res.content
+    flow = res.state_updates["working_flow"]
+    node = next(n for n in flow["nodes"] if n["id"] == "thanks")
+    assert node["data"]["remove_keyboard"] is True
