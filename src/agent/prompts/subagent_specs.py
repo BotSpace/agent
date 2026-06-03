@@ -216,6 +216,15 @@ Boshqa barcha holatlarda — inline.
 
 **Qoida:** bitta menyu/submenu tugmasi → Approach A. Ko'p joydan bir tugma → Approach B. Shubha → Approach A.
 
+**⛔ keyboard_kind bilan rows HECH QACHON bo'sh bo'lmasin:**
+`keyboard_kind: "inline"` yozib `rows: []` qoldirib ketma — tugmasiz menyu foydalanuvchiga hech narsa ko'rsatmaydi.
+Tugmalar aniq bo'lmasa ham KAMIDA bitta tugma qo'sh yoki `keyboard_kind` umuman yozma.
+
+**⛔ Non-global trigger — parent node shart:**
+`global: false` trigger FAQAT oldingi nodening output'idan reachable bo'lsa ishlaydi.
+Agar bir tugma bir nechta turli nodedan bosilishi mumkin bo'lsa — `global: true` ishlat.
+Misol: "⬅️ Ortga" har xil sahifalardan bosiladi → global trigger yoki har sahifadan Approach A edge.
+
 ### Pattern 2c: targetMessageNodeId
 Oldingi xabarni aniq tahrirlash kerak bo'lsa: `targetMessageNodeId="<menu-node-id>"` — engine o'sha node'ning oxirgi xabarini tahrirlaydi.
 
@@ -250,12 +259,15 @@ saqlay olmaysan.
 
 ### Pattern 4: "⬅️ Ortga" tugmasi
 Har submenuga "⬅️ Ortga" inline tugma qo'sh. Bosilganda menyuga qaytish —
-`EditOrSendMessageNode` bilan, joriy xabar o'rnida menyu paydo bo'ladi
-(yangi xabar emas). Approach A: tugma'da `value: "back-menu"` belgila, keyin
-`flow.connect(source=submenu, target=menu-edit,
-              source_handle="target-handler-submenu-⬅️ Ortga")`
-bu yerda `menu-edit` — `EditOrSendMessageNode` bo'lib, asosiy menyu
-matnini va inline klaviaturani qaytaradi.
+`EditOrSendMessageNode` bilan, joriy xabar o'rnida menyu paydo bo'ladi.
+Approach A: tugma'da `value: "back-menu"` belgila, keyin
+`flow.connect(source=submenu, target=menu-edit, source_handle="target-handler-submenu-⬅️ Ortga")`
+
+**"Ortga" tugmasi QAYSI yondashuvda:**
+- Faqat bitta sahifada "⬅️ Ortga" → Approach A (to'g'ridan-to'g'ri edge)
+- Ko'p sahifada "⬅️ Ortga" bir manzilga qaytarsa → `global:true` CallbackQueryTriggerNode
+- "⬅️ Ortga" tugmasi CustomCode ichida dinamik yaratilsa → `global:true` trigger SHART
+  (chunki CustomCode output'dan statik edge tortib bo'lmaydi)
 
 ### Pattern 5: Branching
 IfCondition, LoadCollectionItem, CheckMembership, ForLoop uchun `flow.connect_branch`
@@ -313,6 +325,13 @@ node `data.outputs` ichida nomlarni e'lon qiling:
 
 Edge: `flow.connect(source=<id>, source_handle="output-ok", target=<next>)`
 Kod: `if (!valid) { exit('invalid'); return; } exit('ok');`
+
+**⛔ CustomCodeNode edge handle xatosi — ENG KO'P UCHRAYDIGAN BUG:**
+`outputs` e'lon qilingan CustomCodeNode'dan edge tortganda `source_handle` SHART:
+- `outputs:[{name:"default"}]` → `source_handle="output-default"`
+- `outputs:[{name:"ok"},{name:"error"}]` → `source_handle="output-ok"` yoki `"output-error"`
+`source_handle="source-handler"` YOZMA — u outputs bo'lmagan oddiy nodelar uchun.
+Outputs e'lon qilingan bo'lsa `source-handler` handle mavjud emas, edge ishlaMaydi.
 
 **Outputs bo'sh bo'lsa** — bitta default source handle ishlatiladi,
 `exit()` shart emas, oxirgi ifoda tugagach keyingi node'ga o'tadi.
