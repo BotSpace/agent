@@ -410,13 +410,40 @@ def build_mcp_server(registry: ToolRegistry | None = None) -> Server:
 # ── Starlette ASGI app (auth middleware + StreamableHTTP mount) ───────────────
 
 
+def protected_resource_metadata() -> dict:
+    """RFC 9728 Protected Resource Metadata — MCP klient OAuth discovery uchun.
+
+    Klient 401'dagi `WWW-Authenticate: ... resource_metadata=...` URL'idan shu
+    hujjatni olib, `authorization_servers`dagi backend bilan OAuth flow boshlaydi.
+    """
+    from ..config import get_settings
+
+    s = get_settings()
+    base = s.public_base_url.rstrip("/")
+    return {
+        "resource": f"{base}/mcp",
+        "authorization_servers": [s.oauth_issuer.rstrip("/")],
+        "bearer_methods_supported": ["header"],
+        "scopes_supported": ["mcp"],
+    }
+
+
+def _www_authenticate_value() -> str:
+    """401 uchun RFC 9728 §5.1 bo'yicha `WWW-Authenticate` qiymati."""
+    from ..config import get_settings
+
+    base = get_settings().public_base_url.rstrip("/")
+    return f'Bearer resource_metadata="{base}/.well-known/oauth-protected-resource/mcp"'
+
+
 class _MCPApp:
     """`/mcp`ga mount qilinadigan ASGI app — auth + StreamableHTTP handler.
 
     Streamable HTTP'da har request `session_manager.handle_request` orqali
     yo'naltiriladi. Biz oldin `Authorization` header'ini tekshirib, AuthedUser'ni
     contextvar'ga o'rnatamiz; auth yiqilsa 401 qaytaramiz (MCP so'rovi backend'ga
-    umuman bormaydi).
+    umuman bormaydi). 401'dagi `WWW-Authenticate` MCP klientda OAuth discovery'ni
+    boshlaydi (Authenticate tugmasi).
     """
 
     def __init__(self, session_manager: StreamableHTTPSessionManager) -> None:
@@ -434,7 +461,7 @@ class _MCPApp:
             response = JSONResponse(
                 {"error": "unauthorized", "detail": str(exc)},
                 status_code=401,
-                headers={"WWW-Authenticate": "Bearer"},
+                headers={"WWW-Authenticate": _www_authenticate_value()},
             )
             await response(scope, receive, send)
             return
@@ -509,12 +536,16 @@ def create_standalone_app(registry: ToolRegistry | None = None) -> Starlette:
     async def health(_: Request) -> Response:
         return JSONResponse({"status": "ok", "service": "agent-mcp"})
 
+    async def resource_metadata(_: Request) -> Response:
+        return JSONResponse(protected_resource_metadata())
+
     from starlette.routing import Route
 
     app = Starlette(
         debug=False,
         routes=[
             Route("/health", health),
+            Route("/.well-known/oauth-protected-resource/mcp", resource_metadata),
             Mount("/mcp", app=asgi_app),
         ],
         lifespan=lifespan,
@@ -533,4 +564,5 @@ __all__ = [
     "is_excluded",
     "mcp_lifespan",
     "mcp_tool_name",
+    "protected_resource_metadata",
 ]

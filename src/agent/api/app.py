@@ -158,10 +158,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # qiladi — aks holda Mount 307 redirect qaytaradi va TLS gateway ortida
     # Location `http://` bo'lib MCP klientlar (Claude Code) uzilib qoladi.
     if mcp_asgi_app is not None:
-        from ..mcp.server import MCPPathNormalizer
+        from ..mcp.server import MCPPathNormalizer, protected_resource_metadata
 
         app.mount("/mcp", mcp_asgi_app)
         app.add_middleware(MCPPathNormalizer)
+
+        # RFC 9728 — MCP klientlar OAuth discovery shu metadata'dan boshlaydi
+        # (401'dagi WWW-Authenticate shu URL'ga ko'rsatadi).
+        @app.get("/.well-known/oauth-protected-resource/mcp")
+        async def oauth_protected_resource() -> dict:
+            return protected_resource_metadata()
 
     @app.get("/usage")
     async def usage(
