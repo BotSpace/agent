@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ...runtime.store import RunStore
 from ...runtime.worker import start_run_task, submit_resolution
@@ -41,7 +41,17 @@ class RunStatusResponse(BaseModel):
 
 
 class ClarifyRequest(BaseModel):
-    answer: str = Field(min_length=1)
+    # multiselect uchun list[str], text/select uchun str
+    answer: str | list[str]
+
+    @field_validator("answer")
+    @classmethod
+    def _not_empty(cls, v: str | list[str]) -> str | list[str]:
+        if isinstance(v, str) and not v.strip():
+            raise ValueError("answer must not be empty")
+        if isinstance(v, list) and not v:
+            raise ValueError("answer list must not be empty")
+        return v
 
 
 class ApproveRequest(BaseModel):
