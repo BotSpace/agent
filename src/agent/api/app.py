@@ -154,8 +154,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # MCP Streamable HTTP — auth o'z middleware'ida (Authorization header), shu
     # sabab FastAPI dependency'siz to'g'ridan-to'g'ri mount qilinadi.
+    # MCPPathNormalizer `/mcp`ni (slashsiz) routing'dan oldin `/mcp/`ga rewrite
+    # qiladi — aks holda Mount 307 redirect qaytaradi va TLS gateway ortida
+    # Location `http://` bo'lib MCP klientlar (Claude Code) uzilib qoladi.
     if mcp_asgi_app is not None:
+        from ..mcp.server import MCPPathNormalizer
+
         app.mount("/mcp", mcp_asgi_app)
+        app.add_middleware(MCPPathNormalizer)
 
     @app.get("/usage")
     async def usage(

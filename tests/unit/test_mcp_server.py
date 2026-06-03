@@ -155,3 +155,29 @@ async def test_call_without_auth_errors():
     result = await _call(srv, "session_status", {})
     assert result.isError is True
     assert "Autentifikatsiya" in result.content[0].text
+
+
+# ── path normalizer (trailing-slash redirect bo'lmasligi) ────────────────────
+
+
+def test_mcp_path_without_slash_no_redirect():
+    """`/mcp` (slashsiz) 307 redirect EMAS, to'g'ridan-to'g'ri MCP'ga tushadi.
+
+    TLS gateway ortida Mount'ning 307 Location'i `http://` bo'lib qolardi va
+    MCP klientlar (Claude Code) downgrade redirect'ni rad etardi.
+    """
+    from starlette.testclient import TestClient
+
+    from agent.mcp.server import create_standalone_app
+
+    app = create_standalone_app()
+    with TestClient(app, raise_server_exceptions=False) as client:
+        for path in ("/mcp", "/mcp/"):
+            resp = client.post(
+                path,
+                json={"jsonrpc": "2.0", "method": "initialize", "id": 1, "params": {}},
+                headers={"Accept": "application/json, text/event-stream"},
+                follow_redirects=False,
+            )
+            # Auth'siz — 401 kutiladi; muhimi: 3xx redirect EMAS.
+            assert resp.status_code == 401, (path, resp.status_code)
