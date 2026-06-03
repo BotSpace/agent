@@ -42,9 +42,11 @@ async def env_list(input: EnvListInput, ctx: ToolContext) -> ToolResult:
     except BackendError as e:
         return ToolResult.error(format_backend_error(None, e))
     safe = [{"id": i.get("id"), "key": i.get("key")} for i in items]
-    keys = ", ".join(str(s["key"]) for s in safe if s.get("key")) or "(none)"
+    lines = [f"{len(safe)} env var(s):"]
+    for s in safe:
+        lines.append(f"  id={s['id']}  key={s['key']}")
     return ToolResult.ok(
-        f"{len(items)} env var(s). Keys: {keys}",
+        "\n".join(lines) if safe else "0 env var(s).",
         data={"env": safe},
     )
 

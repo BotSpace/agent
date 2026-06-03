@@ -147,7 +147,14 @@ async def broadcast_status(input: BroadcastStatusInput, ctx: ToolContext) -> Too
         }
         for m in items
     ]
-    return ToolResult.ok(f"{len(payload)} broadcast(s).", data={"broadcasts": payload})
+    lines = [f"{len(payload)} broadcast(s):"]
+    for b in payload:
+        done = b.get("done", 0)
+        total = b.get("total", 0)
+        fail = b.get("fail", 0)
+        pct = f"{round(done / total * 100)}%" if total else "?"
+        lines.append(f"  id={b['id']}  status={b.get('status')}  sent={done}/{total}({pct})  fail={fail}")
+    return ToolResult.ok("\n".join(lines) if payload else "0 broadcast(s).", data={"broadcasts": payload})
 
 
 def build_broadcast_tools() -> list[Tool]:

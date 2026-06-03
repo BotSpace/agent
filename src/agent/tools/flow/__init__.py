@@ -473,7 +473,22 @@ async def flow_list_node_types(input: FlowListNodeTypesInput, ctx: ToolContext) 
                 "validator": schema["validator"],
             }
         )
-    return ToolResult.ok(f"{len(payload)} node type(s)", data={"types": payload})
+    # Group by category so the LLM gets an overview without drowning in schema detail.
+    # Full per-type schema (fields + validators) is still in data["types"].
+    from collections import defaultdict
+    by_cat: dict[str, list[str]] = defaultdict(list)
+    for p in payload:
+        marker = "[trigger]" if p.get("is_trigger") else ""
+        by_cat[p["category"]].append(f"{p['type']}{marker}")
+    lines = [f"{len(payload)} node type(s) in {len(by_cat)} categories:"]
+    for cat, types in sorted(by_cat.items()):
+        lines.append(f"  {cat}: {', '.join(types)}")
+    if input.type and payload:
+        # Single-type lookup: show full schema in content
+        import json as _json
+        lines.append("")
+        lines.append(_json.dumps(payload[0], ensure_ascii=False, indent=2))
+    return ToolResult.ok("\n".join(lines), data={"types": payload})
 
 
 # ── flow.diff ────────────────────────────────────────────────────────────────
