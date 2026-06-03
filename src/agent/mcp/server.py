@@ -57,6 +57,42 @@ _current_user: contextvars.ContextVar[AuthedUser | None] = contextvars.ContextVa
 # MCP-only session tool'lari — registry'da yo'q, server o'zi boshqaradi.
 _SESSION_USE_PROJECT = "session_use_project"
 _SESSION_STATUS = "session_status"
+_DOCS_GUIDE = "docs_guide"
+
+# docs_guide topic → (sarlavha, kontent loader). Kontent agentv3'ning ICHKI
+# agentlariga beriladigan system prompt'lar — MCP klient modeli ham xuddi shu
+# bilimga ega bo'lishi uchun tool orqali ochib beriladi.
+_GUIDE_TOPICS = {
+    "flow": "Flow-builder qo'llanmasi (handles, trigger, AI nodes, keyboard, state)",
+    "flow_examples": "To'liq bot misollari (flow JSON'lari bilan)",
+    "node_catalog": "Barcha node turlari katalogi (kategoriya, handle, maydonlar)",
+    "cms": "CMS kolleksiyalari bilan ishlash qo'llanmasi",
+    "crm": "CRM (chat tarixi, broadcast) qo'llanmasi",
+    "deploy": "Deploy/release qo'llanmasi",
+}
+
+
+def _load_guide(topic: str) -> str:
+    from ..flow.catalog import render_compact_catalog
+    from ..prompts.loader import load_prompt
+
+    if topic == "node_catalog":
+        return render_compact_catalog()
+    files = {
+        "flow": "subagents/flow_builder.txt",
+        "flow_examples": "subagents/flow_builder_examples.txt",
+        "cms": "subagents/cms_manager.txt",
+        "crm": "subagents/crm_manager.txt",
+        "deploy": "subagents/deploy_manager.txt",
+    }
+    return load_prompt(files[topic])
+
+
+def _load_instructions() -> str:
+    """MCP initialize natijasidagi `instructions` — klient modeliga kontekst."""
+    from ..prompts.loader import load_prompt
+
+    return load_prompt("mcp/instructions.txt")
 
 
 def mcp_tool_name(registry_name: str) -> str:
@@ -134,6 +170,30 @@ def _session_tools() -> list[mtypes.Tool]:
                 "saqlanmagan o'zgarishlar (flow_dirty) bormi."
             ),
             inputSchema={"type": "object", "properties": {}},
+            annotations=mtypes.ToolAnnotations(readOnlyHint=True),
+        ),
+        mtypes.Tool(
+            name=_DOCS_GUIDE,
+            description=(
+                "Botmother bot qurish qo'llanmalarini qaytaradi — agentv3'ning "
+                "ichki agentlari ishlatadigan to'liq yo'riqnomalar. Notrivial bot "
+                "qurishdan OLDIN o'qing: topic='flow' (qoidalar/handles/AI nodes), "
+                "topic='node_catalog' (barcha node turlari), topic='flow_examples' "
+                "(to'liq misollar). Boshqa topic'lar: cms, crm, deploy."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "topic": {
+                        "type": "string",
+                        "enum": sorted(_GUIDE_TOPICS),
+                        "description": "; ".join(
+                            f"{k} — {v}" for k, v in sorted(_GUIDE_TOPICS.items())
+                        ),
+                    }
+                },
+                "required": ["topic"],
+            },
             annotations=mtypes.ToolAnnotations(readOnlyHint=True),
         ),
     ]
@@ -262,7 +322,7 @@ def build_mcp_server(registry: ToolRegistry | None = None) -> Server:
     registry = registry or build_default_registry()
     name_map = exported_tools(registry)  # mcp_name → reg_name
 
-    server: Server = Server("botmother-agent")
+    server: Server = Server("botmother-agent", instructions=_load_instructions())
 
     @server.list_tools()
     async def list_tools() -> list[mtypes.Tool]:
@@ -280,6 +340,15 @@ def build_mcp_server(registry: ToolRegistry | None = None) -> Server:
             return await _handle_session_use_project(user, arguments)
         if name == _SESSION_STATUS:
             return await _handle_session_status(user)
+        if name == _DOCS_GUIDE:
+            topic = str(arguments.get("topic") or "").strip()
+            if topic not in _GUIDE_TOPICS:
+                return _result_to_mcp(
+                    f"Noma'lum topic `{topic}`. Mavjud: {sorted(_GUIDE_TOPICS)}",
+                    is_error=True,
+                    data=None,
+                )
+            return _result_to_mcp(_load_guide(topic), is_error=False, data=None)
         reg_name = name_map.get(name)
         if reg_name is None:
             return _result_to_mcp(
@@ -288,6 +357,52 @@ def build_mcp_server(registry: ToolRegistry | None = None) -> Server:
                 data=None,
             )
         return await _execute_registry_tool(reg_name, arguments, user, registry)
+
+    # ── Prompts — klient foydalanuvchisi /mcp__botspace__build_bot bilan to'liq
+    # qo'llanmani kontekstga tortadi (tool chaqirig'ini kutmasdan).
+    @server.list_prompts()
+    async def list_prompts() -> list[mtypes.Prompt]:
+        return [
+            mtypes.Prompt(
+                name="build_bot",
+                description=(
+                    "Botmother'da Telegram bot qurish uchun to'liq qo'llanma "
+                    "(flow qoidalari + node katalogi + misollar) bilan vazifani "
+                    "boshlaydi."
+                ),
+                arguments=[
+                    mtypes.PromptArgument(
+                        name="task",
+                        description="Qanday bot kerak — qisqacha tavsif",
+                        required=False,
+                    )
+                ],
+            )
+        ]
+
+    @server.get_prompt()
+    async def get_prompt(name: str, arguments: dict[str, str] | None) -> mtypes.GetPromptResult:
+        if name != "build_bot":
+            raise ValueError(f"Noma'lum prompt: {name}")
+        task = (arguments or {}).get("task", "").strip()
+        guide = "\n\n---\n\n".join(
+            [_load_guide("flow"), _load_guide("node_catalog"), _load_guide("flow_examples")]
+        )
+        text = (
+            "Quyida Botmother bot-builder platformasining to'liq qo'llanmasi. "
+            "Shu qoidalarga amal qilib bot qur.\n\n" + guide
+        )
+        if task:
+            text += f"\n\n---\n\n## Vazifa\n{task}"
+        return mtypes.GetPromptResult(
+            description="Botmother bot qurish qo'llanmasi",
+            messages=[
+                mtypes.PromptMessage(
+                    role="user",
+                    content=mtypes.TextContent(type="text", text=text),
+                )
+            ],
+        )
 
     return server
 

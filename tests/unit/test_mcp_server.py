@@ -181,3 +181,68 @@ def test_mcp_path_without_slash_no_redirect():
             )
             # Auth'siz — 401 kutiladi; muhimi: 3xx redirect EMAS.
             assert resp.status_code == 401, (path, resp.status_code)
+
+
+# ── docs_guide + instructions + prompts ──────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_docs_guide_returns_flow_guide():
+    srv = build_mcp_server()
+    handler = srv.request_handlers[mtypes.CallToolRequest]
+    from agent.mcp.server import _current_user
+
+    token = _current_user.set(AuthedUser(user_id="u1", claims={"user_id": "u1"}))
+    try:
+        req = mtypes.CallToolRequest(
+            method="tools/call",
+            params=mtypes.CallToolRequestParams(
+                name="docs_guide", arguments={"topic": "flow"}
+            ),
+        )
+        result = (await handler(req)).root
+        assert not result.isError
+        assert "flow" in result.content[0].text.lower()
+        # node_catalog ham ishlaydi
+        req2 = mtypes.CallToolRequest(
+            method="tools/call",
+            params=mtypes.CallToolRequestParams(
+                name="docs_guide", arguments={"topic": "node_catalog"}
+            ),
+        )
+        result2 = (await handler(req2)).root
+        assert not result2.isError
+        assert len(result2.content[0].text) > 1000
+        # noma'lum topic — xato
+        req3 = mtypes.CallToolRequest(
+            method="tools/call",
+            params=mtypes.CallToolRequestParams(
+                name="docs_guide", arguments={"topic": "yo'q"}
+            ),
+        )
+        result3 = (await handler(req3)).root
+        assert result3.isError
+    finally:
+        _current_user.reset(token)
+
+
+def test_server_has_instructions():
+    srv = build_mcp_server()
+    opts = srv.create_initialization_options()
+    assert opts.instructions and "session_use_project" in opts.instructions
+
+
+@pytest.mark.asyncio
+async def test_build_bot_prompt():
+    srv = build_mcp_server()
+    handler = srv.request_handlers[mtypes.GetPromptRequest]
+    req = mtypes.GetPromptRequest(
+        method="prompts/get",
+        params=mtypes.GetPromptRequestParams(
+            name="build_bot", arguments={"task": "pizza buyurtma bot"}
+        ),
+    )
+    result = (await handler(req)).root
+    text = result.messages[0].content.text
+    assert "pizza buyurtma bot" in text
+    assert len(text) > 10_000  # guide + katalog + misollar
