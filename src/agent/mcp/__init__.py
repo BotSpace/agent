@@ -1,4 +1,4 @@
-"""agentv3 MCP (Model Context Protocol) server moduli.
+"""agent MCP (Model Context Protocol) server moduli.
 
 Botmother agent tool registry'sini MCP orqali tashqi klientlarga (Claude Code,
 boshqa MCP host'lar) ochadi. Transport: Streamable HTTP, stateless + JSON

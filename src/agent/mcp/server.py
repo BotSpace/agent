@@ -1,4 +1,4 @@
-"""MCP server — agentv3 tool registry'sini Model Context Protocol orqali ochadi.
+"""MCP server — agent tool registry'sini Model Context Protocol orqali ochadi.
 
 Gibrid transport: rasmiy `mcp` SDK low-level `Server` + `StreamableHTTPSessionManager`
 (`stateless_http=True`, `json_response=True` — LB-friendly). Ikki ishga tushirish:
@@ -59,7 +59,7 @@ _SESSION_USE_PROJECT = "session_use_project"
 _SESSION_STATUS = "session_status"
 _DOCS_GUIDE = "docs_guide"
 
-# docs_guide topic → (sarlavha, kontent loader). Kontent agentv3'ning ICHKI
+# docs_guide topic → (sarlavha, kontent loader). Kontent agent'ning ICHKI
 # agentlariga beriladigan system prompt'lar — MCP klient modeli ham xuddi shu
 # bilimga ega bo'lishi uchun tool orqali ochib beriladi.
 _GUIDE_TOPICS = {
@@ -175,7 +175,7 @@ def _session_tools() -> list[mtypes.Tool]:
         mtypes.Tool(
             name=_DOCS_GUIDE,
             description=(
-                "Botmother bot qurish qo'llanmalarini qaytaradi — agentv3'ning "
+                "Botmother bot qurish qo'llanmalarini qaytaradi — agent'ning "
                 "ichki agentlari ishlatadigan to'liq yo'riqnomalar. Notrivial bot "
                 "qurishdan OLDIN o'qing: topic='flow' (qoidalar/handles/AI nodes), "
                 "topic='node_catalog' (barcha node turlari), topic='flow_examples' "

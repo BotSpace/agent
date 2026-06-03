@@ -1,6 +1,6 @@
 """Per-(user, project) MCP workspace — flow tahriri state-based bo'lgani uchun.
 
-agentv3 flow tool'lari `ctx.state` ichidagi `working_flow`/`baseline_flow`/
+agent flow tool'lari `ctx.state` ichidagi `working_flow`/`baseline_flow`/
 `flow_dirty` bilan ishlaydi (HTTP run'larda bu graph state'da yashaydi). MCP
 stateless transport (`stateless_http=True`) bo'lgani uchun har so'rov mustaqil —
 shu sabab biz session state'ni server-side, (user_id, project_id) bo'yicha
