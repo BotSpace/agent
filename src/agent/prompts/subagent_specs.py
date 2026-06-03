@@ -197,8 +197,14 @@ DOIM `EditOrSendMessageNode` ishlat. Istisno: faqat reply keyboard (kontakt/joyl
 Boshqa barcha holatlarda — inline.
 
 ### Pattern 2a: Reply keyboard tugmasi (faqat kontakt/joylashuv)
-`SendTextMessageNode.keyboard.reply` belgila. Har tugma uchun:
-`flow.connect(source="menu", target="X", source_handle="target-handler-menu-📬 Btn")`.
+`SendTextMessageNode` bilan, `keyboard_kind:"reply"`.
+**⛔ `rows` formati — 2D array, har element dict, `columns` kalit YO'Q:**
+```python
+# TO'G'RI:
+"rows": [[{"text": "📱 Telefon yuborish", "type": "request_contact"}]]
+# XATO (hech qachon bunday yozma):
+"rows": [{"columns": [{"text": "...", "type": "request_contact"}]}]
+```
 `ReplyButtonTriggerNode` KERAK EMAS.
 
 ### Pattern 2b: Inline keyboard tugmalari — DEFAULT = to'g'ridan-to'g'ri tugma edge
@@ -219,10 +225,16 @@ Boshqa barcha holatlarda — inline.
 `keyboard_kind: "inline"` yozib `rows: []` qoldirib ketma — tugmasiz menyu foydalanuvchiga hech narsa ko'rsatmaydi.
 Tugmalar aniq bo'lmasa ham KAMIDA bitta tugma qo'sh yoki `keyboard_kind` umuman yozma.
 
-**⛔ Non-global trigger — parent node shart:**
+**⛔ Non-global trigger — parent node shart + DARHOL edge tort:**
 `global: false` trigger FAQAT oldingi nodening output'idan reachable bo'lsa ishlaydi.
-Agar bir tugma bir nechta turli nodedan bosilishi mumkin bo'lsa — `global: true` ishlat.
-Misol: "⬅️ Ortga" har xil sahifalardan bosiladi → global trigger yoki har sahifadan Approach A edge.
+CustomCode dinamik inline tugmalar yuborsa va callback handler kerak bo'lsa:
+```
+# CustomCode → non-global trigger → next action (SHART)
+flow.connect(source="list-courses", target="course-cb", source_handle="output-default")
+flow.connect(source="course-cb", target="course-detail")
+```
+Bu edge'ni UNUTMA — faqat trigger yaratib qo'yish yetmaydi, unga edge ham tortilishi shart.
+Agar tugma bir nechta turli nodedan bosilishi mumkin bo'lsa — `global: true` ishlat.
 
 ### Pattern 2c: targetMessageNodeId
 Oldingi xabarni aniq tahrirlash kerak bo'lsa: `targetMessageNodeId="<menu-node-id>"` — engine o'sha node'ning oxirgi xabarini tahrirlaydi.
@@ -237,6 +249,7 @@ saqlanadi, qo'shimcha node KERAK EMAS:
 - `MessageTriggerNode` `data.state = {key, type}` — masalan
   `{key: "user_phone", type: "text"}` yoki kontakt uchun
   `{key: "user_phone", type: "contact_phone_number"}`.
+  **⛔ `phone_number` EMAS — doim `contact_phone_number`** (validator xato beradi).
 - Inline tugma bosilganda saqlash kerak bo'lsa — trigger'ning `data.state`
   field'idan foydalan (alohida StateNode emas).
 - `CommandTriggerNode` `withArgs:true` + `data.state` — buyruq argumentini
