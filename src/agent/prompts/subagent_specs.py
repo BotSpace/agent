@@ -238,16 +238,11 @@ bo'lganda (kontakt/joylashuv so'rash, Pattern 2a). Reply keyboard yangi xabar
 bilan keladi va edit orqali o'zgarmaydi, shuning uchun u yerda SendText.
 
 ### Pattern 2: Klaviatura turini tanlash — INLINE birinchi navbatda
-Botda menyu yoki tugmalar kerak bo'lsa, **standart variant — inline
-keyboard** (`keyboard.inline`). Inline tugmalar Telegram chatini
-xabar oqimi bilan bosib ketmaydi, foydalanuvchi bossa joriy xabar
-o'rnida muloqot qiladi, mobil ekranda yaxshiroq ko'rinadi va
-animatsiya samarali.
-
-**Reply keyboard (`keyboard.reply`) faqat shu hollarda:**
+**Standart — inline keyboard** (`keyboard.inline`).
+**Reply keyboard (`keyboard.reply`) faqat:**
 - Foydalanuvchidan **kontakt** so'rash (`request_contact: true`)
 - Foydalanuvchidan **joylashuv** so'rash (`request_location: true`)
-- Doimiy "pastdagi klaviatura" zarur bo'lsa (kamdan-kam)
+- Doimiy "pastdagi klaviatura" zarur bo'lsa
 
 Boshqa barcha holatlarda — inline.
 
@@ -258,48 +253,17 @@ Boshqa barcha holatlarda — inline.
 
 ### Pattern 2b: Inline keyboard tugmalari — DEFAULT = to'g'ridan-to'g'ri tugma edge
 
-**QAT'IY QOIDA:** Inline/reply tugmadan handler yaratganda **DEFAULT — to'g'ridan-
-to'g'ri tugma edge (Approach A)**. Tugma uchun **ALOHIDA
-`CallbackQueryTriggerNode` / `InlineButtonTriggerNode` / `ReplyButtonTriggerNode`
-node QO'SHMA** — bu OXIRGI CHORA (Approach B), faqat boshqa iloji bo'lmaganda.
-Har bir tugmaga alohida trigger node qo'shish — eng keng tarqalgan xato:
-ortiqcha node, ortiqcha edge, iflos xarita, ko'p token.
+**Approach A — DEFAULT (deyarli har doim):**
+1. Tugma'da `value` belgila: `{"text": "📚 Kurslar", "type": "callback", "value": "courses"}`
+2. Tugma handle'idan keyingi node'ga edge: `flow.connect(source="menu", target="courses-list", source_handle="target-handler-menu-📚 Kurslar")`
+3. Hech qanday trigger node yaratma.
 
-Inline tugmalar (`keyboard.inline`) uchun engine **ikki** xil routing'ni
-qo'llab-quvvatlaydi. **Bittasini tanla, ikkalasini ham bir vaqtda
-ishlatma — aks holda foydasiz takrorlanuvchi edge'lar paydo bo'ladi.**
+**Approach B — global trigger (FAQAT ko'p joydan chaqiriladigan tugma uchun):**
+1. Tugma'da `id`: `{"text": "🏠 Bosh menyu", "type": "callback_data", "id": "btn-home"}`
+2. Global trigger: `CallbackQueryTriggerNode` `data:{global:true, filter:"equals", context:{value:"btn-home"}}`
+3. Tugma handle'idan trigger node'ga edge TORTMA.
 
-**Approach A — to'g'ridan-to'g'ri tugma edge (DEFAULT, deyarli har doim shu):**
-1. Tugma'da `value` field'ini belgila — bu callback_data bo'ladi:
-   `{"text": "📚 Kurslar", "type": "callback", "value": "courses"}`
-2. Tugma source handle'idan keyingi action node'ga `flow.connect` /
-   `flow.connect_button` bilan edge tort —
-   `target-handler-<node>-<text>` formatida:
-   `flow.connect(source="menu", target="courses-list",
-                 source_handle="target-handler-menu-📚 Kurslar")`
-3. **HECH QANDAY trigger node YARATMA.** Engine `loader.go`'da
-   `FindButtonEdgeTarget` orqali tugma `value`/text bo'yicha edge'ni topadi va
-   bevosita o'tadi. Reply tugma uchun ham AYNAN shu — `ReplyButtonTriggerNode`
-   KERAK EMAS (Pattern 2a'ga qara).
-
-**Approach B — global trigger node (OXIRGI CHORA, kamdan-kam):**
-Faqat **bir nechta uzoq/turli joydagi node'lardan AYNI BITTA** tugma
-chaqirilishi kerak bo'lsa (klassik misol: global "🏠 Bosh menyu" yoki
-"⬅️ Ortga" hamma submenu'larda) — shundagina global trigger oqlanadi,
-chunki har joydan alohida edge tortish takror bo'ladi.
-1. Tugma'da `id` yoki `callback_data` belgila:
-   `{"text": "🏠 Bosh menyu", "type": "callback_data", "id": "btn-home"}`
-2. Global `CallbackQueryTriggerNode` yarat:
-   `data: {global: true, filter: "equals", context: {value: "btn-home"}}`
-3. Trigger → action node:
-   `flow.connect(source="cb-home", target="main-menu")`
-4. **Tugma source handle'idan trigger node'ga edge TORTMA** — u funksional
-   ravishda hech narsa qilmaydi (engine globally trigger'larni qidiradi),
-   faqat ekranni iflos qiladi.
-
-**Xulosa:** bitta menyu, bitta submenu, bitta-marta-chaqiriladigan tugma →
-DOIM Approach A (trigger node yo'q). Faqat haqiqatan global, ko'p joydan
-chaqiriladigan tugma → Approach B. Shubha bo'lsa — Approach A.
+**Qoida:** bitta menyu/submenu tugmasi → Approach A. Ko'p joydan bir tugma → Approach B. Shubha → Approach A.
 
 ### Pattern 2c: EditOrSendMessageNode — bot xabarlarining standart node'i
 `EditOrSendMessageNode` ikki rejimda ishlaydi:
@@ -369,24 +333,7 @@ ishlat. Handle'lar: `true`/`false`, `found`/`not_found`, `is-member`/`not-member
 
 ### Pattern 7: CustomCodeNode — modular, fokuslangan kod bloklari
 
-CustomCodeNode engine-golang Goja VM ichida JavaScript bajaradi va flow
-context'ga to'liq kirishga ega. To'g'ri ishlatilganda — uzun visual zanjirlarni
-qisqartiradi, debug'ni osonlashtiradi, oqimni o'qib bo'ladigan qiladi.
-Noto'g'ri ishlatilganda — monolit "hamma narsa" blokiga aylanadi yoki
-flow'ni mayda-mayda 3-qatorli kodlarga parchalab tashlaydi. Ikkala
-ekstremumdan ham qoching.
-
-**Asosiy printsip — bitta CustomCode = bitta logik qadam.**
-
-Logik qadamga misol: "kiritilgan telefonni tekshirish va saqlash", "DB'dan
-foydalanuvchi profilini olish va status aniqlash", "to'lov chek summasini
-hisoblash va format qaytarish". Har bir bunday qadam o'rtacha **5–40 qator
-JS** bo'ladi va aniq `exit('ok')` / `exit('error')` orqali keyingi qadamga
-o'tadi. Ikki butunlay boshqa logik qadamni (masalan validatsiya va kassa
-hisob-kitobi) **bitta** blokga tiqib qo'ymang — ularni alohida CustomCodeNode
-qiling va edge bilan ulang. Aksincha, `db_insert` + uning natijasi bilan
-javob xabari — bu yagona "user yaratish" qadami, alohida nodelarga
-ajratmang.
+**Bitta CustomCode = bitta logik qadam** (5–40 qator JS). Ikki alohida qadamni bitta blokka tiqma; bitta qadamning ichki ishlarini (masalan `db_insert` + javob xabari) ajratma.
 
 **CustomCode'ni afzal ko'r:**
 - Validatsiya, saqlash va branching bir-biriga zich bog'liq bo'lsa
@@ -417,20 +364,10 @@ ajratmang.
 - Form ketma-ketligi: `flow.ask_text` → `flow.ask_contact` →
   `flow.ask_location` — state.* avtomatik saqlanadi, kod yozish kerak emas
 
-**Anti-pattern'lar — ulardan qoching:**
-
-1. **Monolit blok** — bitta CustomCodeNode 100+ qator: trigger, validatsiya,
-   DB, branching, 5 ta xabar, admin notification, klaviatura — hammasi
-   aralash. Debug qiyin, har o'zgarish butun blokni o'qishni talab qiladi.
-   Yechim: logik qadamlarga ajratib, edge bilan ulang.
-
-2. **Maydalash** — har CustomCodeNode 2–3 qator (`set_context("x", 1)` yoki
-   bitta `db_count`). Bu vaqt ham token ham buzadi, flow xaritasi
-   o'qib bo'lmaydigan bo'ladi. Yechim: aralash logikani bir bog'liq qadam
-   ichida birlashtir.
-
-3. **CustomCode triggers sifatida** — JavaScript orqali
-   "agar /start" tekshiruvini qilish. Trigger nodelarni ishlat.
+**Anti-pattern'lar:**
+1. **Monolit** — 100+ qator bitta blokda (trigger, DB, 5 xabar, klaviatura aralash).
+2. **Maydalash** — har node 2–3 qator (`set_context` yoki bitta `db_count`).
+3. **CustomCode triggers sifatida** — JS orqali `/start` tekshiruvi. Trigger node ishlat.
 
 **Output declaration + exit() routing:**
 
@@ -486,45 +423,22 @@ ortiqcha murakkablik.
 `user_first_name`, `user_username`, `state_*` (StateNode'dan),
 `collection_*`, `message_id_<nodeID>`.
 
-**Yaxshi taqsimotga misol — foydalanuvchini ro'yxatdan o'tkazish oqimi:**
+**Misol — ro'yxatdan o'tkazish:** `/start` → `ask_contact` → CustomCode "phone-validate" (`outputs:[ok,invalid]`, ~10q) → CustomCode "user-upsert" (`outputs:[new,existing]`, ~15q) → `EditOrSendMessageNode` (har branch uchun).
 
-1. `CommandTriggerNode("/start")` — trigger (visual node)
-2. `flow.ask_contact` — telefon raqamini so'rash (visual, form)
-3. **CustomCodeNode "phone-validate"** — `outputs: [{name:"ok"}, {name:"invalid"}]`
-   ~10 qator: formatni tekshirish, normalizatsiya qilish, state'ga yozish
-4. `EditOrSendMessageNode` — "Noto'g'ri format, qaytadan kiriting" (visual,
-   `output-invalid` edge orqali ulanadi, qaytadan 2-qadamga loop)
-5. **CustomCodeNode "user-upsert"** — `outputs: [{name:"new"}, {name:"existing"}]`
-   ~15 qator: `db_find_one` → mavjud bo'lsa `exit('existing')`,
-   yo'q bo'lsa `db_insert` + admin chatga xabar + `exit('new')`
-6. `EditOrSendMessageNode` "Xush kelibsiz!" (visual, `output-new` edge)
-7. `EditOrSendMessageNode` "Qaytib keldingiz" (visual, `output-existing` edge)
+**Dinamik klaviatura + callback handler — CustomCode zanjiri:**
 
-3 ta CustomCodeNode + 4 ta visual node. 15+ visual zanjirdan ham, bitta
-100-qatorli monolitdan ham yaxshiroq.
+CustomCodeNode ("list-courses") → dinamik inline tugmalar yuboradi → FLOW EDGE bilan
+`CallbackQueryTriggerNode` ("course-cb", **`global:false`**) ga ulangan:
 
-**Dinamik klaviatura misoli — collection'dan tugmalar (statik tugma node EMAS):**
+    flow.connect(source="list-courses", target="course-cb")
 
-"📚 Kurslar" bosilganda kurslar ro'yxatini DINAMIK inline tugma sifatida
-ko'rsatish. Statik tugmalar yaramaydi — kurslar soni/nomi DB'da o'zgaradi.
-Bitta CustomCodeNode (no outputs — linear):
+`course-cb` trigger: `data:{global:false, filter:"starts_with", context:{value:"course:"}}`
 
-    const res = db_find('courses', {});
-    const courses = (res && res.data) || [];
-    if (courses.length === 0) {
-      send_message("Hozircha kurs yo'q.");
-      return;
-    }
-    const rows = courses.map(function (c) {
-      return [{ text: c.name, callback_data: "course:" + c._id }];
-    });
-    send_message("📚 Kurslar ro'yxati:", { inline_keyboard: rows });
+**MUHIM:** CustomCode'dan yaratilgan inline button handler — GLOBAL trigger EMAS.
+Flow edge bilan CustomCode'dan keyingi node sifatida ulash shart. Global trigger
+faqat haqiqatan ko'p joydan chaqiriladigan tugmalar uchun (Pattern 2b, Approach B).
 
-Tugma bosilganda (`callback_data` = `course:<id>`) — global
-`CallbackQueryTriggerNode` `filter:"starts_with", context:{value:"course:"}`
-bilan ushlab, `callback_query.data`'dan id'ni ajratib detal sahifani
-ko'rsat (bu yerda Approach B oqlanadi, chunki tugmalar dinamik va edge
-oldindan tortib bo'lmaydi).
+Trigger ichida `callback_query.data`'dan id ajratib, detal sahifani ko'rsat.
 
 **Relation'li ma'lumotni O'QISH (collection'lararo bog'lanish):**
 
@@ -629,59 +543,12 @@ flow.connect_accessory(accessory_id="ai-prov", agent_id="agent", port="acc:ai_mo
 
 ## AI node uchun LLM tanlash — foydalanuvchidan SO'RA, Ollama tavsiya qil
 
-**MAJBURIY:** AI agent node qurishdan OLDIN provider va API key'ni `ask_user`
-bilan ol. Provider node'ni **API key'siz YARATMA** (cloud uchun) — keysiz LLM
-chaqiruvi BO'SH chiqish beradi, bot bo'sh xabar yuboradi ("dead bot"). Validator
-ham buni rad etadi: cloud provider node'da `apiKey` bo'sh bo'lsa
-`flow.validate`/`flow.save` **xato** (`ai_provider_missing_api_key`) qaytaradi —
-demak keysiz flow'ni saqlay olmaysan. Avval key ol, keyin node yarat va save qil.
+**MAJBURIY tartib — AI node qurishdan oldin:**
+1. Provider tanlat: `ask_user(input_type="select", question="AI provider?", options=["Ollama (bepul, tavsiya) — ollama.com", "OpenAI", "Gemini", "Anthropic"])`
+2. Model va API key so'ra: `ask_user(input_type="text", ...)` — `model` hech qachon bo'sh `""` bo'lmasin.
+3. Keyin node yarat: `flow.add_ai_ollama_provider(...)` yoki boshqa provider.
 
-Bot AI/LLM node talab qilsa, provider/model'ni TAXMIN QILMA — `ask_user` bilan SO'RA.
-Maxfiy qiymatlar (API key) ham har doim `ask_user` orqali olinadi, hech qachon taxmin
-qilinmaydi.
-
-> **⛔ XATO (hech qachon bunday qilma):**
-> ```
-> # Foydalanuvchi "AI agent qilib ber" dedi, sen to'g'ridan-to'g'ri so'rading:
-> ask_user(input_type="text", question="OpenAI API kalitingizni kiriting")
-> # NOTO'G'RI — avval provider tanlat, Ollama'ni tavsiya qil!
-> ```
->
-> **✅ TO'G'RI — DOIM 1-qadam: provider tanlat:**
-> ```
-> ask_user(input_type="select",
->          question="AI uchun qaysi provider? (Ollama — bepul, tavsiya etiladi)",
->          options=["Ollama (bepul, tavsiya) — ollama.com", "OpenAI", "Gemini", "Anthropic", "Boshqa"])
-> ```
-
-**1-qadam — provider tanlat (Ollama birinchi, default tavsiya):**
-```
-ask_user(input_type="select",
-         question="AI uchun qaysi provider? (Ollama — bepul, tavsiya etiladi)",
-         options=["Ollama (bepul, tavsiya) — ollama.com", "OpenAI", "Gemini", "Anthropic", "Boshqa"])
-```
-
-**2-qadam — Ollama tanlansa:** model nomini SO'RA (bo'sh qoldirma — bo'sh model Ollama'ning default modelini ishlatadi):
-```
-ask_user(input_type="text", question="Qaysi Ollama modelini ishlatmoqchisiz? (masalan: gemma2, llama3.1, mistral)")
-ask_user(input_type="text", question="Ollama API kalitingizni kiriting (ollama.com dan oling)")
-flow.add_ai_ollama_provider(id="ai-prov", data={provider:"ollama", model:"<user model>", baseURL:"https://ollama.com/v1", apiKey:"<user key>"})
-```
-**MUHIM:** `model` maydoni HECH QACHON bo'sh `""` bo'lmasin — bo'sh qolsa Ollama o'zining default modelini ishlatadi va foydalanuvchi kutmagan natija chiqadi.
-
-**3-qadam — boshqa provider (OpenAI/Gemini/Anthropic/boshqa) tanlansa:** o'sha provider
-node'ini ishlat, `model` + `apiKey`ni `ask_user(input_type="text")` bilan so'ra:
-```
-ask_user(input_type="text", question="OpenAI API kalitingizni kiriting")
-flow.add_ai_openai_provider(id="ai-prov", data={model:"gpt-4o-mini", baseURL:"https://api.openai.com/v1", apiKey:"<user key>"})
-```
-
-**Qoida:** API key kabi maxfiy qiymatlar uchun har doim `ask_user(input_type="text")`,
-hech qachon placeholder/taxmin emas. **`apiKey`ga `{{env.OPENAI_KEY}}` yoki
-boshqa `{{env.*}}` / `{{...}}` placeholder QO'YMA** — bu haqiqiy kalit emas,
-foydalanuvchi o'zi kalitni berishni xohlaydi. Validator ham placeholder'li
-`apiKey`ni rad etadi (`ai_provider_missing_api_key`) — demak avval `ask_user`
-bilan haqiqiy kalitni ol, keyin `data.apiKey`ga AYNAN o'sha qiymatni yoz.
+**API key qoidasi:** `ask_user` bilan haqiqiy qiymat ol. `{{env.KEY}}` placeholder yozma — validator rad etadi (`ai_provider_missing_api_key`).
 
 ## flow.clear — QAT'IY himoya (deyarli hech qachon)
 `flow.clear` butun working_flow'ni (barcha node + edge) O'CHIRADI. Bu
