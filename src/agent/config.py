@@ -26,6 +26,10 @@ class Settings(BaseSettings):
         alias="AGENT_CORS_ORIGINS",
     )
 
+    # ── mcp (Model Context Protocol) ────────────────────────────────────
+    mcp_enabled: bool = Field(default=True, alias="AGENT_MCP_ENABLED")
+    mcp_port: int = Field(default=8200, alias="AGENT_MCP_PORT")
+
     # ── llm ─────────────────────────────────────────────────────────────
     llm_provider: LLMProvider = Field(default="openai", alias="AGENT_LLM_PROVIDER")
     model_planner: str = Field(default="gpt-5.2", alias="AGENT_MODEL_PLANNER")

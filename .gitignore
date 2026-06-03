@@ -12,9 +12,14 @@ MANIFEST
 
 # Virtualenv (top-level only — don't shadow the agentv3.tools.env module)
 /.venv/
+# symlinked .venv inside .worktrees-* worktrees
+/.venv
 /venv/
 /env/
 /ENV/
+
+# Git worktrees (local-only; convention .worktrees-*)
+/.worktrees-*/
 
 # Distribution / packaging
 pip-log.txt
