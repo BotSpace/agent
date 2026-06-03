@@ -37,6 +37,7 @@ import traceback
 import uuid
 from typing import Any
 
+from langgraph.errors import GraphInterrupt
 from langgraph.types import Command
 from pydantic import BaseModel, Field
 
@@ -397,6 +398,43 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
                 result = await graph.ainvoke(
                     Command(resume=answer), config=invoke_config
                 )
+    except GraphInterrupt as gi:
+        # ainvoke GraphInterrupt exception tashladi — result["__interrupt__"]
+        # o'rniga exception sifatida keldi. Resume loop ni shu yerda ham ishlatamiz.
+        store = services.get("store")
+        main_request_id = services.get("request_id") or ctx.run_id
+        if store is not None and main_request_id:
+            from ...runtime.worker import _wait_resolution
+            try:
+                rloop = asyncio.get_running_loop()
+            except RuntimeError:
+                rloop = None
+            if rloop is not None:
+                interrupts = getattr(gi, "interrupts", None) or [gi]
+                iobj = interrupts[0]
+                ipayload = getattr(iobj, "value", iobj)
+                if not isinstance(ipayload, dict):
+                    ipayload = {"question": str(ipayload)}
+                ikind = ipayload.get("kind", "clarify")
+                if ikind == "approval":
+                    await store.set_pending_approval(main_request_id, ipayload)
+                    await _wrap_emit("approval_required", ipayload)
+                else:
+                    await store.set_pending_clarification(main_request_id, ipayload)
+                    await _wrap_emit("clarification_required", ipayload)
+                answer = await _wait_resolution(main_request_id, rloop)
+                if ikind == "approval":
+                    await store.set_pending_approval(main_request_id, None)
+                    await _wrap_emit("approval_resolved", {"tool_call_id": ipayload.get("tool_call_id"), "approved": bool(answer.get("approved")) if isinstance(answer, dict) else bool(answer)})
+                else:
+                    answer_str = ", ".join(answer) if isinstance(answer, list) else str(answer)
+                    await store.set_pending_clarification(main_request_id, None)
+                    await _wrap_emit("clarification_resolved", {"tool_call_id": ipayload.get("tool_call_id"), "answer": answer_str})
+                try:
+                    result = await graph.ainvoke(Command(resume=answer), config=invoke_config)
+                except Exception:
+                    result = {}
+        # Fall through to normal result handling below
     except Exception as e:  # noqa: BLE001
         # To'liq traceback'ni log'ga yozamiz — UI'ga faqat qisqa xulosa boradi,
         # lekin debug uchun stack pod log'larida bo'lishi shart.
