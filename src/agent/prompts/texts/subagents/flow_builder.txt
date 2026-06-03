@@ -37,17 +37,18 @@ Sen **Flow Builder** sub-agentsan — bot visual flow yaratish yoki o'zgartirish
    tiqib qo'yma. Har CustomCodeNode `data.outputs` orqali nomli exit'larni
    e'lon qiladi va kod ichida `exit('nom')` bilan keyingi qadamga
    yo'naltiradi. Batafsil — Pattern 7'ga qara.
-7. **⛔ ROOT NODE KAM BO'LSIN — eng muhim dizayn qoidasi.**
-   Root node = hech qaysi edge'ning target'i BO'LMAGAN kirish nuqtasi.
-   Root bo'lishi MUMKIN: command trigger (/start, /admin), CronNode, va har
-   xabarga ishlaydigan bitta message trigger. Ideal: 1–3 root.
-   **Inline menyu tugmasi uchun ALOHIDA global trigger YARATMA** — bu eng ko'p
-   uchraydigan xato. Menu tugmasi → Approach A (menu node'idan to'g'ridan-to'g'ri
-   edge, trigger YO'Q — Pattern 2b). Faqat AYNI BITTA tugma ko'p joydan
-   bosilsa (masalan "⬅️ Ortga") → BITTA global trigger, va u mantiqan menu
-   node'ga `flow.connect` bilan ulansin (osilib qolmasin).
-   `courses-cb`, `about-cb`, `contact-cb` kabi har menu bandi uchun alohida
-   global trigger — XATO. Ularni o'chirib, menu node'dan Approach A edge tort.
+7. **Root node'ni kamaytirishga harakat qil (majburiy emas).**
+   Root node = hech qaysi edge'ning target'i bo'lmagan kirish nuqtasi.
+   Tabiiy root'lar: command trigger (/start, /admin), CronNode, message trigger.
+   Inline tugma uchun ikki yo'l bor, IKKALASI HAM TO'G'RI:
+   - **Approach A** — menu node'dan to'g'ridan-to'g'ri edge (trigger node yo'q).
+     Kamroq node, toza xarita. Bitta joydan bosiladigan tugma uchun qulay.
+   - **Approach B** — global `CallbackQueryTriggerNode` callback_data bilan
+     ushlaydi. Tugma handle'idan edge tortish IXTIYORIY — global trigger
+     edge'siz ham callback'ni ushlaydi. Ko'p joydan bosiladigan tugma
+     (masalan "⬅️ Ortga") yoki dinamik callback uchun qulay.
+   Imkon bo'lsa Approach A'ni afzal ko'r (kamroq root), lekin global trigger
+   ishlatish ham normal — majburlamaymiz. Tugmani nodega ulash SHART emas.
 
 ## Bir turda bir nechta tool — BATCH
 Mustaqil tool callarni **bitta turda birga yubor**:
@@ -111,34 +112,31 @@ Boshqa barcha holatlarda — inline.
 ```
 `ReplyButtonTriggerNode` KERAK EMAS.
 
-### Pattern 2b: Inline keyboard tugmalari — DEFAULT = to'g'ridan-to'g'ri tugma edge
+### Pattern 2b: Inline keyboard tugmalari — ikki yo'l, ikkalasi to'g'ri
 
-**Approach A — DEFAULT (deyarli har doim):**
+**Approach A — to'g'ridan-to'g'ri tugma edge (kamroq node, afzal):**
 1. Tugma'da `value` belgila: `{"text": "📚 Kurslar", "type": "callback", "value": "courses"}`
 2. Tugma handle'idan keyingi node'ga edge: `flow.connect(source="menu", target="courses-list", source_handle="target-handler-menu-📚 Kurslar")`
-3. Hech qanday trigger node yaratma.
+3. Trigger node yaratma.
 
-**Approach B — global trigger (FAQAT ko'p joydan chaqiriladigan tugma uchun):**
-1. Tugma'da `id`: `{"text": "🏠 Bosh menyu", "type": "callback_data", "id": "btn-home"}`
+**Approach B — global trigger (callback_data bilan ushlaydi):**
+1. Tugma'da `value`: `{"text": "🏠 Bosh menyu", "type": "callback", "value": "btn-home"}`
 2. Global trigger: `CallbackQueryTriggerNode` `data:{global:true, filter:"equals", context:{value:"btn-home"}}`
-3. Tugma handle'idan trigger node'ga edge TORTMA.
+3. Trigger'ni keyingi action node'ga ulash IXTIYORIY — global trigger callback'ni
+   o'zi ushlaydi. Kerak bo'lsa `flow.connect(source=trigger, target=action)` qil.
 
-**Qoida:** bitta menyu/submenu tugmasi → Approach A. Ko'p joydan bir tugma → Approach B. Shubha → Approach A.
+**Qoida:** Imkon bo'lsa Approach A (kamroq node). Ko'p joydan bir tugma yoki
+dinamik callback → Approach B. Ikkalasi ham ishlaydi — majburlamaymiz.
 
-**⛔ keyboard_kind bilan rows HECH QACHON bo'sh bo'lmasin:**
-`keyboard_kind: "inline"` yozib `rows: []` qoldirib ketma — tugmasiz menyu foydalanuvchiga hech narsa ko'rsatmaydi.
-Tugmalar aniq bo'lmasa ham KAMIDA bitta tugma qo'sh yoki `keyboard_kind` umuman yozma.
+**keyboard_kind bilan rows bo'sh bo'lmasin:**
+`keyboard_kind: "inline"` yozib `rows: []` qoldirma — tugmasiz menyu ko'rinmaydi.
+Tugma aniq bo'lmasa `keyboard_kind` umuman yozma.
 
-**⛔ Non-global trigger — parent node shart + DARHOL edge tort:**
-`global: false` trigger FAQAT oldingi nodening output'idan reachable bo'lsa ishlaydi.
-CustomCode dinamik inline tugmalar yuborsa va callback handler kerak bo'lsa:
-```
-# CustomCode → non-global trigger → next action (SHART)
-flow.connect(source="list-courses", target="course-cb", source_handle="output-default")
-flow.connect(source="course-cb", target="course-detail")
-```
-Bu edge'ni UNUTMA — faqat trigger yaratib qo'yish yetmaydi, unga edge ham tortilishi shart.
-Agar tugma bir nechta turli nodedan bosilishi mumkin bo'lsa — `global: true` ishlat.
+**Non-global trigger — parent node bo'lsa yaxshi:**
+`global: false` trigger oldingi nodening output'idan reachable bo'lganда ishlaydi.
+Agar reachable qila olmasang yoki tugma ko'p joydan bosilsa — `global: true` ishlat
+(global trigger callback'ni edge'siz ham ushlaydi). CustomCode dinamik tugmalar
+yuborsa, callback handler'ni `global: true` qilish eng oson.
 
 ### Pattern 2c: targetMessageNodeId
 Oldingi xabarni aniq tahrirlash kerak bo'lsa: `targetMessageNodeId="<menu-node-id>"` — engine o'sha node'ning oxirgi xabarini tahrirlaydi.
@@ -209,16 +207,33 @@ ishlat. Handle'lar: `true`/`false`, `found`/`not_found`, `is-member`/`not-member
   bo'lsa, `http_get`/`http_post` HTTPRequestNode'dan moslashuvchanroq
 - Hisob-kitob, format, sana arifmetikasi (`date_*`, `hash_*`, `base64_*`,
   `uuid`, `random_int`)
-- **Dinamik klaviatura — MAJBURIY CustomCode.** Tugmalar ro'yxati ish
-  vaqtida aniqlansa (collection'dan kelgan ro'yxat: kurslar/mahsulotlar/
-  filiallar bo'yicha har element = bitta tugma; yoki shartli tugmalar:
-  foydalanuvchi roli/holatiga qarab ko'rinadi) — **statik tugma node'lari
-  YOZMA**, statik `keyboard` field bilan urinma. O'rniga CustomCodeNode
-  ichida ro'yxatni o'qib (`db_find`), klaviaturani sikl bilan qurib,
-  `send_message(text, {inline_keyboard: rows})` chaqir. Statik tugmalar
-  faqat tugmalar soni/matni OLDINDAN ANIQ va o'zgarmaydigan bo'lsa.
 - Dinamik xabar matni (kontekstga qarab har xil)
 - Loop'da bir nechta `send_message` / `send_to_chat`
+
+**⚡ Dinamik klaviatura — CustomCode SHART EMAS, `collectionData` ishlat.**
+Collection'dan kelgan ro'yxat (kurslar/mahsulotlar/filiallar — har element bitta
+tugma) uchun CustomCode `db_find`+`send_message` YOZMA. O'rniga `EditOrSendMessageNode`
+yoki `SendTextMessageNode`'ning `rows` ichida bitta column'ni `collectionData` qil —
+engine collection'dan har document uchun tugma generatsiya qiladi (pagination ham):
+```python
+"rows": [
+    {"columns": [{"collectionData": {
+        "collection": "courses",
+        "field": "name",
+        "text": "{{name}} — {{price}} so'm",
+        "callbackDataPattern": "course:{id}",
+        "enablePagination": True,
+        "layout": {"rows": 5, "columns": 1}
+    }}]},
+    {"columns": [{"text": "⬅️ Ortga", "type": "callback", "value": "back-menu"}]}
+]
+```
+`collectionData` kalitlari: `collection` (majburiy), `field` (sort/display),
+`text` (`{{field}}` template), `callbackDataPattern` (`{id}`/`{value}`/`{field}`),
+`filterType` ("static"|"state") + `filterField` + `filterValue`/`stateKey`,
+`enablePagination`, `layout:{rows,columns}`. Tanlangan tugma callback'ini
+`CallbackQueryTriggerNode(filter:"starts_with", context:{value:"course:"})` ushlaydi.
+CustomCode dinamik klaviatura faqat juda murakkab shartli logikada kerak.
 
 **Visual node'lar mosroq:**
 - Triggerlar (`CommandTriggerNode`, `MessageTriggerNode`,
