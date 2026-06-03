@@ -18,6 +18,10 @@ broadcasts. You (the MCP client model) act as the bot builder.
    Use `flow_list_node_types(type=...)` for one type's exact field schema.
 5. ALWAYS finish with: `flow_validate` → fix errors → `flow_save`
    (auto-layout is applied on save; nothing persists until `flow_save`).
+   `flow_save` returns a compact summary by default; pass `verbose:true` only if
+   you must echo the full saved flow JSON.
+   Batch edits: `flow_patch_many([{id,data},...])` applies many node patches
+   atomically (all-or-nothing).
 6. Data-driven bots: create collections FIRST (`cms_create_collection`,
    `cms_add_field`, `cms_insert`/`cms_bulk_insert`), then reference them in
    flow nodes (CollectionNode, LoadCollection*).
@@ -29,5 +33,12 @@ broadcasts. You (the MCP client model) act as the bot builder.
 - Branch edges use exact handles: IfCondition → true/false; LoadCollectionItem →
   found/not_found; ForLoop → loop-body/no-items; Random → option_0..N;
   buttons → flow_connect_button.
-- `session_status` shows the active project and unsaved changes (flow_dirty).
+- `session_status` shows the active project, project name, node/edge counts,
+  unsaved changes (flow_dirty) and the project's collections.
+- Unsaved drafts are persisted server-side: if a session is lost, just call
+  `session_use_project(project_id)` again — an unsaved draft is auto-restored
+  (you'll see "Saqlanmagan draft tiklandi"). On "Aktiv loyiha yo'q" errors,
+  call `session_use_project(project_id)` first.
+- `session_undo` reverts the last destructive op (`flow_apply_template`,
+  `flow_clear`, `flow_save`) — last 5 snapshots are kept.
 - Per-user token budget is enforced by the platform (`subscription.*` tools).

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from ...integrations.backend import BackendClient, BackendError, get_backend_client, format_backend_error
+from ...integrations.backend import BackendClient, BackendError, format_backend_error, get_backend_client
 from ..base import Tool, ToolContext, ToolResult, tool
 
 
@@ -86,27 +86,87 @@ async def project_get(input: ProjectGetInput, ctx: ToolContext) -> ToolResult:
 # ── project.create ───────────────────────────────────────────────────────────
 
 
+# Minimal clean default flow: /start → welcome. Replaces any backend-injected
+# promotional/demo flow (#13).
+def _clean_default_flow() -> dict[str, Any]:
+    return {
+        "nodes": [
+            {
+                "id": "start",
+                "type": "CommandTriggerNode",
+                "data": {"command": "/start", "global": True},
+                "position": {"x": 0, "y": 0},
+            },
+            {
+                "id": "welcome",
+                "type": "SendTextMessageNode",
+                "data": {"messageText": "Assalomu alaykum! 👋"},
+                "position": {"x": 320, "y": 0},
+            },
+        ],
+        "edges": [
+            {
+                "id": "e-start-welcome",
+                "source": "start",
+                "target": "welcome",
+                "sourceHandle": "source-handler",
+                "targetHandle": "target-handler",
+                "type": "smart-edge",
+            }
+        ],
+    }
+
+
 class ProjectCreateInput(BaseModel):
     name: str = Field(description="Bot name (3-50 chars)")
     description: str | None = None
     token: str | None = Field(default=None, description="Telegram bot token (BotFather)")
+    default_flow: Literal["clean", "keep"] = Field(
+        default="clean",
+        description="'clean' (default) overwrites whatever flow the backend "
+        "seeds with a minimal /start→welcome flow (drops any promo/demo content). "
+        "'keep' leaves the backend's default flow untouched.",
+    )
 
 
 @tool(
     name="project.create",
-    description="Create a new bot project. Returns the project id.",
+    description=(
+        "Create a new bot project. Returns the project id. By default replaces "
+        "the backend's seeded flow with a clean /start→welcome flow "
+        "(default_flow='keep' to skip)."
+    ),
     input_model=ProjectCreateInput,
 )
 async def project_create(input: ProjectCreateInput, ctx: ToolContext) -> ToolResult:
-    body = input.model_dump(exclude_none=True)
+    body = input.model_dump(exclude_none=True, exclude={"default_flow"})
+    backend = _backend(ctx)
     try:
-        project = await _backend(ctx).create_project(body, auth_claims=ctx.state.get("auth_claims"))
+        project = await backend.create_project(body, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
         return ToolResult.error(format_backend_error(None, e))
+
+    project_id = str(project.get("id") or "")
+    state_updates: dict[str, Any] = {"project_id": project_id}
+    note = ""
+    if input.default_flow == "clean" and project_id:
+        clean = _clean_default_flow()
+        try:
+            await backend.update_project(
+                project_id, {"flow": clean}, auth_claims=ctx.state.get("auth_claims")
+            )
+            # Seed agent working state so flow.* tools edit the clean flow.
+            state_updates.update(
+                {"working_flow": clean, "baseline_flow": clean, "flow_dirty": False}
+            )
+            note = " Boshlang'ich flow toza /start→welcome bilan almashtirildi."
+        except BackendError:
+            note = " (Diqqat: default flow'ni tozalab bo'lmadi — flow.clear bilan tozalashingiz mumkin.)"
+
     return ToolResult.ok(
-        f"Project `{project.get('name')}` created with id `{project.get('id')}`",
+        f"Project `{project.get('name')}` created with id `{project_id}`.{note}",
         data={"project": project},
-        state_updates={"project_id": str(project.get("id") or "")},
+        state_updates=state_updates,
     )
 
 
