@@ -109,6 +109,15 @@ class _SendBase(_StrictData):
     )
     recipients: dict[str, Any] | None = Field(default=None,
         description="{sendToSender:bool, additionalIds:[chat_ids]} — admin/group broadcasts.")
+    remove_keyboard: bool | None = Field(
+        default=None,
+        description=(
+            "true = remove the user's reply keyboard (Telegram ReplyKeyboardRemove) when "
+            "sending this message. Only applies when the node itself has NO keyboard; if "
+            "keyboard_kind/rows are set, the keyboard wins. Ignored on edit (EditOrSend "
+            "edit branch) — Telegram only allows it on send."
+        ),
+    )
 
 
 class SendTextMessageData(_SendBase):
