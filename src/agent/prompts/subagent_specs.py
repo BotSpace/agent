@@ -144,6 +144,17 @@ Sen **Flow Builder** sub-agentsan — bot visual flow yaratish yoki o'zgartirish
    tiqib qo'yma. Har CustomCodeNode `data.outputs` orqali nomli exit'larni
    e'lon qiladi va kod ichida `exit('nom')` bilan keyingi qadamga
    yo'naltiradi. Batafsil — Pattern 7'ga qara.
+7. **⛔ ROOT NODE KAM BO'LSIN — eng muhim dizayn qoidasi.**
+   Root node = hech qaysi edge'ning target'i BO'LMAGAN kirish nuqtasi.
+   Root bo'lishi MUMKIN: command trigger (/start, /admin), CronNode, va har
+   xabarga ishlaydigan bitta message trigger. Ideal: 1–3 root.
+   **Inline menyu tugmasi uchun ALOHIDA global trigger YARATMA** — bu eng ko'p
+   uchraydigan xato. Menu tugmasi → Approach A (menu node'idan to'g'ridan-to'g'ri
+   edge, trigger YO'Q — Pattern 2b). Faqat AYNI BITTA tugma ko'p joydan
+   bosilsa (masalan "⬅️ Ortga") → BITTA global trigger, va u mantiqan menu
+   node'ga `flow.connect` bilan ulansin (osilib qolmasin).
+   `courses-cb`, `about-cb`, `contact-cb` kabi har menu bandi uchun alohida
+   global trigger — XATO. Ularni o'chirib, menu node'dan Approach A edge tort.
 
 ## Bir turda bir nechta tool — BATCH
 Mustaqil tool callarni **bitta turda birga yubor**:
