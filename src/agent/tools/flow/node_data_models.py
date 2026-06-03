@@ -97,13 +97,14 @@ class _SendBase(_StrictData):
         default=None,
         description="'inline' (default) or 'reply'. Set alongside rows.",
     )
-    rows: list[list[dict[str, Any]]] | None = Field(
+    rows: list[dict[str, Any]] | None = Field(
         default=None,
         description=(
-            "2-D button array. Each inner list = one row. "
-            "Inline button: {text, type:'callback', value:'cb_data'}. "
-            "URL button: {text, type:'url', value:'https://...'}. "
-            "Contact/location: {text, type:'request_contact'} or {text, type:'request_location'}."
+            "Button rows. EACH row is an object {columns: [button, ...]} — NOT a bare array. "
+            "Button: {text, type:'callback', value:'cb_data'}. "
+            "URL: {text, type:'url', value:'https://...'}. "
+            "Contact/location: {text, type:'request_contact'} | {text, type:'request_location'}. "
+            'Example: [{"columns":[{"text":"📚 Kurslar","type":"callback","value":"courses"}]}]'
         ),
     )
     recipients: dict[str, Any] | None = Field(default=None,
@@ -204,7 +205,7 @@ class EditMessageData(_StrictData):
     newText: str
     messageIdSource: Literal["this_message", "previous_node", "state_key"] | None = None
     keyboard_kind: Literal["inline", "reply"] | None = None
-    rows: list[list[dict[str, Any]]] | None = None
+    rows: list[dict[str, Any]] | None = None  # [{columns:[btn,...]}, ...]
     parseMode: _PARSE_MODE | None = None
     editType: Literal["text", "caption", "media"] | None = None
 

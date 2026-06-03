@@ -102,12 +102,12 @@ Boshqa barcha holatlarda — inline.
 
 ### Pattern 2a: Reply keyboard tugmasi (faqat kontakt/joylashuv)
 `SendTextMessageNode` bilan, `keyboard_kind:"reply"`.
-**⛔ `rows` formati — 2D array, har element dict, `columns` kalit YO'Q:**
+**⛔ `rows` formati — har row OBJECT `{columns:[...]}`, 2D array EMAS:**
 ```python
 # TO'G'RI:
+"rows": [{"columns": [{"text": "📱 Telefon yuborish", "type": "request_contact"}]}]
+# XATO (hech qachon bunday yozma — engine keyboard'ni o'qiy olmaydi):
 "rows": [[{"text": "📱 Telefon yuborish", "type": "request_contact"}]]
-# XATO (hech qachon bunday yozma):
-"rows": [{"columns": [{"text": "...", "type": "request_contact"}]}]
 ```
 `ReplyButtonTriggerNode` KERAK EMAS.
 
@@ -519,13 +519,13 @@ Nima qilmoqchisiz?",
         "parseMode": "HTML",
         "keyboard_kind": "inline",
         "rows": [
-            [
+            {"columns": [
                 {"text": "📚 Kurslar", "type": "callback", "value": "courses"},
                 {"text": "🛒 Buyurtmalar", "type": "callback", "value": "orders"}
-            ],
-            [
+            ]},
+            {"columns": [
                 {"text": "ℹ️ Biz haqimizda", "type": "callback", "value": "about"}
-            ]
+            ]}
         ]
     },
     after="start"
