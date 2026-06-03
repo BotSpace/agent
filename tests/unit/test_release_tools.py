@@ -177,3 +177,43 @@ async def test_release_status_uses_release_id_without_project_context():
     assert "running" in res.content
     assert backend.get_release_ids == [7]
     assert backend.list_release_project_ids == []
+
+
+class _BackendWithDebugLogs(_FakeBackend):
+    async def get_debug_logs(self, project_id, *, tail=200, since_seconds=None, auth_claims=None):
+        self.debug_logs_project = project_id
+        return {
+            "pod_name": "debug-pod-1",
+            "lines": ["debug line 1", "debug line 2"],
+            "truncated": False,
+        }
+
+
+@pytest.mark.asyncio
+async def test_release_debug_logs_tool():
+    tools = _tools()
+    backend = _BackendWithDebugLogs()
+    ctx = ToolContext(
+        run_id="r",
+        project_id="42",
+        user_id="u",
+        services={"backend": backend},
+    )
+    res = await tools["release.debug_logs"].run({}, ctx)
+    assert not res.is_error
+    assert "debug-pod-1" in res.content
+    assert "debug line 2" in res.content
+    assert backend.debug_logs_project == "42"
+
+
+@pytest.mark.asyncio
+async def test_release_debug_logs_no_project():
+    tools = _tools()
+    ctx = ToolContext(
+        run_id="r",
+        project_id=None,
+        user_id="u",
+        services={"backend": _BackendWithDebugLogs()},
+    )
+    res = await tools["release.debug_logs"].run({}, ctx)
+    assert res.is_error

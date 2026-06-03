@@ -26,7 +26,9 @@ broadcasts. You (the MCP client model) act as the bot builder.
    `cms_add_field`, `cms_insert`/`cms_bulk_insert`), then reference them in
    flow nodes (CollectionNode, LoadCollection*).
 7. Test/deploy: `release_debug` starts a debug bot container (~30 min, no token
-   needed); `release_deploy` is a production deploy; `release_logs` shows logs.
+   needed); `release_debug_logs` shows the debug container's logs (use it when
+   the debug bot misbehaves or doesn't respond); `release_deploy` is a
+   production deploy; `release_logs` shows a release's logs.
 
 ### Key rules
 - Every flow needs at least one trigger node (`flow_add_command_trigger` /start etc.).
