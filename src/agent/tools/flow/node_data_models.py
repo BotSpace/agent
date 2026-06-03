@@ -337,11 +337,14 @@ class CustomCodeData(_StrictData):
             "Pattern 7 for the full runtime API (send_*, db_*, http_*, exit, set_context, ...)."
         )
     )
-    outputs: list[dict[str, str]] | None = Field(
-        default=None,
+    outputs: list[dict[str, str]] = Field(
+        default_factory=lambda: [{"name": "default"}],
         description=(
-            "Optional named exits routed via exit('NAME'). Each becomes a "
-            "source handle id='output-NAME'. Format: [{'name':'ok'}, ...]."
+            "Named exit branches routed via exit('NAME'). Each becomes a source "
+            "handle id='output-NAME'. ALWAYS provide this. "
+            "Single linear path: [{'name':'default'}]. "
+            "Multiple branches: [{'name':'ok'}, {'name':'error'}] + exit('ok')/exit('error') in code. "
+            "Edges MUST reference one of these names or the validator will reject them."
         ),
     )
 

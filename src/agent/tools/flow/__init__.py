@@ -70,16 +70,23 @@ def _project_id(ctx: ToolContext) -> str | None:
 
 class FlowGetInput(BaseModel):
     summary_only: bool = Field(
-        default=False,
-        description="If true, return only node/edge counts + types instead of full JSON.",
+        default=True,
+        description=(
+            "True (default) = return only node count, edge count, type breakdown and trigger ids. "
+            "False = return full flow JSON (expensive — only use when you need to inspect a specific "
+            "node's data or edge list and flow.diff does not cover it)."
+        ),
     )
 
 
 @tool(
     name="flow.get",
     description=(
-        "Return the current working flow (the in-memory version, not the saved one). "
-        "Use this before any modification to confirm the current state."
+        "Inspect the current working flow. "
+        "CALL SPARINGLY — the flow state is updated automatically after every "
+        "add/update/connect/delete call, so you do NOT need to call this before "
+        "each modification. Use summary_only=true (default) for a cheap overview; "
+        "summary_only=false only when you must read a specific node's stored data."
     ),
     input_model=FlowGetInput,
 )
@@ -89,13 +96,21 @@ async def flow_get(input: FlowGetInput, ctx: ToolContext) -> ToolResult:
         type_counts: dict[str, int] = {}
         for n in flow.nodes:
             type_counts[n.type] = type_counts.get(n.type, 0) + 1
+        node_lines = [f"  {t}×{c}" for t, c in sorted(type_counts.items())]
         summary = {
             "nodes": len(flow.nodes),
             "edges": len(flow.edges),
             "type_counts": type_counts,
             "triggers": [t.id for t in flow.triggers()],
+            "node_ids": [n.id for n in flow.nodes],
         }
-        return ToolResult.ok(str(summary), data=summary)
+        text = (
+            f"Flow: {len(flow.nodes)} nodes, {len(flow.edges)} edges\n"
+            + "\n".join(node_lines)
+            + f"\nnode_ids: {[n.id for n in flow.nodes]}"
+            + f"\ntriggers: {[t.id for t in flow.triggers()]}"
+        )
+        return ToolResult.ok(text, data=summary)
     payload = flow.model_dump()
     return ToolResult.ok(flow.to_json(indent=2), data=payload)
 
