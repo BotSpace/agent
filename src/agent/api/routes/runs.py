@@ -190,7 +190,9 @@ async def cancel_run(
         return {"status": rec.status}
     ok = await store.cancel(request_id)
     if not ok:
-        raise HTTPException(status_code=409, detail="No active worker for this run")
+        # Task in-memory topilmadi (pod restart yoki allaqachon tugagan).
+        # DB'da statusni to'g'ridan-to'g'ri failed ga o'tkazamiz.
+        await store.fail(request_id, "Cancelled by user")
     return {"status": "cancelling"}
 
 
