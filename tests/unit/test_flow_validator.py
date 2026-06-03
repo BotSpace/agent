@@ -431,3 +431,103 @@ def test_state_node_with_type_passes():
     result = validate(flow)
     assert result.ok, result.render()
     assert not any(i.code == "state_type_required" for i in result.issues)
+
+
+# ── #8a: global CallbackQueryTrigger suppresses "button has no edge" warning ──
+
+
+def _menu_node(buttons):
+    return FlowNode(
+        id="menu",
+        type="SendTextMessageNode",
+        data={
+            "messageText": "Menyu",
+            "keyboard": {"active": "inline", "inline": [buttons]},
+        },
+    )
+
+
+def test_callback_button_with_global_trigger_no_warning():
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="t", type="CommandTriggerNode", data={"command": "/start"}),
+            _menu_node([{"text": "Buy", "type": "callback", "value": "buy:1"}]),
+            FlowNode(
+                id="cb",
+                type="CallbackQueryTriggerNode",
+                data={"global": True, "filter": "starts_with", "context": {"value": "buy:"}},
+            ),
+        ],
+        edges=[FlowEdge(id="e1", source="t", target="menu")],
+    )
+    result = validate(flow)
+    assert not any(i.code == "missing_button_branch" for i in result.warnings), result.render()
+
+
+def test_callback_button_without_matching_trigger_warns():
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="t", type="CommandTriggerNode", data={"command": "/start"}),
+            _menu_node([{"text": "Buy", "type": "callback", "value": "buy:1"}]),
+        ],
+        edges=[FlowEdge(id="e1", source="t", target="menu")],
+    )
+    result = validate(flow)
+    assert any(i.code == "missing_button_branch" for i in result.warnings)
+
+
+# ── #8b: url/contact buttons never require an edge ───────────────────────────
+
+
+def test_url_button_requires_no_edge():
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="t", type="CommandTriggerNode", data={"command": "/start"}),
+            _menu_node([{"text": "Site", "type": "url", "value": "https://x.uz"}]),
+        ],
+        edges=[FlowEdge(id="e1", source="t", target="menu")],
+    )
+    result = validate(flow)
+    assert not any(i.code == "missing_button_branch" for i in result.warnings), result.render()
+
+
+def test_request_contact_button_requires_no_edge():
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="t", type="CommandTriggerNode", data={"command": "/start"}),
+            FlowNode(
+                id="menu",
+                type="SendTextMessageNode",
+                data={
+                    "messageText": "Telefon",
+                    "keyboard": {"active": "reply",
+                                 "reply": [[{"id": "c", "text": "Telefon", "type": "request_contact"}]]},
+                },
+            ),
+        ],
+        edges=[FlowEdge(id="e1", source="t", target="menu")],
+    )
+    result = validate(flow)
+    assert not any(i.code == "missing_button_branch" for i in result.warnings), result.render()
+
+
+# ── #12: collection cross-check ──────────────────────────────────────────────
+
+
+def test_unknown_collection_warns_when_list_known():
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="t", type="CommandTriggerNode", data={"command": "/start"}),
+            FlowNode(id="save", type="CollectionNode",
+                     data={"collection_name": "ghosts", "fieldMappings": {"a": "b"}}),
+        ],
+        edges=[FlowEdge(id="e1", source="t", target="save")],
+    )
+    result = validate(flow, known_collections=["orders", "users"])
+    assert any(i.code == "unknown_collection" for i in result.warnings)
+    # Known collection → no warning.
+    result2 = validate(flow, known_collections=["ghosts"])
+    assert not any(i.code == "unknown_collection" for i in result2.warnings)
+    # No list provided → check skipped entirely.
+    result3 = validate(flow)
+    assert not any(i.code == "unknown_collection" for i in result3.issues)

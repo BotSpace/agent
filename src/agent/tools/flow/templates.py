@@ -16,13 +16,78 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from ...flow.catalog import get_node_spec
 from ...integrations.backend import get_backend_client
 from ..base import Tool, ToolContext, ToolResult, tool
-
 
 SIMILARITY_GOOD = 0.55  # below this, the agent should probably build from scratch
 TEMPLATE_PROJECT_ID = "_global"
 TEMPLATE_KIND = "template"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Legacy template normalization (#4).
+#
+# Older templates store some fields in shapes the current node-spec/validator no
+# longer accepts. The most common one: a collection name given as
+# `data.collection: {name: "..."}` while the engine + validator now require a
+# flat `data.collection_name`. We normalize such legacy shapes IN PLACE when a
+# template is applied so the loaded flow passes flow.validate without manual
+# patching. Only fields we can map unambiguously (by comparing against the
+# node's catalog spec) are touched.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _normalize_collection_name(data: dict[str, Any]) -> bool:
+    """Legacy `collection: {name}` (or `collectionName`) → `collection_name`.
+    Returns True if anything changed."""
+    if "collection_name" in data and isinstance(data["collection_name"], str):
+        return False
+    legacy = data.get("collection")
+    name: str | None = None
+    if isinstance(legacy, dict) and isinstance(legacy.get("name"), str):
+        name = legacy["name"]
+    elif isinstance(legacy, str) and legacy:
+        name = legacy
+    elif isinstance(data.get("collectionName"), str):
+        name = data["collectionName"]
+    if not name:
+        return False
+    data["collection_name"] = name
+    data.pop("collectionName", None)
+    # Only drop the nested `collection` if THIS node type does not itself
+    # require a `collection` object (LoadCollectionItemNode keeps it).
+    return True
+
+
+def normalize_legacy_flow(flow: dict[str, Any]) -> int:
+    """Normalize a raw template flow dict in place. Returns the number of nodes
+    whose data was changed."""
+    nodes = flow.get("nodes")
+    if not isinstance(nodes, list):
+        return 0
+    changed = 0
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        data = node.get("data")
+        if not isinstance(data, dict):
+            continue
+        node_type = node.get("type")
+        spec = get_node_spec(node_type) if isinstance(node_type, str) else None
+        requires_collection_name = bool(
+            spec and "collection_name" in spec.required_data
+        )
+        node_changed = False
+        if requires_collection_name and "collection_name" not in data:
+            if _normalize_collection_name(data):
+                # Safe to drop the nested legacy `collection` for these nodes —
+                # they require collection_name, not the object form.
+                data.pop("collection", None)
+                node_changed = True
+        if node_changed:
+            changed += 1
+    return changed
 
 
 class FlowSearchTemplateInput(BaseModel):
@@ -59,7 +124,7 @@ async def flow_search_template(input: FlowSearchTemplateInput, ctx: ToolContext)
             kind=TEMPLATE_KIND,
             top_k=input.top_k,
         )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         # pgvector extension missing on the Postgres server is the most
         # common cause here. Degrade gracefully so the agent just builds
         # from scratch instead of bubbling a stack trace to the user.
@@ -151,7 +216,7 @@ async def flow_apply_template(input: FlowApplyTemplateInput, ctx: ToolContext) -
     backend = get_backend_client()
     try:
         tpl = await backend.get_internal_template(identifier)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         return ToolResult.error(f"Backend lookup failed: {type(e).__name__}: {e}")
     if tpl is None:
         return ToolResult.error(f"Template `{identifier}` not found.")
@@ -165,9 +230,17 @@ async def flow_apply_template(input: FlowApplyTemplateInput, ctx: ToolContext) -
         )
 
     working = {"nodes": list(nodes), "edges": list(edges)}
+    # #4 — normalize legacy field shapes (e.g. collection:{name} →
+    # collection_name) so the loaded flow passes flow.validate.
+    normalized = normalize_legacy_flow(working)
+    norm_note = (
+        f" Normalized {normalized} legacy node(s) (e.g. collection_name)."
+        if normalized
+        else ""
+    )
     return ToolResult.ok(
         f"Applied template `{tpl.get('name')}` (id={tpl.get('id')}): "
-        f"{len(nodes)} nodes + {len(edges)} edges loaded. "
+        f"{len(nodes)} nodes + {len(edges)} edges loaded.{norm_note} "
         f"Edit with flow.add_*, flow.connect, flow.patch as needed.",
         data={
             "template_id": tpl.get("id"),
@@ -175,6 +248,7 @@ async def flow_apply_template(input: FlowApplyTemplateInput, ctx: ToolContext) -
             "name": tpl.get("name"),
             "n_nodes": len(nodes),
             "n_edges": len(edges),
+            "normalized_nodes": normalized,
         },
         state_updates={
             "working_flow": working,

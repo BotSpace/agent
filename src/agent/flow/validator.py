@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from .catalog import get_node_spec, is_trigger, NODE_TYPES
+from .catalog import NODE_TYPES, get_node_spec, is_trigger
 from .schema import FlowDocument
 
 
@@ -74,8 +74,34 @@ def _is_accessory_node(node_type: str) -> bool:
     return bool(spec and spec.is_accessory)
 
 
-def validate(flow: FlowDocument) -> ValidationResult:
+def _referenced_collection_name(node) -> str | None:
+    """Best-effort extraction of a node's referenced collection name across the
+    flat (`collection_name`) and nested (`collection: {name}`) shapes. Returns
+    None if no concrete name (templates / `{{vars}}` are ignored)."""
+    data = node.data if isinstance(node.data, dict) else {}
+    name = data.get("collection_name")
+    if not isinstance(name, str) or not name:
+        legacy = data.get("collection")
+        if isinstance(legacy, dict):
+            name = legacy.get("name")
+        elif isinstance(legacy, str):
+            name = legacy
+    if isinstance(name, str) and name and "{{" not in name and "{%" not in name:
+        return name
+    return None
+
+
+def validate(
+    flow: FlowDocument, *, known_collections: list[str] | None = None
+) -> ValidationResult:
     issues: list[ValidationIssue] = []
+    # #12 — known collection names (from the workspace's loaded CMS list). When
+    # provided, flow nodes referencing an unknown collection get a WARNING.
+    known_set: set[str] | None = (
+        {c for c in known_collections if isinstance(c, str) and c}
+        if known_collections is not None
+        else None
+    )
 
     # ── 1. Node-level checks ───────────────────────────────────────────
     node_ids: set[str] = set()
@@ -168,6 +194,21 @@ def validate(flow: FlowDocument) -> ValidationResult:
                         "(ask_user) and set data.apiKey to the value they give; do NOT "
                         "use {{env.*}} or any placeholder, otherwise the AI node "
                         "returns empty output and the bot sends nothing.",
+                        node_id=node.id,
+                    )
+                )
+
+        # #12 — cross-check referenced collection names against the known list.
+        if known_set is not None:
+            ref = _referenced_collection_name(node)
+            if ref and ref not in known_set:
+                issues.append(
+                    ValidationIssue(
+                        "warning",
+                        "unknown_collection",
+                        f"`{node.type}` `{node.id}` references collection `{ref}` which is "
+                        f"not in this project's collections ({sorted(known_set) or '—'}). "
+                        "Create it (cms.* tools) or fix the name.",
                         node_id=node.id,
                     )
                 )
@@ -336,6 +377,10 @@ def validate(flow: FlowDocument) -> ValidationResult:
     edges_by_source: dict[str, set[str]] = {}
     for e in flow.edges:
         edges_by_source.setdefault(e.source, set()).add(e.sourceHandle or "source-handler")
+    # #8a — global CallbackQueryTriggerNodes that can handle a callback button's
+    # value (equals/starts_with/contains/ends_with). If one matches a button,
+    # that button does NOT need its own outgoing edge.
+    global_callback_matchers = _global_callback_matchers(flow)
     for node in flow.nodes:
         present = edges_by_source.get(node.id, set())
         if node.type in branching_handles:
@@ -349,7 +394,13 @@ def validate(flow: FlowDocument) -> ValidationResult:
                             node_id=node.id,
                         )
                     )
-        for handle in _missing_button_handles(node, present):
+        for handle, button in _missing_button_handles(node, present):
+            # #8b — url/contact/location buttons never route via an edge.
+            if not _button_needs_edge(button):
+                continue
+            # #8a — a matching global CallbackQueryTriggerNode handles it.
+            if _callback_handled_globally(button, global_callback_matchers):
+                continue
             issues.append(
                 ValidationIssue(
                     "warning",
@@ -360,6 +411,71 @@ def validate(flow: FlowDocument) -> ValidationResult:
             )
 
     return ValidationResult(ok=not any(i.severity == "error" for i in issues), issues=issues)
+
+
+# Button `type` values that route via a flow edge and therefore can warn when
+# unconnected. url / request_contact / request_location buttons perform a
+# Telegram-native action and never need an outgoing edge.
+_EDGE_BUTTON_TYPES = frozenset({"callback", "reply", ""})
+_NO_EDGE_BUTTON_TYPES = frozenset(
+    {"url", "request_contact", "request_location", "switch_inline", "login", "web_app", "pay"}
+)
+
+
+def _button_needs_edge(button: dict | None) -> bool:
+    if not isinstance(button, dict):
+        return True
+    btype = str(button.get("type") or "").strip().lower()
+    if btype in _NO_EDGE_BUTTON_TYPES:
+        return False
+    return True
+
+
+def _global_callback_matchers(flow: FlowDocument) -> list[tuple[str, str]]:
+    """Return (filter, value) pairs for every GLOBAL CallbackQueryTriggerNode.
+
+    A global callback trigger with global=true acts as a catch-all router for
+    matching callback_data anywhere in the flow, so callback buttons whose value
+    it matches do not each need their own edge.
+    """
+    matchers: list[tuple[str, str]] = []
+    for n in flow.nodes:
+        if n.type != "CallbackQueryTriggerNode":
+            continue
+        if not bool(n.data.get("global")):
+            continue
+        flt = str(n.data.get("filter") or "any").strip().lower()
+        ctx = n.data.get("context")
+        value = ""
+        if isinstance(ctx, dict):
+            value = str(ctx.get("value") or "")
+        matchers.append((flt, value))
+    return matchers
+
+
+def _callback_handled_globally(
+    button: dict | None, matchers: list[tuple[str, str]]
+) -> bool:
+    if not matchers or not isinstance(button, dict):
+        return False
+    btype = str(button.get("type") or "").strip().lower()
+    if btype not in ("callback", ""):
+        return False
+    cb_value = str(button.get("value") or button.get("text") or "")
+    for flt, value in matchers:
+        if flt == "any":
+            return True
+        if not value:
+            continue
+        if flt == "equals" and cb_value == value:
+            return True
+        if flt in ("starts_with", "prefix") and cb_value.startswith(value):
+            return True
+        if flt == "ends_with" and cb_value.endswith(value):
+            return True
+        if flt == "contains" and value in cb_value:
+            return True
+    return False
 
 
 def _unsupported_source_handle(node, source_handle: str | None) -> str | None:
@@ -412,8 +528,12 @@ def _allowed_source_handles(node) -> set[str]:
     return allowed
 
 
-def _missing_button_handles(node, present: set[str]) -> list[str]:
-    return [handle for handle in _button_source_handles(node) if handle not in present]
+def _missing_button_handles(node, present: set[str]) -> list[tuple[str, dict]]:
+    return [
+        (handle, button)
+        for handle, button in _button_source_handles_with_buttons(node)
+        if handle not in present
+    ]
 
 
 # Node types whose inline-keyboard buttons can route via button-edges
@@ -433,15 +553,20 @@ _BUTTON_EDGE_NODE_TYPES = frozenset(
 
 
 def _button_source_handles(node) -> list[str]:
+    return [handle for handle, _ in _button_source_handles_with_buttons(node)]
+
+
+def _button_source_handles_with_buttons(node) -> list[tuple[str, dict]]:
+    """(`target-handler-{nodeId}-{text}`, button_dict) for each keyboard button."""
     if node.type not in _BUTTON_EDGE_NODE_TYPES:
         return []
 
-    handles: list[str] = []
+    pairs: list[tuple[str, dict]] = []
 
     def _add(button: object) -> None:
         # collectionData (dynamic) columns have no fixed text — skip them.
         if isinstance(button, dict) and isinstance(button.get("text"), str) and button["text"]:
-            handles.append(f"target-handler-{node.id}-{button['text']}")
+            pairs.append((f"target-handler-{node.id}-{button['text']}", button))
 
     # New format: keyboard_kind + rows:[{columns:[btn,...]}, ...]
     rows_new = node.data.get("rows")
@@ -463,4 +588,4 @@ def _button_source_handles(node) -> list[str]:
                     for button in row:
                         _add(button)
 
-    return handles
+    return pairs

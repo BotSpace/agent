@@ -23,8 +23,8 @@ from .node_data_models import (
     AIGeminiProviderData,
     AIHTTPToolData,
     AIKnowledgeToolData,
-    AIOpenAIProviderData,
     AIOllamaProviderData,
+    AIOpenAIProviderData,
     CallbackQueryTriggerData,
     CollectionData,
     CommandTriggerData,
@@ -87,6 +87,82 @@ def _button_handle(source: str, text: str) -> str:
     return f"target-handler-{source}-{text}"
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Button-text → edge-handle remap (#3): when a keyboard button keeps its `id`
+# but changes its `text`, the engine's edge sourceHandle (encoded as
+# `target-handler-{nodeId}-{text}`) silently breaks. We compare the OLD and NEW
+# keyboard of a node, build a map of stable-id → (old_text, new_text), then
+# rewrite every outgoing edge sourceHandle on that node to the new text.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _iter_keyboard_buttons(data: dict[str, Any]):
+    """Yield every button dict from both the new (`rows`) and legacy
+    (`keyboard.{reply,inline}`) keyboard formats stored in a node's `data`."""
+    rows_new = data.get("rows")
+    if isinstance(rows_new, list):
+        for row in rows_new:
+            if isinstance(row, dict):
+                for btn in row.get("columns") or []:
+                    if isinstance(btn, dict):
+                        yield btn
+            elif isinstance(row, list):  # tolerate bare 2-D rows
+                for btn in row:
+                    if isinstance(btn, dict):
+                        yield btn
+    keyboard = data.get("keyboard")
+    if isinstance(keyboard, dict):
+        for group in ("reply", "inline"):
+            for row in keyboard.get(group) or []:
+                if isinstance(row, list):
+                    for btn in row:
+                        if isinstance(btn, dict):
+                            yield btn
+
+
+def _button_text_by_id(data: dict[str, Any]) -> dict[str, str]:
+    """{button_id: button_text} for buttons that carry a stable `id`."""
+    out: dict[str, str] = {}
+    for btn in _iter_keyboard_buttons(data):
+        bid = btn.get("id")
+        text = btn.get("text")
+        if isinstance(bid, str) and bid and isinstance(text, str) and text:
+            out[bid] = text
+    return out
+
+
+def remap_button_edge_handles(
+    flow: FlowDocument, node_id: str, old_data: dict[str, Any], new_data: dict[str, Any]
+) -> int:
+    """Remap outgoing button-edge handles after a keyboard text change.
+
+    Buttons matched by stable `id`: if a button kept its id but changed its
+    `text`, rewrite every edge whose source == node_id and whose sourceHandle
+    was `target-handler-{node_id}-{old_text}` to use the new text. Returns the
+    number of edge handles remapped. Backward-compatible, migration-free: only
+    same-id/different-text pairs are touched; buttons without ids are ignored.
+    """
+    old_by_id = _button_text_by_id(old_data)
+    new_by_id = _button_text_by_id(new_data)
+    # old_handle → new_handle, only where text actually changed.
+    renames: dict[str, str] = {}
+    for bid, old_text in old_by_id.items():
+        new_text = new_by_id.get(bid)
+        if new_text is not None and new_text != old_text:
+            renames[_button_handle(node_id, old_text)] = _button_handle(node_id, new_text)
+    if not renames:
+        return 0
+    remapped = 0
+    for edge in flow.edges:
+        if edge.source != node_id:
+            continue
+        new_handle = renames.get(edge.sourceHandle or "")
+        if new_handle is not None:
+            edge.sourceHandle = new_handle
+            remapped += 1
+    return remapped
+
+
 def _node(flow: FlowDocument, node_id: str, type_name: str, data: dict[str, Any], position: dict[str, float] | None = None) -> None:
     flow.upsert_node(
         FlowNode(
@@ -141,7 +217,7 @@ def _make_popular_node_tool(
         edge_id: str | None = None
         position: dict[str, float] | None = None
 
-    async def _handler(input: TypedNodeInput, ctx: ToolContext) -> ToolResult:  # noqa: ARG001
+    async def _handler(input: TypedNodeInput, ctx: ToolContext) -> ToolResult:
         flow = _load_working_flow(ctx)
         if input.after and flow.get_node(input.after) is None:
             return ToolResult.error(f"`after` node `{input.after}` does not exist.")
@@ -170,8 +246,21 @@ def _make_popular_node_tool(
     )
 
 
+# Node types whose keyboard buttons route via button-edges
+# (`target-handler-{nodeId}-{text}`). Mirrors the engine controller pause list
+# and the validator's `_BUTTON_EDGE_NODE_TYPES` — keep in sync.
+_BUTTON_EDGE_NODE_TYPES = frozenset(
+    {
+        "SendTextMessageNode",
+        "EditOrSendMessageNode",
+        "EditMessageNode",
+        "MessageNode",
+    }
+)
+
+
 class ConnectButtonInput(BaseModel):
-    source: str = Field(description="SendTextMessageNode id that owns the keyboard button.")
+    source: str = Field(description="Id of a keyboard-bearing node (SendTextMessageNode, EditOrSendMessageNode, EditMessageNode, MessageNode) that owns the button.")
     target: str = Field(description="Target node id.")
     button_text: str = Field(description="Exact button text from the source node keyboard.")
     target_handle: str | None = "target-handler"
@@ -183,8 +272,13 @@ async def flow_connect_button(input: ConnectButtonInput, ctx: ToolContext) -> To
     source = flow.get_node(input.source)
     if source is None:
         return ToolResult.error(f"Source node `{input.source}` does not exist.")
-    if source.type != "SendTextMessageNode":
-        return ToolResult.error("Button edges must start from a SendTextMessageNode.")
+    if source.type not in _BUTTON_EDGE_NODE_TYPES:
+        return ToolResult.error(
+            f"`{input.source}` is `{source.type}`; button edges start from a "
+            f"keyboard-bearing node ({', '.join(sorted(_BUTTON_EDGE_NODE_TYPES))}). "
+            "Alternative: use flow.connect(source, target, "
+            "source_handle='target-handler-{nodeId}-{buttonText}') directly."
+        )
     if flow.get_node(input.target) is None:
         return ToolResult.error(f"Target node `{input.target}` does not exist.")
     handle = _button_handle(input.source, input.button_text)
@@ -653,7 +747,7 @@ def build_flow_action_tools() -> list[Tool]:
             ),
             Tool(
                 name="flow.connect_button",
-                description="Connect an exact reply/inline keyboard button using target-handler-{nodeId}-{buttonText}.",
+                description="Connect an exact reply/inline keyboard button using target-handler-{nodeId}-{buttonText}. Works for any keyboard-bearing node: SendTextMessageNode, EditOrSendMessageNode, EditMessageNode, MessageNode.",
                 input_model=ConnectButtonInput,
                 handler=flow_connect_button,
                 tags=["flow", "safe-edge"],

@@ -171,6 +171,22 @@ saqlanishini bildiradi: `text` / `caption` / `callback` / `contact_phone_number`
 `type`siz StateNode `flow.validate`'da **xato** (`state_type_required`) beradi —
 saqlay olmaysan.
 
+### Pattern 3b: Hisoblagich / counter (increment) — `VariableNode`, StateNode EMAS
+
+Sonni oshirish/kamaytirish (ball, urinishlar soni, savat miqdori) uchun **`VariableNode`** ishlat, `StateNode` EMAS.
+
+**⛔ STRING HACK ISHLAMAYDI.** `StateNode`/`VariableNode operation=set` ga
+`value: "{{ball}}+1"` berish sonni oshirmaydi — engine bu ifodani HISOBLAMAYDI,
+shunchaki `"{{ball}}+1"` matnini saqlaydi. Engine'da arifmetik ifoda evaluatori yo'q.
+
+**To'g'ri usul** — `VariableNode`:
+- Oshirish: `flow.add_node(type="VariableNode", data={name:"ball", operation:"increment", value:1})`
+  (`value` qadam, default 1; `value` o'rniga `increment` ham qabul qilinadi).
+- Kamaytirish: `data={name:"ball", operation:"decrement", value:1}`.
+- O'rnatish: `data={name:"ball", operation:"set", value:0}` (boshlang'ich qiymat).
+- Boshqa amallar: `append` (massivga qo'shish), `remove`, `clear`, `toggle`.
+`name` — `{{}}` braces'siz o'zgaruvchi nomi. Natija `{{ball}}` orqali o'qiladi.
+
 ### Pattern 4: "⬅️ Ortga" tugmasi
 Har submenuga "⬅️ Ortga" inline tugma qo'sh. Bosilganda menyuga qaytish —
 `EditOrSendMessageNode` bilan, joriy xabar o'rnida menyu paydo bo'ladi.

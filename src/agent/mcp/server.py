@@ -37,7 +37,8 @@ from ..integrations.backend import (
 from ..tools import ToolContext, build_default_registry
 from ..tools.registry import ToolRegistry
 from .auth import AuthedUser, MCPAuthError, authenticate
-from .workspace import get_workspace_store
+from .draft_store import get_draft_store
+from .workspace import Workspace, get_workspace_store
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +58,42 @@ _current_user: contextvars.ContextVar[AuthedUser | None] = contextvars.ContextVa
 # MCP-only session tool'lari — registry'da yo'q, server o'zi boshqaradi.
 _SESSION_USE_PROJECT = "session_use_project"
 _SESSION_STATUS = "session_status"
+_SESSION_UNDO = "session_undo"
 _DOCS_GUIDE = "docs_guide"
+
+# Registry tool'lar — bajarilishidan OLDIN avtomatik undo snapshot olinadi (#11).
+_SNAPSHOT_BEFORE = frozenset({"flow.apply_template", "flow.clear", "flow.save"})
+
+
+async def _persist_draft(ws: Workspace) -> None:
+    """Write-through persist of the workspace draft to agent Postgres (#1).
+
+    Graceful degrade lives inside DraftStore — on DB failure this is a no-op
+    plus a warning, and the MCP keeps working in-memory.
+    """
+    if not ws.project_id:
+        return
+    await get_draft_store().upsert(
+        user_id=ws.user_id,
+        project_id=ws.project_id,
+        project_name=ws.project_name,
+        working_flow=ws.working_flow,
+        baseline_flow=ws.baseline_flow,
+        flow_dirty=ws.flow_dirty,
+        collections=ws.collections,
+        snapshots=ws.snapshots,
+    )
+
+
+def _hydrate_from_draft(ws: Workspace, draft: dict) -> None:
+    """Load a persisted draft row into the in-memory workspace."""
+    ws.project_name = draft.get("project_name")
+    ws.working_flow = draft.get("working_flow")
+    ws.baseline_flow = draft.get("baseline_flow")
+    ws.flow_dirty = bool(draft.get("flow_dirty"))
+    ws.collections = draft.get("collections") or []
+    snaps = draft.get("snapshots")
+    ws.snapshots = list(snaps) if isinstance(snaps, list) else []
 
 # docs_guide topic → (sarlavha, kontent loader). Kontent agent'ning ICHKI
 # agentlariga beriladigan system prompt'lar — MCP klient modeli ham xuddi shu
@@ -166,11 +202,21 @@ def _session_tools() -> list[mtypes.Tool]:
         mtypes.Tool(
             name=_SESSION_STATUS,
             description=(
-                "Joriy sessiya holati: aktiv loyiha, flow node/edge soni, "
-                "saqlanmagan o'zgarishlar (flow_dirty) bormi."
+                "Joriy sessiya holati: project_id, project_name, flow node/edge "
+                "soni, saqlanmagan o'zgarishlar (flow_dirty), kolleksiyalar ro'yxati."
             ),
             inputSchema={"type": "object", "properties": {}},
             annotations=mtypes.ToolAnnotations(readOnlyHint=True),
+        ),
+        mtypes.Tool(
+            name=_SESSION_UNDO,
+            description=(
+                "Oxirgi avtomatik snapshot'ga qaytaradi (flow_apply_template / "
+                "flow_clear / flow_save dan OLDIN olingan). Oxirgi 5 ta snapshot "
+                "saqlanadi. Destructive amalni qaytarish uchun ishlating."
+            ),
+            inputSchema={"type": "object", "properties": {}},
+            annotations=mtypes.ToolAnnotations(),
         ),
         mtypes.Tool(
             name=_DOCS_GUIDE,
@@ -219,69 +265,150 @@ async def _handle_session_use_project(
     if not project_id:
         return _result_to_mcp("project_id majburiy.", is_error=True, data=None)
 
-    ws = get_workspace_store().get(user.user_id)
-    ws.sync_auth_claims(user.claims)
+    store = get_workspace_store()
+    async with store.lock(user.user_id):
+        ws = store.set_active(user.user_id, project_id)
+        ws.sync_auth_claims(user.claims)
 
-    backend = get_backend_client()
-    flow = await load_saved_flow(project_id, auth_claims=ws.auth_claims, client=backend)
-    collections = await load_project_collections(
-        project_id, auth_claims=ws.auth_claims, client=backend
-    )
+        backend = get_backend_client()
+        # #1 — restore an unsaved draft if one was persisted for this
+        # (user, project) and is still dirty. Otherwise load the saved flow.
+        draft = await get_draft_store().load(user_id=user.user_id, project_id=project_id)
+        restored = bool(draft and draft.get("flow_dirty") and draft.get("working_flow"))
 
-    flow = flow if isinstance(flow, dict) else {"nodes": [], "edges": []}
-    ws.project_id = project_id
-    ws.working_flow = flow
-    ws.baseline_flow = flow
-    ws.flow_dirty = False
-    ws.collections = collections
+        if restored:
+            _hydrate_from_draft(ws, draft)
+            # Refresh collections from backend (cheap, keeps CMS list current);
+            # fall back to the persisted list on failure.
+            try:
+                collections = await load_project_collections(
+                    project_id, auth_claims=ws.auth_claims, client=backend
+                )
+                ws.collections = collections
+            except Exception:
+                collections = ws.collections
+            ws.project_id = project_id
+            flow = ws.working_flow or {"nodes": [], "edges": []}
+        else:
+            flow = await load_saved_flow(project_id, auth_claims=ws.auth_claims, client=backend)
+            collections = await load_project_collections(
+                project_id, auth_claims=ws.auth_claims, client=backend
+            )
+            flow = flow if isinstance(flow, dict) else {"nodes": [], "edges": []}
+            ws.project_id = project_id
+            ws.working_flow = flow
+            ws.baseline_flow = flow
+            ws.flow_dirty = False
+            ws.collections = collections
+            ws.snapshots = []
 
-    nodes = len(flow.get("nodes") or [])
-    edges = len(flow.get("edges") or [])
-    col_names = [c.get("name") for c in collections if isinstance(c, dict) and c.get("name")]
-    text = (
-        f"Loyiha {project_id} tanlandi.\n"
-        f"Flow: {nodes} node, {edges} edge.\n"
-        f"Kolleksiyalar ({len(col_names)}): {', '.join(col_names) if col_names else '—'}"
-    )
-    return _result_to_mcp(
-        text,
-        is_error=False,
-        data={
-            "project_id": project_id,
-            "nodes": nodes,
-            "edges": edges,
-            "collections": col_names,
-        },
-    )
+        # Remember the project's display name for session_status (#7).
+        try:
+            project = await backend.get_project(project_id, auth_claims=ws.auth_claims)
+            if isinstance(project, dict) and project.get("name"):
+                ws.project_name = str(project["name"])
+        except Exception:
+            pass
+
+        await _persist_draft(ws)
+
+        nodes = len(flow.get("nodes") or [])
+        edges = len(flow.get("edges") or [])
+        col_names = [
+            c.get("name") for c in collections if isinstance(c, dict) and c.get("name")
+        ]
+        if restored:
+            head = (
+                f"Loyiha {project_id} tanlandi. Saqlanmagan draft tiklandi "
+                f"(flow_dirty=true), {nodes} node, {edges} edge."
+            )
+        else:
+            head = f"Loyiha {project_id} tanlandi.\nFlow: {nodes} node, {edges} edge."
+        text = (
+            f"{head}\n"
+            f"Kolleksiyalar ({len(col_names)}): {', '.join(col_names) if col_names else '—'}"
+        )
+        return _result_to_mcp(
+            text,
+            is_error=False,
+            data={
+                "project_id": project_id,
+                "project_name": ws.project_name,
+                "nodes": nodes,
+                "edges": edges,
+                "flow_dirty": ws.flow_dirty,
+                "draft_restored": restored,
+                "collections": col_names,
+            },
+        )
 
 
 async def _handle_session_status(user: AuthedUser) -> mtypes.CallToolResult:
-    ws = get_workspace_store().get(user.user_id)
-    if not ws.project_id:
-        return _result_to_mcp(
-            "Aktiv loyiha yo'q. session_use_project bilan loyiha tanlang.",
-            is_error=False,
-            data={"project_id": None},
+    store = get_workspace_store()
+    async with store.lock(user.user_id):
+        ws = store.get(user.user_id)
+        if not ws.project_id:
+            return _result_to_mcp(
+                "Aktiv loyiha yo'q. session_use_project(project_id) bilan loyiha "
+                "tanlang — saqlanmagan draft bo'lsa avtomatik tiklanadi.",
+                is_error=False,
+                data={"project_id": None},
+            )
+        flow = ws.working_flow or {}
+        nodes = len(flow.get("nodes") or [])
+        edges = len(flow.get("edges") or [])
+        col_names = [
+            c.get("name") for c in ws.collections if isinstance(c, dict) and c.get("name")
+        ]
+        text = (
+            f"Aktiv loyiha: {ws.project_id}"
+            + (f" ({ws.project_name})" if ws.project_name else "")
+            + f"\nFlow: {nodes} node, {edges} edge"
+            f"\nSaqlanmagan o'zgarishlar: {'BOR' if ws.flow_dirty else 'yoq'}"
+            f"\nKolleksiyalar ({len(col_names)}): {', '.join(col_names) if col_names else '—'}"
         )
-    flow = ws.working_flow or {}
-    nodes = len(flow.get("nodes") or [])
-    edges = len(flow.get("edges") or [])
-    text = (
-        f"Aktiv loyiha: {ws.project_id}\n"
-        f"Flow: {nodes} node, {edges} edge\n"
-        f"Saqlanmagan o'zgarishlar: {'BOR' if ws.flow_dirty else 'yoq'}"
-    )
-    return _result_to_mcp(
-        text,
-        is_error=False,
-        data={
-            "project_id": ws.project_id,
-            "nodes": nodes,
-            "edges": edges,
-            "flow_dirty": ws.flow_dirty,
-            "collections": [c.get("name") for c in ws.collections if isinstance(c, dict)],
-        },
-    )
+        return _result_to_mcp(
+            text,
+            is_error=False,
+            data={
+                "project_id": ws.project_id,
+                "project_name": ws.project_name,
+                "nodes": nodes,
+                "edges": edges,
+                "flow_dirty": ws.flow_dirty,
+                "collections": col_names,
+            },
+        )
+
+
+async def _handle_session_undo(user: AuthedUser) -> mtypes.CallToolResult:
+    store = get_workspace_store()
+    async with store.lock(user.user_id):
+        ws = store.get(user.user_id)
+        if not ws.project_id:
+            return _result_to_mcp(
+                "Aktiv loyiha yo'q — session_use_project(project_id) chaqiring.",
+                is_error=True,
+                data=None,
+            )
+        snap = ws.pop_snapshot()
+        if snap is None:
+            return _result_to_mcp(
+                "Qaytariladigan snapshot yo'q (flow_apply_template/flow_clear/"
+                "flow_save dan keyin paydo bo'ladi).",
+                is_error=False,
+                data={"restored": False},
+            )
+        await _persist_draft(ws)
+        flow = ws.working_flow or {}
+        nodes = len(flow.get("nodes") or [])
+        edges = len(flow.get("edges") or [])
+        return _result_to_mcp(
+            f"`{snap.get('label')}` amalidan oldingi holatga qaytarildi: "
+            f"{nodes} node, {edges} edge. ({len(ws.snapshots)} snapshot qoldi.)",
+            is_error=False,
+            data={"restored": True, "label": snap.get("label"), "nodes": nodes, "edges": edges},
+        )
 
 
 async def _execute_registry_tool(
@@ -290,29 +417,52 @@ async def _execute_registry_tool(
     user: AuthedUser,
     registry: ToolRegistry,
 ) -> mtypes.CallToolResult:
-    ws = get_workspace_store().get(user.user_id)
-    ws.sync_auth_claims(user.claims)
+    store = get_workspace_store()
+    # #2 — entire lookup + execute + merge is atomic per user so parallel
+    # flow_patch calls can't see a half-built workspace ("Aktiv loyiha yo'q").
+    async with store.lock(user.user_id):
+        ws = store.get(user.user_id)
+        ws.sync_auth_claims(user.claims)
 
-    # Flow tool'lari aktiv loyihani talab qiladi.
-    if reg_name.startswith("flow.") and not ws.project_id:
-        return _result_to_mcp(
-            "Aktiv loyiha yo'q — avval session_use_project bilan loyiha tanlang.",
-            is_error=True,
-            data=None,
+        # Flow tool'lari aktiv loyihani talab qiladi.
+        if reg_name.startswith("flow.") and not ws.project_id:
+            return _result_to_mcp(
+                "Aktiv loyiha yo'q. session_use_project(project_id) chaqiring — "
+                "saqlanmagan draft bo'lsa avtomatik tiklanadi.",
+                is_error=True,
+                data=None,
+            )
+
+        # #11 — snapshot before destructive ops so session_undo can restore.
+        if reg_name in _SNAPSHOT_BEFORE and ws.working_flow is not None:
+            ws.push_snapshot(reg_name)
+
+        state = ws.to_tool_state()
+        ctx = ToolContext(
+            run_id=f"mcp-{uuid.uuid4().hex[:12]}",
+            project_id=ws.project_id,
+            user_id=user.user_id,
+            state=state,
+            services={"backend": get_backend_client()},
         )
+        result = await registry.execute(reg_name, arguments, ctx)
+        # state_updates'ni workspace'ga qaytarib singdiramiz.
+        mutated = ws.is_mutated(result.state_updates)
+        ws.merge_state_updates(result.state_updates)
 
-    state = ws.to_tool_state()
-    ctx = ToolContext(
-        run_id=f"mcp-{uuid.uuid4().hex[:12]}",
-        project_id=ws.project_id,
-        user_id=user.user_id,
-        state=state,
-        services={"backend": get_backend_client()},
-    )
-    result = await registry.execute(reg_name, arguments, ctx)
-    # state_updates'ni workspace'ga qaytarib singdiramiz (working_flow, flow_dirty, ...).
-    ws.merge_state_updates(result.state_updates)
-    return _result_to_mcp(result.content, is_error=result.is_error, data=result.data)
+        # #1 — write-through persist whenever the draft changed (and on
+        # successful flow.save clear the persisted draft / dirty flag).
+        if reg_name == "flow.save" and not result.is_error:
+            ws.flow_dirty = False
+            await get_draft_store().clear(user_id=user.user_id, project_id=ws.project_id)
+        elif mutated and not result.is_error:
+            await _persist_draft(ws)
+
+        content = result.content
+        # #14 — recovery hint for destructive ops.
+        if reg_name in ("flow.apply_template", "flow.clear") and not result.is_error:
+            content = (content or "") + "\n(session_undo bilan qaytarish mumkin.)"
+        return _result_to_mcp(content, is_error=result.is_error, data=result.data)
 
 
 # ── Low-level MCP Server qurish ──────────────────────────────────────────────
@@ -340,6 +490,8 @@ def build_mcp_server(registry: ToolRegistry | None = None) -> Server:
             return await _handle_session_use_project(user, arguments)
         if name == _SESSION_STATUS:
             return await _handle_session_status(user)
+        if name == _SESSION_UNDO:
+            return await _handle_session_undo(user)
         if name == _DOCS_GUIDE:
             topic = str(arguments.get("topic") or "").strip()
             if topic not in _GUIDE_TOPICS:
@@ -352,7 +504,9 @@ def build_mcp_server(registry: ToolRegistry | None = None) -> Server:
         reg_name = name_map.get(name)
         if reg_name is None:
             return _result_to_mcp(
-                f"Noma'lum tool `{name}`. /tools ro'yxatiga qarang.",
+                f"Noma'lum tool `{name}`. Keyingi qadam: mavjud tool'lar ro'yxatini "
+                "(tools/list) ko'ring; flow tahriri uchun avval "
+                "session_use_project(project_id) chaqiring.",
                 is_error=True,
                 data=None,
             )

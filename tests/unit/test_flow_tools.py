@@ -303,3 +303,145 @@ async def test_flow_save_accepts_explicit_project_override():
 
     assert not res.is_error, res.content
     assert backend.updated[0][0] == "987"
+
+
+# ── #3: button-text change remaps edge handles ───────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_patch_remaps_button_edge_handle_on_text_change():
+    tools = _tools()
+    ctx = ToolContext(run_id="r", project_id="42", user_id="u")
+    ctx.state.update((await tools["flow.add_node"].run(
+        {"id": "t", "type": "CommandTriggerNode", "data": {"command": "/start"}}, ctx
+    )).state_updates)
+    ctx.state.update((await tools["flow.add_node"].run({
+        "id": "menu", "type": "SendTextMessageNode",
+        "data": {"messageText": "M", "keyboard_kind": "inline",
+                 "rows": [{"columns": [{"id": "b1", "text": "Eski", "type": "callback", "value": "x"}]}]},
+        "after": "t",
+    }, ctx)).state_updates)
+    ctx.state.update((await tools["flow.add_node"].run(
+        {"id": "next", "type": "SendTextMessageNode", "data": {"messageText": "N"}}, ctx
+    )).state_updates)
+    # Edge via the button's current text.
+    ctx.state.update((await tools["flow.connect_button"].run(
+        {"source": "menu", "target": "next", "button_text": "Eski"}, ctx
+    )).state_updates)
+    # Change the button text, keeping the same id.
+    res = await tools["flow.patch"].run({
+        "id": "menu",
+        "data": {"rows": [{"columns": [{"id": "b1", "text": "Yangi", "type": "callback", "value": "x"}]}]},
+    }, ctx)
+    assert not res.is_error
+    assert "remapped" in res.content
+    ctx.state.update(res.state_updates)
+    from agent.flow.schema import FlowDocument
+    flow = FlowDocument.model_validate(ctx.state["working_flow"])
+    handles = [e.sourceHandle for e in flow.edges if e.source == "menu"]
+    assert "target-handler-menu-Yangi" in handles
+    assert "target-handler-menu-Eski" not in handles
+
+
+# ── #5: connect_button works for EditOrSendMessageNode ───────────────────────
+
+
+@pytest.mark.asyncio
+async def test_connect_button_supports_edit_or_send_node():
+    tools = _tools()
+    ctx = ToolContext(run_id="r", project_id="42", user_id="u")
+    ctx.state.update((await tools["flow.add_node"].run({
+        "id": "edit", "type": "EditOrSendMessageNode",
+        "data": {"messageText": "M", "keyboard_kind": "inline",
+                 "rows": [{"columns": [{"id": "b", "text": "Tap", "type": "callback", "value": "v"}]}]},
+    }, ctx)).state_updates)
+    ctx.state.update((await tools["flow.add_node"].run(
+        {"id": "next", "type": "SendTextMessageNode", "data": {"messageText": "N"}}, ctx
+    )).state_updates)
+    res = await tools["flow.connect_button"].run(
+        {"source": "edit", "target": "next", "button_text": "Tap"}, ctx
+    )
+    assert not res.is_error, res.content
+    assert res.data["source_handle"] == "target-handler-edit-Tap"
+
+
+@pytest.mark.asyncio
+async def test_connect_button_rejects_non_keyboard_node_with_hint():
+    tools = _tools()
+    ctx = ToolContext(run_id="r", project_id="42", user_id="u")
+    ctx.state.update((await tools["flow.add_node"].run(
+        {"id": "if", "type": "IfConditionNode", "data": {"conditions": []}}, ctx
+    )).state_updates)
+    ctx.state.update((await tools["flow.add_node"].run(
+        {"id": "next", "type": "SendTextMessageNode", "data": {"messageText": "N"}}, ctx
+    )).state_updates)
+    res = await tools["flow.connect_button"].run(
+        {"source": "if", "target": "next", "button_text": "X"}, ctx
+    )
+    assert res.is_error
+    assert "flow.connect" in res.content  # suggests the alternative path
+
+
+# ── #9: flow.patch_many is atomic ────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_patch_many_atomic_all_or_nothing():
+    tools = _tools()
+    ctx = ToolContext(run_id="r", project_id="42", user_id="u")
+    for nid in ("a", "b"):
+        ctx.state.update((await tools["flow.add_node"].run(
+            {"id": nid, "type": "SendTextMessageNode", "data": {"messageText": "x"}}, ctx
+        )).state_updates)
+    # One bad id → nothing applied.
+    res = await tools["flow.patch_many"].run({
+        "patches": [{"id": "a", "data": {"messageText": "A"}},
+                    {"id": "ghost", "data": {"messageText": "Z"}}],
+    }, ctx)
+    assert res.is_error
+    from agent.flow.schema import FlowDocument
+    flow = FlowDocument.model_validate(ctx.state["working_flow"])
+    assert flow.get_node("a").data["messageText"] == "x"  # untouched
+    # All good → applied.
+    res2 = await tools["flow.patch_many"].run({
+        "patches": [{"id": "a", "data": {"messageText": "A"}},
+                    {"id": "b", "data": {"messageText": "B"}}],
+    }, ctx)
+    assert not res2.is_error
+    ctx.state.update(res2.state_updates)
+    flow2 = FlowDocument.model_validate(ctx.state["working_flow"])
+    assert flow2.get_node("a").data["messageText"] == "A"
+    assert flow2.get_node("b").data["messageText"] == "B"
+
+
+# ── #6: flow.save returns a compact summary by default ───────────────────────
+
+
+@pytest.mark.asyncio
+async def test_flow_save_summary_default(monkeypatch):
+    tools = _all_tools()
+    ctx = ToolContext(run_id="r", project_id="42", user_id="u",
+                      services={"backend": object()})
+    for nid, typ, data in [("t", "CommandTriggerNode", {"command": "/start"}),
+                           ("m", "SendTextMessageNode", {"messageText": "hi"})]:
+        ctx.state.update((await tools["flow.add_node"].run(
+            {"id": nid, "type": typ, "data": data}, ctx
+        )).state_updates)
+    ctx.state.update((await tools["flow.connect"].run(
+        {"source": "t", "target": "m"}, ctx
+    )).state_updates)
+
+    async def fake_update(project_id, body, **kwargs):
+        return {"id": project_id}
+
+    import agent.integrations.backend as backend_mod
+    monkeypatch.setattr(backend_mod, "get_backend_client",
+                        lambda: type("B", (), {"update_project": staticmethod(fake_update)})())
+
+    # Patch the module-level get_backend_client used inside flow.save.
+    from agent.tools import flow as flow_pkg  # noqa: F401
+    res = await tools["flow.save"].run({"project_id": "42"}, ctx)
+    assert not res.is_error, res.content
+    assert "flow" not in (res.data or {})  # compact: no full flow
+    assert res.data["nodes"] == 2
+    assert res.data["flow_dirty"] is False

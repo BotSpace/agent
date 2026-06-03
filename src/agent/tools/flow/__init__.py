@@ -28,7 +28,7 @@ from ...flow import (
     validate,
 )
 from ..base import Tool, ToolContext, ToolResult, tool
-from .actions import build_flow_action_tools
+from .actions import build_flow_action_tools, remap_button_edge_handles
 from .templates import build_flow_template_tools
 from .node_data_models import NODE_DATA_MODELS, get_data_model
 
@@ -63,6 +63,21 @@ def _project_id(ctx: ToolContext) -> str | None:
     return _concrete_project_id(ctx.state.get("project_id")) or _concrete_project_id(
         ctx.project_id
     )
+
+
+def _known_collections(ctx: ToolContext) -> list[str] | None:
+    """Collection names from the workspace's loaded CMS list (#12). None = the
+    list was never loaded, so skip the cross-check entirely."""
+    raw = ctx.state.get("collections")
+    if not isinstance(raw, list):
+        return None
+    names: list[str] = []
+    for c in raw:
+        if isinstance(c, dict) and isinstance(c.get("name"), str) and c["name"]:
+            names.append(c["name"])
+        elif isinstance(c, str) and c:
+            names.append(c)
+    return names
 
 
 # ── flow.get ─────────────────────────────────────────────────────────────────
@@ -316,11 +331,72 @@ async def flow_patch(input: FlowPatchInput, ctx: ToolContext) -> ToolResult:
     flow = _load_working_flow(ctx)
     node = flow.get_node(input.id)
     if node is None:
-        return ToolResult.error(f"Node `{input.id}` does not exist")
+        return ToolResult.error(
+            f"Node `{input.id}` does not exist. "
+            "Next: check ids with flow.get(summary_only=true), then retry flow.patch."
+        )
+    old_data = dict(node.data)
     node.data = {**node.data, **input.data}
+    # #3 — if the keyboard text changed for a same-id button, the engine's
+    # edge sourceHandle (target-handler-{id}-{text}) breaks; auto-remap.
+    remapped = remap_button_edge_handles(flow, input.id, old_data, node.data)
+    msg = f"Patched `{input.id}` fields: {', '.join(input.data)}"
+    if remapped:
+        msg += f". {remapped} edge handle(s) remapped to the new button text."
+    return ToolResult.ok(msg, state_updates=_set_working_flow(flow))
+
+
+# ── flow.patch_many (atomic multi-patch) ─────────────────────────────────────
+
+
+class FlowPatchManyItem(BaseModel):
+    id: str = Field(description="Node id to patch")
+    data: dict[str, Any] = Field(description="Fields to merge into node.data (shallow)")
+
+
+class FlowPatchManyInput(BaseModel):
+    patches: list[FlowPatchManyItem] = Field(
+        min_length=1,
+        description="List of {id, data} patches. Applied ATOMICALLY — if any id is "
+        "missing, NOTHING is applied.",
+    )
+
+
+@tool(
+    name="flow.patch_many",
+    description=(
+        "Apply MANY node-data patches atomically in one call. Input: "
+        "patches=[{id, data}, ...]. Either all patches validate and apply, or "
+        "none do (the failing item is reported by index). Keyboard button-text "
+        "changes auto-remap their edge handles, same as flow.patch."
+    ),
+    input_model=FlowPatchManyInput,
+)
+async def flow_patch_many(input: FlowPatchManyInput, ctx: ToolContext) -> ToolResult:
+    flow = _load_working_flow(ctx)
+    # Pre-flight: every id must exist before we mutate anything (atomicity).
+    for idx, item in enumerate(input.patches):
+        if flow.get_node(item.id) is None:
+            return ToolResult.error(
+                f"patches[{idx}] node `{item.id}` does not exist — NOTHING applied. "
+                "Next: fix the id (flow.get summary_only=true) and retry the whole batch."
+            )
+    total_remapped = 0
+    patched_ids: list[str] = []
+    for item in input.patches:
+        node = flow.get_node(item.id)
+        assert node is not None
+        old_data = dict(node.data)
+        node.data = {**node.data, **item.data}
+        total_remapped += remap_button_edge_handles(flow, item.id, old_data, node.data)
+        patched_ids.append(item.id)
+    msg = f"Patched {len(patched_ids)} node(s): {', '.join(patched_ids)}"
+    if total_remapped:
+        msg += f". {total_remapped} edge handle(s) remapped."
     return ToolResult.ok(
-        f"Patched `{input.id}` fields: {', '.join(input.data)}",
+        msg,
         state_updates=_set_working_flow(flow),
+        data={"patched": patched_ids, "edges_remapped": total_remapped},
     )
 
 
@@ -412,7 +488,7 @@ class FlowValidateInput(BaseModel):
 )
 async def flow_validate(_: FlowValidateInput, ctx: ToolContext) -> ToolResult:
     flow = _load_working_flow(ctx)
-    result = validate(flow)
+    result = validate(flow, known_collections=_known_collections(ctx))
     summary = {
         "ok": result.ok,
         "errors": [i.message for i in result.errors],
@@ -544,6 +620,12 @@ class FlowSaveInput(BaseModel):
         description="Optional project id override. Useful if the run started in global context.",
     )
     apply_layout: bool = Field(default=True, description="Run auto-layout before saving.")
+    verbose: bool = Field(
+        default=False,
+        description="False (default) returns a compact summary {ok, project_id, nodes, "
+        "edges, flow_dirty}. True also returns the full saved flow JSON (~30k tokens) — "
+        "only set when you must echo the exact saved document.",
+    )
 
 
 @tool(
@@ -558,7 +640,7 @@ class FlowSaveInput(BaseModel):
 )
 async def flow_save(input: FlowSaveInput, ctx: ToolContext) -> ToolResult:
     flow = _load_working_flow(ctx)
-    result = validate(flow)
+    result = validate(flow, known_collections=_known_collections(ctx))
     if not result.ok:
         return ToolResult.error(
             "Flow has validation errors — fix them before saving:\n" + result.render()
@@ -604,15 +686,29 @@ async def flow_save(input: FlowSaveInput, ctx: ToolContext) -> ToolResult:
                 )
         return ToolResult.error(format_backend_error("Flow saqlash", e) + extra)
 
+    n_nodes = len(flow_dict.get("nodes") or [])
+    n_edges = len(flow_dict.get("edges") or [])
+    # #6 — default to a compact summary so flow.save (and its MCP
+    # structuredContent) does NOT echo the full ~30k-token flow back to the
+    # model. Full flow only when verbose=true.
+    data: dict[str, Any] = {
+        "ok": True,
+        "project_id": project_id,
+        "nodes": n_nodes,
+        "edges": n_edges,
+        "flow_dirty": False,
+    }
+    if input.verbose:
+        data["flow"] = flow_dict
     return ToolResult.ok(
-        f"Flow saved to project `{project_id}`.",
+        f"Flow saved to project `{project_id}` ({n_nodes} nodes, {n_edges} edges).",
         state_updates={
             "working_flow": flow_dict,
             "baseline_flow": flow_dict,
             "flow_dirty": False,
             "pending_save": False,
         },
-        data={"flow": flow_dict},
+        data=data,
     )
 
 
@@ -625,6 +721,7 @@ def build_flow_tools() -> list[Tool]:
         flow_remove_node,
         flow_clear,
         flow_patch,
+        flow_patch_many,
         flow_connect,
         flow_disconnect,
         flow_validate,
