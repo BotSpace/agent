@@ -847,6 +847,291 @@ flow.connect_branch(source="check-channel", target="join-prompt",  handle="not-m
 
 ---
 
+## To'liq bot misollari
+
+Quyidagi 3 ta real stsenariy — noldan to `flow.save`gacha to'liq tool call
+ketma-ketligi. Har turn'da parallel chaqiriladigan calllar birga ko'rsatilgan.
+
+---
+
+### Bot 1: O'quv markaz boti (eng oddiy)
+
+Tuzilma: `/start` → salom + menyu (Kurslar / Narxlar / Aloqa) → kurslar
+collection'dan dinamik tugmalar → kurs detali. Narxlar va Aloqa statik.
+
+**Umumiy qoidalar bu bot uchun:**
+- Barcha matn xabarlari `EditOrSendMessageNode` — Pattern 2c.
+- Dinamik kurslar ro'yxati CustomCode `db_find` bilan — Pattern 7.
+- Kurs tanlash `CallbackQueryTriggerNode(global:false)` + flow edge — Pattern 7 (dinamik klaviatura).
+- `flow.validate` → `flow.save` oxirida.
+
+```python
+# Turn 1: barcha node'larni bir turda qo'sh (parallel, id'lar mustaqil)
+flow.add_command_trigger(
+    id="start",
+    data={"command": "/start", "global": True}
+)
+flow.add_node(
+    id="welcome",
+    type="EditOrSendMessageNode",
+    data={
+        "messageText": "Assalomu alaykum, {{first_name}}! 👋\nO'quv markazimizga xush kelibsiz.\nQuyidagi bo'limlardan birini tanlang:",
+        "parseMode": "HTML",
+        "keyboard": {
+            "active": "inline",
+            "inline": [
+                [{"text": "📚 Kurslar", "type": "callback", "value": "courses"}],
+                [{"text": "💰 Narxlar", "type": "callback", "value": "prices"}],
+                [{"text": "📞 Aloqa", "type": "callback", "value": "contact"}]
+            ]
+        }
+    },
+    after="start"
+)
+flow.add_custom_code(
+    id="list-courses",
+    data={
+        "jsCode": "const res = db_find('courses', {}); const courses = (res && res.data) || []; if (!courses.length) { send_message('Hozircha kurslar mavjud emas.'); exit('default'); return; } const rows = courses.map(function(c) { return [{ text: c.name + ' — ' + c.price + ' so\\'m', callback_data: 'course:' + c._id }]; }); rows.push([{ text: '⬅️ Ortga', callback_data: 'back-menu' }]); send_message('📚 Mavjud kurslarimiz:', { inline_keyboard: rows }); exit('default');",
+        "outputs": [{"name": "default"}]
+    }
+)
+flow.add_callback_query_trigger(
+    id="course-cb",
+    data={"filter": "starts_with", "context": {"value": "course:"}, "global": False}
+)
+flow.add_custom_code(
+    id="course-detail",
+    data={
+        "jsCode": "const id = callback_query.data.replace('course:', ''); const res = db_find_one('courses', {_id: id}); if (!res || !res.data) { send_message('Kurs topilmadi.'); exit('default'); return; } const c = res.data; send_message('<b>' + c.name + '</b>\\n\\n' + (c.description || '') + '\\n\\n💰 Narx: <b>' + c.price + ' so\\'m</b>\\n⏳ Davomiyligi: ' + (c.duration || 'N/A'), { parse_mode: 'HTML', inline_keyboard: [[{ text: '✅ Ro\\'yxatdan o\\'tish', callback_data: 'enroll:' + id }], [{ text: '⬅️ Ortga', callback_data: 'back-courses' }]] }); exit('default');",
+        "outputs": [{"name": "default"}]
+    },
+    after="course-cb"
+)
+flow.add_node(
+    id="prices-page",
+    type="EditOrSendMessageNode",
+    data={
+        "messageText": "💰 <b>Narxlar ro'yxati:</b>\n\n📚 Python asoslari — 1 200 000 so'm\n🎨 Frontend (React) — 1 500 000 so'm\n⚙️ Django Backend — 1 800 000 so'm\n📊 Data Science — 2 000 000 so'm\n🐳 DevOps / Docker — 1 600 000 so'm\n\n💳 To'lov: naqd, karta, bo'lib to'lash",
+        "parseMode": "HTML",
+        "keyboard": {
+            "active": "inline",
+            "inline": [[{"text": "⬅️ Ortga", "type": "callback", "value": "back-menu"}]]
+        }
+    }
+)
+flow.add_node(
+    id="contact-page",
+    type="EditOrSendMessageNode",
+    data={
+        "messageText": "📞 <b>Aloqa ma'lumotlari:</b>\n\n☎️ Telefon: +998 90 123 45 67\n📍 Manzil: Toshkent, Chilonzor t., 7-uy\n🕐 Ish vaqti: Du–Sh, 09:00–20:00\n\n📩 Telegram: @edu_center_uz",
+        "parseMode": "HTML",
+        "keyboard": {
+            "active": "inline",
+            "inline": [[{"text": "⬅️ Ortga", "type": "callback", "value": "back-menu"}]]
+        }
+    }
+)
+flow.add_node(
+    id="back-to-menu",
+    type="EditOrSendMessageNode",
+    data={
+        "messageText": "Assalomu alaykum, {{first_name}}! 👋\nO'quv markazimizga xush kelibsiz.\nQuyidagi bo'limlardan birini tanlang:",
+        "parseMode": "HTML",
+        "keyboard": {
+            "active": "inline",
+            "inline": [
+                [{"text": "📚 Kurslar", "type": "callback", "value": "courses"}],
+                [{"text": "💰 Narxlar", "type": "callback", "value": "prices"}],
+                [{"text": "📞 Aloqa", "type": "callback", "value": "contact"}]
+            ]
+        }
+    }
+)
+
+# Turn 2: barcha edge'larni bir turda bog' (parallel)
+flow.connect(source="start", target="welcome")
+flow.connect(source="welcome", target="list-courses", source_handle="target-handler-welcome-📚 Kurslar")
+flow.connect(source="welcome", target="prices-page", source_handle="target-handler-welcome-💰 Narxlar")
+flow.connect(source="welcome", target="contact-page", source_handle="target-handler-welcome-📞 Aloqa")
+flow.connect(source="list-courses", target="course-cb")
+flow.connect(source="prices-page", target="back-to-menu", source_handle="target-handler-prices-page-⬅️ Ortga")
+flow.connect(source="contact-page", target="back-to-menu", source_handle="target-handler-contact-page-⬅️ Ortga")
+
+# Turn 3: validate
+flow.validate()
+
+# Turn 4: save
+flow.save()
+```
+
+---
+
+### Bot 2: Buyurtma boti (o'rta murakkablik)
+
+Tuzilma: `/start` → mahsulotlar ro'yxati (collection'dan dinamik) → tanlanganda
+buyurtma yaratib tasdiqlash → "Ha" (to'lov link + adminga xabar) / "Yo'q" (bekor).
+
+**Umumiy qoidalar bu bot uchun:**
+- Mahsulotlar `db_find('products', {})` bilan dinamik — hardcode emas.
+- Buyurtma `db_insert('orders', {...})` bilan saqlanadi.
+- Admin `ADMIN_CHAT_ID` env'dan olinadi (CustomCode ichida `get_context('env_ADMIN_CHAT_ID')`).
+- `CallbackQueryTriggerNode(global:false)` mahsulot tanlash uchun.
+- Tasdiq inline "Ha / Yo'q" — Approach A (Pattern 2b).
+
+```python
+# Turn 1: barcha node'larni qo'sh (parallel)
+flow.add_command_trigger(
+    id="start",
+    data={"command": "/start", "global": True}
+)
+flow.add_custom_code(
+    id="list-products",
+    data={
+        "jsCode": "const res = db_find('products', {active: true}); const products = (res && res.data) || []; if (!products.length) { send_message('Hozircha mahsulotlar mavjud emas.'); exit('default'); return; } const rows = products.map(function(p) { return [{ text: p.name + ' — ' + p.price + ' so\\'m', callback_data: 'product:' + p._id }]; }); send_message('🛍️ Mahsulotni tanlang:', { inline_keyboard: rows }); exit('default');",
+        "outputs": [{"name": "default"}]
+    },
+    after="start"
+)
+flow.add_callback_query_trigger(
+    id="product-cb",
+    data={"filter": "starts_with", "context": {"value": "product:"}, "global": False}
+)
+flow.add_custom_code(
+    id="confirm-order",
+    data={
+        "jsCode": "const id = callback_query.data.replace('product:', ''); const res = db_find_one('products', {_id: id}); if (!res || !res.data) { send_message('Mahsulot topilmadi.'); exit('default'); return; } const p = res.data; set_context('selected_product_id', id); set_context('selected_product_name', p.name); set_context('selected_product_price', p.price); send_message('🛒 Tanlangan mahsulot:\\n\\n<b>' + p.name + '</b>\\nNarx: <b>' + p.price + ' so\\'m</b>\\n\\nBuyurtma berasizmi?', { parse_mode: 'HTML', inline_keyboard: [[{ text: '✅ Ha, buyurtma beraman', callback_data: 'confirm-yes' }, { text: '❌ Yo\\'q', callback_data: 'confirm-no' }]] }); exit('default');",
+        "outputs": [{"name": "default"}]
+    },
+    after="product-cb"
+)
+flow.add_callback_query_trigger(
+    id="confirm-yes-cb",
+    data={"filter": "equals", "context": {"value": "confirm-yes"}, "global": False}
+)
+flow.add_callback_query_trigger(
+    id="confirm-no-cb",
+    data={"filter": "equals", "context": {"value": "confirm-no"}, "global": False}
+)
+flow.add_custom_code(
+    id="create-order",
+    data={
+        "jsCode": "const product_id = get_context('selected_product_id'); const product_name = get_context('selected_product_name'); const product_price = get_context('selected_product_price'); const order = { telegram_id: chat_id, user_name: user_first_name, username: user_username, product_id: product_id, product_name: product_name, price: product_price, status: 'new', created_at: current_timestamp() }; const ins = db_insert('orders', order); const order_id = ins.data; const pay_link = 'https://pay.example.uz/order/' + order_id; send_message('✅ Buyurtmangiz qabul qilindi!\\n\\n🆔 Buyurtma ID: <b>' + order_id + '</b>\\n💳 To\\'lov uchun havola:\\n' + pay_link, { parse_mode: 'HTML' }); send_to_chat(get_context('env_ADMIN_CHAT_ID') || '', '🔔 Yangi buyurtma!\\n👤 ' + user_first_name + ' (@' + (user_username || 'yo\\'q') + ')\\n📦 ' + product_name + '\\n💰 ' + product_price + ' so\\'m\\n🆔 Order ID: ' + order_id);",
+        "outputs": []
+    },
+    after="confirm-yes-cb"
+)
+flow.add_node(
+    id="cancel-msg",
+    type="EditOrSendMessageNode",
+    data={
+        "messageText": "❌ Buyurtma bekor qilindi.\n\nQaytadan mahsulot tanlash uchun /start bosing.",
+        "parseMode": "HTML"
+    },
+    after="confirm-no-cb"
+)
+
+# Turn 2: barcha edge'lar (parallel)
+flow.connect(source="start", target="list-products")
+flow.connect(source="list-products", target="product-cb")
+flow.connect(source="product-cb", target="confirm-order")
+flow.connect(source="confirm-order", target="confirm-yes-cb")
+flow.connect(source="confirm-order", target="confirm-no-cb")
+flow.connect(source="confirm-yes-cb", target="create-order")
+flow.connect(source="confirm-no-cb", target="cancel-msg")
+
+# Turn 3: validate
+flow.validate()
+
+# Turn 4: save
+flow.save()
+```
+
+---
+
+### Bot 3: AI chatbot (LLM bilan, Ollama + KnowledgeTool)
+
+Tuzilma: `/start` → salom xabari → har kelgan matn `MessageTriggerNode` →
+`AIAgentNode` (Ollama gemma2, RAG `AIKnowledgeToolNode` ulangan) → javob yuboradi.
+
+**Umumiy qoidalar bu bot uchun:**
+- `MessageTriggerNode` — foydalanuvchi har yozganda ishga tushadi.
+- `AIAgentNode` system prompt O'zbek tilida, rolga mos.
+- `AIKnowledgeToolNode` — `faq` collection'ini vector DB orqali qidiradi.
+- Provider Ollama cloud (`https://ollama.com/v1`), model `gemma2:9b`.
+- Accessory'lar `flow.connect_accessory` bilan, flow edge bilan EMAS.
+
+```python
+# Turn 1: trigger + agent + reply node'lar (parallel)
+flow.add_command_trigger(
+    id="start",
+    data={"command": "/start", "global": True}
+)
+flow.add_node(
+    id="welcome",
+    type="EditOrSendMessageNode",
+    data={
+        "messageText": "Salom, {{first_name}}! 🤖\n\nMen AI yordamchiman. Istalgan savolingizni yozing — javob beraman.\n\n<i>Masalan: 'Kurslar qancha turadi?' yoki 'Qabul qanday amalga oshiriladi?'</i>",
+        "parseMode": "HTML"
+    },
+    after="start"
+)
+flow.add_message_trigger(
+    id="user-msg",
+    data={"global": True, "state": {"key": "last_question", "type": "text"}}
+)
+flow.add_ai_agent(
+    id="ai-agent",
+    data={
+        "systemPrompt": "Sen o'quv markaz Botmother AI yordamchisisisan. Faqat kurslar, narxlar, qabul jarayoni va o'quv markaz haqida savollarga javob ber. O'zbek tilida, qisqa va aniq javob ber. Bilmagan narsangni aytishdan uyalma.",
+        "outputKey": "agent_output",
+        "returnMode": "text"
+    },
+    after="user-msg"
+)
+flow.add_node(
+    id="ai-reply",
+    type="EditOrSendMessageNode",
+    data={"messageText": "{{agent_output}}"},
+    after="ai-agent"
+)
+
+# Turn 2: accessory node'larni yarat (parallel, flow edge kerak emas)
+flow.add_ai_ollama_provider(
+    id="ollama-prov",
+    data={
+        "provider": "ollama",
+        "model": "gemma2:9b",
+        "baseURL": "https://ollama.com/v1",
+        "apiKey": "ollama-cloud-api-key-here"
+    }
+)
+flow.add_ai_knowledge_tool(
+    id="faq-knowledge",
+    data={
+        "tool": "knowledge",
+        "collection": "faq",
+        "topK": 5,
+        "embeddingProvider": "ollama",
+        "embeddingModel": "nomic-embed-text",
+        "embeddingApiKey": "ollama-cloud-api-key-here"
+    }
+)
+
+# Turn 3: flow edge'lar + accessory'larni ul (parallel — bular bir-biriga bog'liq emas)
+flow.connect(source="start", target="welcome")
+flow.connect(source="user-msg", target="ai-agent")
+flow.connect_accessory(accessory_id="ollama-prov", agent_id="ai-agent", port="acc:ai_model")
+flow.connect_accessory(accessory_id="faq-knowledge", agent_id="ai-agent", port="acc:ai_tool")
+
+# Turn 4: validate
+flow.validate()
+
+# Turn 5: save
+flow.save()
+```
+
+---
+
 ## flow.clear — QAT'IY himoya (deyarli hech qachon)
 `flow.clear` butun working_flow'ni (barcha node + edge) O'CHIRADI. Bu
 destructiv va qaytarib bo'lmaydigan amal. Faqat va faqat parent vazifa
