@@ -550,6 +550,303 @@ flow.connect_accessory(accessory_id="ai-prov", agent_id="agent", port="acc:ai_mo
 
 **API key qoidasi:** `ask_user` bilan haqiqiy qiymat ol. `{{env.KEY}}` placeholder yozma — validator rad etadi (`ai_provider_missing_api_key`).
 
+## Tool call misollari
+
+Quyidagi misollar har tool uchun to'g'ri chaqiruv formatini ko'rsatadi.
+Copy-paste qilinadigan, real scenariylarga asoslangan.
+
+---
+
+### 1. flow.add_custom_code
+
+**(a) Linear — outputs e'lon qilma, exit() shart emas:**
+```python
+flow.add_custom_code(
+    id="save-order",
+    data={
+        "jsCode": "const name = get_context('user_name'); const phone = get_context('user_phone'); const res = db_insert('orders', {name: name, phone: phone, status: 'new', created_at: current_timestamp()}); set_context('order_id', res.data); send_message('Buyurtma qabul qilindi! ID: ' + res.data);",
+        "outputs": [{"name": "default"}]
+    },
+    after="capture-phone"
+)
+```
+
+**(b) 2 branch (ok / not_found) — har branch uchun alohida exit():**
+```python
+flow.add_custom_code(
+    id="check-user",
+    data={
+        "jsCode": "const res = db_find_one('users', {telegram_id: chat_id}); if (!res || !res.data) { send_message('Siz ro\\'yxatdan o\\'tmagansiz.'); exit('not_found'); return; } set_context('user', res.data); exit('found');",
+        "outputs": [{"name": "found"}, {"name": "not_found"}]
+    },
+    after="start"
+)
+# Keyin har branch uchun edge:
+flow.connect(source="check-user", target="main-menu", source_handle="output-found")
+flow.connect(source="check-user", target="register-ask", source_handle="output-not_found")
+```
+
+**(c) Dinamik inline klaviatura (collection'dan tugmalar):**
+```python
+flow.add_custom_code(
+    id="list-courses",
+    data={
+        "jsCode": "const res = db_find('courses', {}); const courses = (res && res.data) || []; if (!courses.length) { send_message('Kurslar mavjud emas.'); exit('default'); return; } const rows = courses.map(function(c) { return [{ text: c.name + ' — ' + c.price + ' so\\'m', callback_data: 'course:' + c._id }]; }); send_message('Mavjud kurslar:', { inline_keyboard: rows });",
+        "outputs": [{"name": "default"}]
+    },
+    after="menu"
+)
+```
+
+---
+
+### 2. flow.connect — source_handle formati
+
+**(a) Oddiy linear edge (default handle):**
+```python
+flow.connect(
+    source="start",
+    target="welcome-msg"
+)
+# source_handle default = "source-handler"
+```
+
+**(b) CustomCode output handle bilan:**
+```python
+flow.connect(
+    source="check-subscription",
+    target="premium-content",
+    source_handle="output-ok"
+)
+flow.connect(
+    source="check-subscription",
+    target="buy-prompt",
+    source_handle="output-expired"
+)
+```
+
+**(c) Inline tugma handle bilan (EditOrSendMessageNode dan):**
+```python
+flow.connect(
+    source="main-menu",
+    target="courses-list",
+    source_handle="target-handler-main-menu-\U0001f4da Kurslar"
+)
+flow.connect(
+    source="main-menu",
+    target="about-page",
+    source_handle="target-handler-main-menu-ℹ️ Haqida"
+)
+```
+
+---
+
+### 3. flow.connect_button — reply keyboard tugmasi uchun
+
+```python
+# SendTextMessageNode ("ask-phone") da reply keyboard bor:
+# keyboard: {active:"reply", reply:[[{text:"📱 Telefon yuborish", type:"request_contact"}]]}
+# Tugmani capture node'ga ulash:
+flow.connect_button(
+    source="ask-phone",
+    target="capture-contact",
+    button_text="\U0001f4f1 Telefon yuborish"
+)
+# source_handle avtomatik = "target-handler-ask-phone-📱 Telefon yuborish"
+```
+
+---
+
+### 4. flow.add_node — EditOrSendMessageNode (inline keyboard bilan)
+
+```python
+flow.add_node(
+    id="main-menu",
+    type="EditOrSendMessageNode",
+    data={
+        "messageText": "Assalomu alaykum, {{first_name}}!\nNima qilmoqchisiz?",
+        "parseMode": "HTML",
+        "keyboard": {
+            "active": "inline",
+            "inline": [
+                [
+                    {"text": "\U0001f4da Kurslar", "type": "callback", "value": "courses"},
+                    {"text": "\U0001f6d2 Buyurtmalar", "type": "callback", "value": "orders"}
+                ],
+                [
+                    {"text": "ℹ️ Biz haqimizda", "type": "callback", "value": "about"}
+                ]
+            ]
+        }
+    },
+    after="start"
+)
+```
+
+---
+
+### 5. flow.add_ai_agent + flow.connect_accessory — bitta blokda
+
+```python
+# Turn 1: node'larni qo'sh (parallel)
+flow.add_ai_agent(
+    id="faq-agent",
+    data={
+        "systemPrompt": "Sen o'quv markaz yordamchisisisan. Faqat kurslar, narxlar va qabul haqida javob ber. O'zbek tilida qisqa javob ber.",
+        "outputKey": "agent_output",
+        "returnMode": "text"
+    },
+    after="user-question"
+)
+flow.add_ai_ollama_provider(
+    id="faq-provider",
+    data={
+        "provider": "ollama",
+        "model": "gemma2:9b",
+        "baseURL": "https://ollama.com/v1",
+        "apiKey": "ollama-user-key-here"
+    }
+)
+flow.add_ai_knowledge_tool(
+    id="faq-kb",
+    data={
+        "tool": "knowledge",
+        "collection": "faq",
+        "embeddingProvider": "openai",
+        "embeddingModel": "text-embedding-3-small",
+        "embeddingApiKey": "sk-...",
+        "topK": 5
+    }
+)
+flow.add_node(
+    id="faq-reply",
+    type="EditOrSendMessageNode",
+    data={"messageText": "{{agent_output}}"},
+    after="faq-agent"
+)
+
+# Turn 2: accessory'larni ul
+flow.connect_accessory(accessory_id="faq-provider", agent_id="faq-agent", port="acc:ai_model")
+flow.connect_accessory(accessory_id="faq-kb",       agent_id="faq-agent", port="acc:ai_tool")
+```
+
+---
+
+### 6. flow.add_callback_query_trigger
+
+**(a) global=false — CustomCode'dan keyin oqim ichida:**
+```python
+# list-courses → foydalanuvchi kurs tanlaydi → course-cb
+flow.add_callback_query_trigger(
+    id="course-cb",
+    data={
+        "filter": "starts_with",
+        "context": {"value": "course:"},
+        "global": False
+    },
+    after="list-courses"
+)
+# Trigger ichida callback_query.data dan id ajratib detal ko'rsat:
+flow.add_custom_code(
+    id="course-detail",
+    data={
+        "jsCode": "const id = callback_query.data.replace('course:', ''); const res = db_find_one('courses', {_id: id}); if (!res || !res.data) { send_message('Topilmadi.'); exit('default'); return; } const c = res.data; send_message('<b>' + c.name + '</b>\\n' + c.description + '\\nNarx: ' + c.price + ' so\\'m', {parse_mode: 'HTML', inline_keyboard: [[{text: '✅ Ro\\'yxatdan o\\'tish', callback_data: 'enroll:' + id}]]}); exit('default');",
+        "outputs": [{"name": "default"}]
+    },
+    after="course-cb"
+)
+```
+
+**(b) global=true — istalgan joydan /menu tugmasi:**
+```python
+flow.add_callback_query_trigger(
+    id="global-home-cb",
+    data={
+        "filter": "equals",
+        "context": {"value": "home"},
+        "global": True
+    }
+)
+# Alohida trigger, flow edge bilan ulab olmaysan — global trigger mustaqil
+flow.connect(source="global-home-cb", target="main-menu")
+```
+
+---
+
+### 7. cms.find filter bilan va cms.bulk_insert
+
+**cms.find — filter va limit bilan:**
+```python
+cms.find(
+    collection="orders",
+    filter={"status": "pending", "created_at": {"$gte": "2024-01-01"}},
+    limit=50,
+    sort={"created_at": -1}
+)
+```
+
+**cms.bulk_insert — demo data qo'shish:**
+```python
+cms.bulk_insert(
+    collection="courses",
+    documents=[
+        {"name": "Python asoslari", "description": "Boshlang'ichlar uchun", "price": 1200000, "duration": "2 oy"},
+        {"name": "Frontend (React)", "description": "Modern UI qurishni o'rgan", "price": 1500000, "duration": "3 oy"},
+        {"name": "Django Backend", "description": "REST API yaratish", "price": 1800000, "duration": "3 oy"},
+        {"name": "Data Science", "description": "Python + ML", "price": 2000000, "duration": "4 oy"},
+        {"name": "DevOps / Docker", "description": "CI/CD, konteynerlar", "price": 1600000, "duration": "2 oy"}
+    ]
+)
+```
+
+---
+
+### 8. flow.connect_branch — IfNode true/false va boshqa handle'lar
+
+**(a) IfConditionNode — true/false branch:**
+```python
+flow.add_if_condition(
+    id="check-premium",
+    data={
+        "conditions": [{"left": "{{state.subscription}}", "operator": "equals", "right": "premium"}],
+        "operator": "and"
+    },
+    after="check-user"
+)
+flow.connect_branch(source="check-premium", target="premium-menu",   handle="true")
+flow.connect_branch(source="check-premium", target="upgrade-prompt", handle="false")
+```
+
+**(b) LoadCollectionItemNode — found/not_found:**
+```python
+flow.add_node(
+    id="load-product",
+    type="LoadCollectionItemNode",
+    data={
+        "collection": {"name": "products"},
+        "contextKey": "product",
+        "filters": [{"field": "_id", "operator": "equals", "valueSource": "state", "stateKey": "product_id"}]
+    },
+    after="capture-choice"
+)
+flow.connect_branch(source="load-product", target="product-detail", handle="found")
+flow.connect_branch(source="load-product", target="not-found-msg",  handle="not_found")
+```
+
+**(c) CheckMembershipNode — is-member/not-member:**
+```python
+flow.add_node(
+    id="check-channel",
+    type="CheckMembershipNode",
+    data={"chatId": "@mychannel_uz"},
+    after="start"
+)
+flow.connect_branch(source="check-channel", target="main-menu",    handle="is-member")
+flow.connect_branch(source="check-channel", target="join-prompt",  handle="not-member")
+```
+
+---
+
 ## flow.clear — QAT'IY himoya (deyarli hech qachon)
 `flow.clear` butun working_flow'ni (barcha node + edge) O'CHIRADI. Bu
 destructiv va qaytarib bo'lmaydigan amal. Faqat va faqat parent vazifa
