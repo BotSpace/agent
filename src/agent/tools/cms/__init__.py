@@ -40,6 +40,39 @@ def _error(e: BackendError, action: str | None = None) -> ToolResult:
     return ToolResult.error(format_backend_error(action, e))
 
 
+# ── result formatters ─────────────────────────────────────────────────────────
+
+import json as _json
+
+# Max docs serialised into the content string sent to the LLM.
+# Keeps token usage predictable; the full set is still in result.data.
+_CONTENT_DOC_LIMIT = 50
+
+
+def _safe(obj: Any) -> Any:
+    """Recursively make a value JSON-serialisable."""
+    if isinstance(obj, dict):
+        return {k: _safe(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_safe(i) for i in obj]
+    try:
+        _json.dumps(obj)
+        return obj
+    except (TypeError, ValueError):
+        return str(obj)
+
+
+def _fmt_rows(rows: list[Any], total: int | str, *, noun: str = "document") -> str:
+    """Format a list of docs into a compact JSON string for the LLM."""
+    header = f"{len(rows)} of {total} {noun}(s)"
+    if not rows:
+        return header + " — empty result."
+    shown = rows[:_CONTENT_DOC_LIMIT]
+    body = _json.dumps([_safe(d) for d in shown], ensure_ascii=False, separators=(",", ":"))
+    tail = f"\n(first {len(shown)} shown)" if len(rows) > len(shown) else ""
+    return f"{header}:\n{body}{tail}"
+
+
 # ── field type catalog (matches backend FieldKind enum) ──────────────────────
 
 
@@ -121,7 +154,15 @@ async def get_collection(input: GetCollectionInput, ctx: ToolContext) -> ToolRes
         c = await _backend(ctx).cms_get_collection(pid, input.name, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
         return _error(e)
-    return ToolResult.ok(f"Collection `{input.name}` loaded.", data={"collection": c})
+    fields = c.get("fields", [])
+    field_summary = ", ".join(
+        f"{f.get('name')}({f.get('kind')}{'*' if f.get('required') else ''})"
+        for f in fields
+    ) or "(no fields)"
+    return ToolResult.ok(
+        f"Collection `{input.name}` — {len(fields)} field(s): {field_summary}",
+        data={"collection": c},
+    )
 
 
 class CreateCollectionInput(BaseModel):
@@ -307,9 +348,10 @@ async def find(input: ListDocumentsInput, ctx: ToolContext) -> ToolResult:
     except BackendError as e:
         return _error(e)
     rows = res.get("results", [])
+    total = res.get("total", "?")
     return ToolResult.ok(
-        f"{len(rows)} of {res.get('total', '?')} document(s).",
-        data={"results": rows, "total": res.get("total"), "limit": res.get("limit"), "skip": res.get("skip")},
+        _fmt_rows(rows, total),
+        data={"results": rows, "total": total, "limit": res.get("limit"), "skip": res.get("skip")},
     )
 
 
@@ -334,7 +376,8 @@ async def get_document(input: GetDocumentInput, ctx: ToolContext) -> ToolResult:
         )
     except BackendError as e:
         return _error(e)
-    return ToolResult.ok(f"Document `{input.id}` loaded.", data={"document": d})
+    body = _json.dumps(_safe(d), ensure_ascii=False, separators=(",", ":"))
+    return ToolResult.ok(f"Document `{input.id}`:\n{body}", data={"document": d})
 
 
 class InsertInput(BaseModel):
@@ -497,7 +540,9 @@ async def aggregate(input: AggregateInput, ctx: ToolContext) -> ToolResult:
         )
     except BackendError as e:
         return _error(e)
-    return ToolResult.ok(f"{d.get('count', 0)} row(s).", data=d)
+    rows = d.get("results", [])
+    count = d.get("count", len(rows))
+    return ToolResult.ok(_fmt_rows(rows, count, noun="row"), data=d)
 
 
 class AuditInput(BaseModel):
@@ -529,7 +574,7 @@ async def audit_log(input: AuditInput, ctx: ToolContext) -> ToolResult:
         )
     except BackendError as e:
         return _error(e)
-    return ToolResult.ok(f"{len(items)} audit entries.", data={"audit": items})
+    return ToolResult.ok(_fmt_rows(items, len(items), noun="audit entry"), data={"audit": items})
 
 
 def build_cms_tools() -> list[Tool]:
