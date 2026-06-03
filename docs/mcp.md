@@ -1,6 +1,6 @@
 # Botmother Agent — MCP server
 
-agentv3 ichidagi tool registry'ni **Model Context Protocol** (MCP) orqali tashqi
+agent ichidagi tool registry'ni **Model Context Protocol** (MCP) orqali tashqi
 klientlarga (Claude Code, Cursor, boshqa MCP host'lar) ochadi. Shu orqali siz
 o'z botingiz flow'ini, CMS kolleksiyalarini, env/release'larini to'g'ridan-to'g'ri
 AI klientidan boshqarasiz.
