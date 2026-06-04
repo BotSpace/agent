@@ -10,7 +10,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-
 NodeCategory = Literal[
     "trigger",
     "send",
@@ -406,7 +405,8 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         type="CheckMembershipNode",
         category="integration",
         description="Foydalanuvchi kanal/guruh a'zosi ekanligini tekshirish",
-        required_data=["chatId"],
+        required_data=["channels"],
+        optional_data=["channelsCollection", "channelsField", "chatId"],
         source_handles=["is-member", "not-member"],
     ),
     "DownloadNode": NodeTypeSpec(

@@ -741,12 +741,18 @@ flow.connect_branch(source="load-product", target="not-found-msg",  handle="not_
 flow.add_node(
     id="check-channel",
     type="CheckMembershipNode",
-    data={"chatId": "@mychannel_uz"},
+    data={"channels": [{"value": "@mychannel_uz"}]},  # bir nechta kanal ham mumkin
     after="start"
 )
 flow.connect_branch(source="check-channel", target="main-menu",    handle="is-member")
 flow.connect_branch(source="check-channel", target="join-prompt",  handle="not-member")
 ```
+DIQQAT: engine `channels: [{value: "@kanal"}]` formatini o'qiydi (`chatId` faqat
+legacy alias). Kanal umuman berilmasa engine HAMMANI a'zo deb o'tkazib yuboradi.
+Dinamik variant: `data={"channelsCollection": "channels"}` — kanallar collection'da
+saqlanadi (har hujjatda `value` ustuni: "@kanal" yoki raqamli id), admin flow'ni
+tahrirlamasdan kanal qo'shadi/o'chiradi. Bunda avval `channels` collection yaratib,
+kanallarni cms_insert bilan kiriting.
 
 ---
 

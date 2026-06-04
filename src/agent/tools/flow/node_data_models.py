@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class _StrictData(BaseModel):
@@ -376,8 +376,55 @@ class SendToAdminData(_StrictData):
     messageText: str = Field(description="Message to send to the admin/group chat.")
 
 
+class MembershipChannel(_StrictData):
+    value: str = Field(
+        default="",
+        description="Kanal @username (masalan '@my_channel') yoki bo'sh (id ishlatilsa).",
+    )
+    id: int | None = Field(
+        default=None,
+        description="Raqamli kanal id (masalan -1001234567890). value bo'lsa shart emas.",
+    )
+
+
 class CheckMembershipData(_StrictData):
-    chatId: str = Field(description="Chat/channel id to check membership against.")
+    """Engine `channels: [{value|id}]` formatini o'qiydi.
+
+    DIQQAT: `chatId` legacy alias — eski flow'lar uchun qabul qilinadi, lekin
+    YANGI node'larda channels ishlating; channels/chatId ikkalasi ham bo'lmasa
+    engine HAMMANI a'zo deb o'tkazib yuboradi.
+    """
+
+    channels: list[MembershipChannel] | None = Field(
+        default=None,
+        description="Tekshiriladigan kanallar ro'yxati: [{value: '@channel'}].",
+    )
+    channelsCollection: str | None = Field(
+        default=None,
+        description=(
+            "Kanallarni DINAMIK olish: collection nomi (masalan 'channels'). "
+            "Admin kanallarni collection orqali boshqaradi — flow'ni tahrirlamasdan. "
+            "Har hujjatdagi channelsField (default 'value') ustuni @username yoki raqamli id."
+        ),
+    )
+    channelsField: str | None = Field(
+        default=None,
+        description="channelsCollection hujjatlaridagi kanal ustuni nomi (default: 'value').",
+    )
+    chatId: str | None = Field(
+        default=None,
+        description="LEGACY alias (bitta kanal @username yoki id). Yangi flow'da channels ishlating.",
+    )
+
+    @model_validator(mode="after")
+    def _at_least_one_channel(self) -> CheckMembershipData:
+        if not self.channels and not self.channelsCollection and not self.chatId:
+            raise ValueError(
+                "CheckMembershipNode kamida bitta kanal manbai talab qiladi: "
+                "channels: [{value: '@channel'}] yoki channelsCollection bering — "
+                "aks holda engine HAMMANI a'zo deb o'tkazib yuboradi."
+            )
+        return self
 
 
 class DownloadData(_StrictData):
@@ -722,7 +769,7 @@ def _safe_default(value: Any) -> Any:
         if str(value).startswith("PydanticUndefined"):
             return None
         return value
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
 
 
@@ -730,7 +777,7 @@ def _format_type(annot: Any) -> str:
     """Render a Pydantic field annotation as compact text for docs."""
     try:
         s = str(annot)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return "any"
     for prefix in ("typing.", "<class '", "'>", "agent.tools.flow.node_data_models."):
         s = s.replace(prefix, "")
