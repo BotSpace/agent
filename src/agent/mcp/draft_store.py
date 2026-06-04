@@ -154,6 +154,42 @@ class DraftStore:
             "snapshots": row[5] or [],
         }
 
+    async def load_latest(self, *, user_id: str) -> dict[str, Any] | None:
+        """Most-recently-updated draft for a user across all projects (#5).
+
+        Used for transparent session recovery: after a restart the active-project
+        pointer is lost, so we fall back to "whatever the user was last editing".
+        Includes `project_id` in the returned dict. Graceful degrade → None."""
+        if not await self._bootstrap():
+            return None
+        try:
+            async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        """SELECT project_id, project_name, working_flow,
+                                  baseline_flow, flow_dirty, collections, snapshots
+                           FROM mcp_flow_drafts
+                           WHERE user_id = %s
+                           ORDER BY updated_at DESC
+                           LIMIT 1""",
+                        (user_id,),
+                    )
+                    row = await cur.fetchone()
+        except Exception as exc:
+            logger.warning("MCP draft load_latest failed (%s): %s", user_id, exc)
+            return None
+        if not row:
+            return None
+        return {
+            "project_id": row[0],
+            "project_name": row[1],
+            "working_flow": row[2],
+            "baseline_flow": row[3],
+            "flow_dirty": bool(row[4]),
+            "collections": row[5] or [],
+            "snapshots": row[6] or [],
+        }
+
     async def clear(self, *, user_id: str, project_id: str) -> None:
         """Drop the persisted draft after a successful save."""
         if not await self._bootstrap():

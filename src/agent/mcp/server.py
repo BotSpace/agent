@@ -40,7 +40,8 @@ from ..tools.registry import ToolRegistry
 from . import trace
 from .auth import AuthedUser, MCPAuthError, authenticate
 from .draft_store import get_draft_store
-from .workspace import Workspace, get_workspace_store
+from .flow_versions import get_flow_version_store
+from .workspace import Workspace, WorkspaceStore, get_workspace_store
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,15 @@ _SESSION_STATUS = "session_status"
 _SESSION_UNDO = "session_undo"
 _SESSION_LOG_PROMPT = "session_log_prompt"
 _DOCS_GUIDE = "docs_guide"
+# Power tool'lar (#1-#3) — server o'zi boshqaradi (workspace + engine simulator).
+_BOT_SIMULATE = "bot_simulate"
+_FLOW_EXPORT = "flow_export"
+_FLOW_IMPORT = "flow_import"
+_FLOW_HISTORY = "flow_history"
+_FLOW_ROLLBACK = "flow_rollback"
+
+# Transparent session-restore notice (#5) — prepended to the result text.
+_RESTORE_NOTICE = "ℹ️ Sessiya avtomatik tiklandi (loyiha {pid})"  # noqa: RUF001
 
 # Registry tool'lar — bajarilishidan OLDIN avtomatik undo snapshot olinadi (#11).
 _SNAPSHOT_BEFORE = frozenset({"flow.apply_template", "flow.clear", "flow.save"})
@@ -88,6 +98,23 @@ async def _persist_draft(ws: Workspace) -> None:
     )
 
 
+async def _append_flow_version(ws: Workspace, user: AuthedUser) -> None:
+    """Record the just-saved flow as a new version (#3). Graceful degrade lives
+    inside FlowVersionStore — a DB failure is a logged no-op."""
+    if not ws.project_id:
+        return
+    flow = ws.working_flow or {"nodes": [], "edges": []}
+    nodes = len(flow.get("nodes") or [])
+    edges = len(flow.get("edges") or [])
+    await get_flow_version_store().append(
+        project_id=ws.project_id,
+        user_id=user.user_id,
+        flow=flow,
+        node_count=nodes,
+        edge_count=edges,
+    )
+
+
 def _hydrate_from_draft(ws: Workspace, draft: dict) -> None:
     """Load a persisted draft row into the in-memory workspace."""
     ws.project_name = draft.get("project_name")
@@ -97,6 +124,36 @@ def _hydrate_from_draft(ws: Workspace, draft: dict) -> None:
     ws.collections = draft.get("collections") or []
     snaps = draft.get("snapshots")
     ws.snapshots = list(snaps) if isinstance(snaps, list) else []
+
+
+async def _auto_restore_session(
+    store: WorkspaceStore, user: AuthedUser
+) -> str | None:
+    """Transparent session recovery (#5).
+
+    After a pod restart / TTL expiry the per-client active-project pointer is
+    gone, so flow tools fail with "Aktiv loyiha yo'q". Here we look up THIS
+    user's most-recently-updated persisted draft, re-activate that project for
+    this client and hydrate the workspace from the draft, so work continues
+    seamlessly. Returns the recovered project_id (caller prepends a one-line
+    notice), or None if nothing to restore. MUST be called with the user lock
+    held. Explicit session_use_project always wins (it sets the pointer, so this
+    only fires when the pointer is empty)."""
+    try:
+        draft = await get_draft_store().load_latest(user_id=user.user_id)
+    except AttributeError:
+        # Older/fake stores without load_latest — degrade silently.
+        return None
+    except Exception:  # pragma: no cover — defensive
+        return None
+    if not draft or not draft.get("project_id"):
+        return None
+    project_id = str(draft["project_id"])
+    ws = store.set_active(user.user_id, project_id, client_key=user.client_key)
+    ws.sync_auth_claims(user.claims)
+    _hydrate_from_draft(ws, draft)
+    ws.project_id = project_id
+    return project_id
 
 # docs_guide topic → (sarlavha, kontent loader). Kontent agent'ning ICHKI
 # agentlariga beriladigan system prompt'lar — MCP klient modeli ham xuddi shu
@@ -307,6 +364,134 @@ def _session_tools() -> list[mtypes.Tool]:
             },
             annotations=mtypes.ToolAnnotations(readOnlyHint=True),
         ),
+        mtypes.Tool(
+            name=_BOT_SIMULATE,
+            description=(
+                "Joriy flow'ni engine simulyatorida sinab ko'radi — REAL bot / "
+                "Telegram'siz. Foydalanuvchi qadamlari ketma-ketligini (steps) "
+                "yuborasiz, har qadam uchun bot QANDAY javob berishini (xabarlar, "
+                "klaviatura, o'zgartirish/o'chirish, kechgan node'lar, xatolar) "
+                "qaytaradi. flow_save'dan keyin asosiy stsenariylarni O'ZINGIZ "
+                "tekshiring — foydalanuvchidan so'rashdan oldin verify qiling. "
+                "use_saved=false (default) SAQLANMAGAN working draft'ni ham sinaydi."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "steps": {
+                        "type": "array",
+                        "description": (
+                            "Foydalanuvchi kiritmalari ketma-ketligi. Har element: "
+                            "{type, ...}. type: 'command' (text=/start), 'text' "
+                            "(text='salom'), 'contact' (phone, first_name?), "
+                            "'location' (latitude, longitude), 'click' "
+                            "(callback button: data=callback_data), 'click_text' "
+                            "(reply/inline button matnini bosish: text='Tugma')."
+                        ),
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "type": {
+                                    "type": "string",
+                                    "enum": [
+                                        "command", "text", "contact",
+                                        "location", "click", "click_text",
+                                    ],
+                                },
+                                "text": {"type": "string"},
+                                "data": {"type": "string"},
+                                "phone": {"type": "string"},
+                                "first_name": {"type": "string"},
+                                "latitude": {"type": "number"},
+                                "longitude": {"type": "number"},
+                            },
+                            "required": ["type"],
+                        },
+                    },
+                    "seed_collections": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": (
+                            "True (default) — loyiha kolleksiyalarining HOZIRGI "
+                            "hujjatlarini backend'dan o'qib simulyatorga beradi "
+                            "(har kolleksiyadan max 50). False — bo'sh kolleksiyalar."
+                        ),
+                    },
+                    "use_saved": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": (
+                            "False (default) — workspace'dagi working (saqlanmagan) "
+                            "flow'ni sinaydi. True — backend'dagi SAQLANGAN flow'ni."
+                        ),
+                    },
+                },
+                "required": ["steps"],
+            },
+            # Side-effect-free w.r.t. saved data (simulator is sandboxed), but it
+            # DOES run flow logic, so not strictly read-only; never destructive.
+            annotations=mtypes.ToolAnnotations(readOnlyHint=False, destructiveHint=False),
+        ),
+        mtypes.Tool(
+            name=_FLOW_EXPORT,
+            description=(
+                "Joriy working flow'ni TO'LIQ JSON ko'rinishida qaytaradi "
+                "(structuredContent + matn). Zaxira nusxa olish yoki boshqa "
+                "loyihaga ko'chirish (flow_import) uchun."
+            ),
+            inputSchema={"type": "object", "properties": {}},
+            annotations=mtypes.ToolAnnotations(readOnlyHint=True),
+        ),
+        mtypes.Tool(
+            name=_FLOW_IMPORT,
+            description=(
+                "To'liq flow JSON'ini working flow sifatida O'RNATADI (mavjudini "
+                "ALMASHTIRADI). Avval validatsiyadan o'tkaziladi — xato bo'lsa "
+                "import QILINMAYDI. Import oldidan avtomatik snapshot olinadi "
+                "(session_undo bilan qaytarish mumkin). Persist EMAS — flow_save "
+                "bilan tasdiqlang."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "flow_json": {
+                        "type": "object",
+                        "description": "To'liq flow obyekti: {nodes:[...], edges:[...]}.",
+                    }
+                },
+                "required": ["flow_json"],
+            },
+            annotations=mtypes.ToolAnnotations(destructiveHint=True),
+        ),
+        mtypes.Tool(
+            name=_FLOW_HISTORY,
+            description=(
+                "Loyihaning saqlangan flow versiyalari ro'yxati (oxirgi 20). Har "
+                "muvaffaqiyatli flow_save yangi versiya yozadi. flow_rollback "
+                "bilan istalgan versiyaga qaytish mumkin."
+            ),
+            inputSchema={"type": "object", "properties": {}},
+            annotations=mtypes.ToolAnnotations(readOnlyHint=True),
+        ),
+        mtypes.Tool(
+            name=_FLOW_ROLLBACK,
+            description=(
+                "flow_history'dagi tanlangan VERSION flow'ini workspace'ga yuklaydi "
+                "(working_flow, flow_dirty=true). Persist EMAS — o'zgarishni "
+                "tasdiqlash uchun keyin flow_save chaqiring."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "version": {
+                        "type": "integer",
+                        "description": "flow_history qaytargan version raqami.",
+                    }
+                },
+                "required": ["version"],
+            },
+            annotations=mtypes.ToolAnnotations(destructiveHint=True),
+        ),
     ]
 
 
@@ -416,14 +601,21 @@ async def _handle_session_status(user: AuthedUser) -> mtypes.CallToolResult:
     client_short = user.client_key[:8] if user.client_key else "—"
     async with store.lock(user.user_id):
         ws = store.get(user.user_id, client_key=user.client_key)
+        restored_pid: str | None = None
         if not ws.project_id:
-            return _result_to_mcp(
-                "Aktiv loyiha yo'q. session_use_project(project_id) bilan loyiha "
-                "tanlang — saqlanmagan draft bo'lsa avtomatik tiklanadi.\n"
-                f"(klient: {client_short})",
-                is_error=False,
-                data={"project_id": None, "client_key": client_short},
-            )
+            # #5 — try transparent recovery from the last-edited draft before
+            # reporting "no active project".
+            restored_pid = await _auto_restore_session(store, user)
+            if restored_pid is not None:
+                ws = store.get(user.user_id, client_key=user.client_key)
+            else:
+                return _result_to_mcp(
+                    "Aktiv loyiha yo'q. session_use_project(project_id) bilan loyiha "
+                    "tanlang — saqlanmagan draft bo'lsa avtomatik tiklanadi.\n"
+                    f"(klient: {client_short})",
+                    is_error=False,
+                    data={"project_id": None, "client_key": client_short},
+                )
         flow = ws.working_flow or {}
         nodes = len(flow.get("nodes") or [])
         edges = len(flow.get("edges") or [])
@@ -438,6 +630,8 @@ async def _handle_session_status(user: AuthedUser) -> mtypes.CallToolResult:
             f"\nKolleksiyalar ({len(col_names)}): {', '.join(col_names) if col_names else '—'}"
             f"\nKlient: {client_short}"
         )
+        if restored_pid is not None:
+            text = _RESTORE_NOTICE.format(pid=restored_pid) + "\n" + text
         return _result_to_mcp(
             text,
             is_error=False,
@@ -449,6 +643,7 @@ async def _handle_session_status(user: AuthedUser) -> mtypes.CallToolResult:
                 "flow_dirty": ws.flow_dirty,
                 "collections": col_names,
                 "client_key": client_short,
+                "session_restored": restored_pid is not None,
             },
         )
 
@@ -507,6 +702,375 @@ async def _handle_session_log_prompt(
     )
 
 
+# ── Power tools (#1-#3) ──────────────────────────────────────────────────────
+
+
+def _validate_flow_dict(flow: dict) -> tuple[bool, str, dict]:
+    """Run the existing flow validator on a raw flow dict.
+
+    Returns (ok, rendered_text, summary). `ok` is False on validation ERRORS
+    (warnings don't block)."""
+    from ..flow import FlowDocument, validate
+
+    try:
+        doc = FlowDocument.model_validate(flow or {})
+    except Exception as exc:
+        return False, f"Flow JSON noto'g'ri: {exc}", {"errors": [str(exc)], "warnings": []}
+    result = validate(doc)
+    summary = {
+        "ok": result.ok,
+        "errors": [i.message for i in result.errors],
+        "warnings": [i.message for i in result.warnings],
+    }
+    return result.ok, result.render(), summary
+
+
+async def _ensure_active_ws(store: WorkspaceStore, user: AuthedUser):
+    """Return the active workspace, attempting transparent restore (#5) if the
+    pointer is empty. Returns (ws, restored_pid)."""
+    ws = store.get(user.user_id, client_key=user.client_key)
+    ws.sync_auth_claims(user.claims)
+    restored_pid: str | None = None
+    if not ws.project_id:
+        restored_pid = await _auto_restore_session(store, user)
+        if restored_pid is not None:
+            ws = store.get(user.user_id, client_key=user.client_key)
+            ws.sync_auth_claims(user.claims)
+    return ws, restored_pid
+
+
+def _restore_prefix(text: str, restored_pid: str | None) -> str:
+    if restored_pid is None:
+        return text
+    return _RESTORE_NOTICE.format(pid=restored_pid) + "\n" + text
+
+
+async def _seed_collections_for_simulate(ws: Workspace) -> dict[str, list[dict]]:
+    """Read the CURRENT documents of the project's collections from the backend
+    (max 50 per collection) so the simulator runs against realistic data (#1).
+
+    Robust: per-collection failures are isolated; on any error a collection is
+    simply skipped (empty)."""
+    out: dict[str, list[dict]] = {}
+    if not ws.project_id:
+        return out
+    backend = get_backend_client()
+    names = [
+        c.get("name")
+        for c in ws.collections
+        if isinstance(c, dict) and c.get("name")
+    ]
+    for name in names:
+        try:
+            res = await backend.cms_list_documents(
+                ws.project_id,
+                str(name),
+                limit=50,
+                auth_claims=ws.auth_claims,
+            )
+            rows = res.get("results") if isinstance(res, dict) else None
+            out[str(name)] = rows if isinstance(rows, list) else []
+        except Exception:  # pragma: no cover — isolate one bad collection
+            out[str(name)] = []
+    return out
+
+
+def _fmt_simulate_step(idx: int, step: dict) -> list[str]:
+    """One simulated step → human-readable lines for the model."""
+    inp = step.get("input") if isinstance(step, dict) else None
+    in_label = ""
+    if isinstance(inp, dict):
+        itype = inp.get("type") or "?"
+        val = (
+            inp.get("text")
+            or inp.get("data")
+            or inp.get("phone")
+            or (f"{inp.get('latitude')},{inp.get('longitude')}" if inp.get("latitude") is not None else "")
+            or ""
+        )
+        in_label = f"{itype}:{val}".rstrip(":")
+    msgs = step.get("bot_messages") if isinstance(step, dict) else None
+    n_msgs = len(msgs) if isinstance(msgs, list) else 0
+    nodes = step.get("nodes") if isinstance(step, dict) else None
+    node_ids = [
+        n.get("id")
+        for n in (nodes if isinstance(nodes, list) else [])
+        if isinstance(n, dict) and n.get("id")
+    ]
+    path = " → ".join(node_ids) if node_ids else "—"
+    edits = len(step.get("edits") or []) if isinstance(step, dict) else 0
+    deletes = len(step.get("deletes") or []) if isinstance(step, dict) else 0
+    extra = ""
+    if edits:
+        extra += f", ✏️ {edits} edit"
+    if deletes:
+        extra += f", 🗑️ {deletes} delete"
+    lines = [f"{idx}. ➡️ {in_label or '—'} → 🤖 {n_msgs} xabar [{path}]{extra}"]
+    # Show message texts (truncated) so the model can verify wording.
+    for m in (msgs if isinstance(msgs, list) else []):
+        if not isinstance(m, dict):
+            continue
+        txt = str(m.get("text") or "").replace("\n", " ")
+        if len(txt) > 120:
+            txt = txt[:117] + "…"
+        if txt:
+            lines.append(f"     🤖 {txt}")
+    errs = step.get("errors") if isinstance(step, dict) else None
+    for e in (errs if isinstance(errs, list) else []):
+        lines.append(f"     ❌ XATO: {e}")
+    return lines
+
+
+async def _handle_bot_simulate(user: AuthedUser, arguments: dict) -> mtypes.CallToolResult:
+    from ..config import get_settings
+    from ..integrations.simulator import SimulatorUnavailableError, simulate
+
+    steps = arguments.get("steps")
+    if not isinstance(steps, list) or not steps:
+        return _result_to_mcp(
+            "steps majburiy — kamida bitta qadam bering "
+            "(masalan [{\"type\":\"command\",\"text\":\"/start\"}]).",
+            is_error=True,
+            data=None,
+        )
+    seed_collections = arguments.get("seed_collections", True)
+    use_saved = bool(arguments.get("use_saved", False))
+
+    store = get_workspace_store()
+    async with store.lock(user.user_id):
+        ws, restored_pid = await _ensure_active_ws(store, user)
+        if not ws.project_id:
+            return _result_to_mcp(
+                "Aktiv loyiha yo'q. session_use_project(project_id) chaqiring.",
+                is_error=True,
+                data=None,
+            )
+
+        if use_saved:
+            try:
+                flow = await load_saved_flow(
+                    ws.project_id, auth_claims=ws.auth_claims, client=get_backend_client()
+                )
+                flow = flow if isinstance(flow, dict) else {"nodes": [], "edges": []}
+            except Exception as exc:
+                return _result_to_mcp(
+                    _restore_prefix(f"Saqlangan flow'ni yuklab bo'lmadi: {exc}", restored_pid),
+                    is_error=True,
+                    data=None,
+                )
+        else:
+            flow = ws.working_flow or {"nodes": [], "edges": []}
+
+        collections: dict[str, list[dict]] = {}
+        if seed_collections:
+            collections = await _seed_collections_for_simulate(ws)
+
+        chat = {
+            "id": 1,
+            "first_name": str(ws.auth_claims.get("first_name") or "Test"),
+            "username": str(ws.auth_claims.get("username") or "test_user"),
+        }
+
+    # Network call OUTSIDE the user lock (it can take up to 90s).
+    simulator_url = get_settings().simulator_url
+    try:
+        resp = await simulate(
+            simulator_url=simulator_url,
+            flow=flow,
+            steps=[s for s in steps if isinstance(s, dict)],
+            collections=collections,
+            chat=chat,
+        )
+    except SimulatorUnavailableError:
+        return _result_to_mcp(
+            _restore_prefix(
+                "Simulyator servisi hozircha ishga tushmagan — bot_simulate'ni "
+                "keyinroq qayta urinib ko'ring (yoki release_debug bilan debug "
+                "botda sinab ko'ring).",
+                restored_pid,
+            ),
+            is_error=True,
+            data=None,
+        )
+
+    sim_steps = resp.get("steps") if isinstance(resp, dict) else None
+    top_errors = resp.get("errors") if isinstance(resp, dict) else None
+    flow_src = "saqlangan flow" if use_saved else "working draft (saqlanmagan)"
+    lines = [
+        f"Simulyatsiya — {flow_src}, {len(steps)} qadam "
+        f"({len(collections)} kolleksiya seed):"
+    ]
+    if isinstance(sim_steps, list):
+        for i, st in enumerate(sim_steps, 1):
+            lines.extend(_fmt_simulate_step(i, st if isinstance(st, dict) else {}))
+    else:
+        lines.append("(simulyator qadam natijalarini qaytarmadi)")
+    if isinstance(top_errors, list) and top_errors:
+        lines.append("")
+        lines.append("Umumiy xatolar:")
+        lines.extend(f"  ❌ {e}" for e in top_errors)
+    ok = bool(resp.get("ok")) if isinstance(resp, dict) else False
+    lines.append("")
+    lines.append("✅ Simulyatsiya muvaffaqiyatli" if ok else "⚠️ Simulyatsiyada xatolar bor — yuqoriga qarang")
+    text = _restore_prefix("\n".join(lines), restored_pid)
+    return _result_to_mcp(text, is_error=not ok, data=resp if isinstance(resp, dict) else None)
+
+
+async def _handle_flow_export(user: AuthedUser) -> mtypes.CallToolResult:
+    import json as _json
+
+    store = get_workspace_store()
+    async with store.lock(user.user_id):
+        ws, restored_pid = await _ensure_active_ws(store, user)
+        if not ws.project_id:
+            return _result_to_mcp(
+                "Aktiv loyiha yo'q. session_use_project(project_id) chaqiring.",
+                is_error=True,
+                data=None,
+            )
+        flow = ws.working_flow or {"nodes": [], "edges": []}
+    nodes = len(flow.get("nodes") or [])
+    edges = len(flow.get("edges") or [])
+    body = _json.dumps(flow, ensure_ascii=False, indent=2)
+    text = _restore_prefix(
+        f"Working flow ({nodes} node, {edges} edge):\n```json\n{body}\n```",
+        restored_pid,
+    )
+    return _result_to_mcp(text, is_error=False, data=flow)
+
+
+async def _handle_flow_import(user: AuthedUser, arguments: dict) -> mtypes.CallToolResult:
+    flow_json = arguments.get("flow_json")
+    if not isinstance(flow_json, dict):
+        return _result_to_mcp(
+            "flow_json majburiy — to'liq flow obyekti {nodes, edges} bering.",
+            is_error=True,
+            data=None,
+        )
+    ok, rendered, summary = _validate_flow_dict(flow_json)
+    if not ok:
+        return _result_to_mcp(
+            "Import RAD ETILDI — flow validatsiyadan o'tmadi:\n" + rendered,
+            is_error=True,
+            data=summary,
+        )
+    from ..flow import FlowDocument
+
+    normalized = FlowDocument.model_validate(flow_json).model_dump()
+    store = get_workspace_store()
+    async with store.lock(user.user_id):
+        ws, restored_pid = await _ensure_active_ws(store, user)
+        if not ws.project_id:
+            return _result_to_mcp(
+                "Aktiv loyiha yo'q. session_use_project(project_id) chaqiring.",
+                is_error=True,
+                data=None,
+            )
+        # Snapshot BEFORE replacing so session_undo can restore.
+        if ws.working_flow is not None:
+            ws.push_snapshot("flow_import")
+        ws.working_flow = normalized
+        ws.flow_dirty = True
+        await _persist_draft(ws)
+        nodes = len(normalized.get("nodes") or [])
+        edges = len(normalized.get("edges") or [])
+    warn = ""
+    if summary.get("warnings"):
+        warn = "\nOgohlantirishlar:\n" + "\n".join(f"  ⚠️ {w}" for w in summary["warnings"])
+    text = _restore_prefix(
+        f"Flow import qilindi: {nodes} node, {edges} edge (flow_dirty=true). "
+        "Persist EMAS — saqlash uchun flow_save chaqiring. "
+        "(session_undo bilan qaytarish mumkin.)" + warn,
+        restored_pid,
+    )
+    return _result_to_mcp(
+        text,
+        is_error=False,
+        data={"nodes": nodes, "edges": edges, "warnings": summary.get("warnings", [])},
+    )
+
+
+async def _handle_flow_history(user: AuthedUser) -> mtypes.CallToolResult:
+    store = get_workspace_store()
+    async with store.lock(user.user_id):
+        ws, restored_pid = await _ensure_active_ws(store, user)
+        project_id = ws.project_id
+    if not project_id:
+        return _result_to_mcp(
+            "Aktiv loyiha yo'q. session_use_project(project_id) chaqiring.",
+            is_error=True,
+            data=None,
+        )
+    versions = await get_flow_version_store().list(project_id=project_id)
+    if not versions:
+        text = _restore_prefix(
+            "Hali saqlangan versiyalar yo'q — flow_save qilingach versiyalar paydo bo'ladi.",
+            restored_pid,
+        )
+        return _result_to_mcp(text, is_error=False, data={"versions": []})
+    lines = [f"Loyiha {project_id} — saqlangan flow versiyalari (oxirgi {len(versions)}):"]
+    for v in versions:
+        lines.append(
+            f"  v{v['version']} — {v.get('saved_at') or '?'} "
+            f"({v['node_count']} node, {v['edge_count']} edge)"
+        )
+    lines.append("flow_rollback(version) bilan istalganiga qayting.")
+    text = _restore_prefix("\n".join(lines), restored_pid)
+    return _result_to_mcp(text, is_error=False, data={"versions": versions})
+
+
+async def _handle_flow_rollback(user: AuthedUser, arguments: dict) -> mtypes.CallToolResult:
+    raw_version = arguments.get("version")
+    try:
+        version = int(raw_version)
+    except (TypeError, ValueError):
+        return _result_to_mcp(
+            "version (butun son) majburiy — flow_history ro'yxatidan tanlang.",
+            is_error=True,
+            data=None,
+        )
+    store = get_workspace_store()
+    async with store.lock(user.user_id):
+        ws, restored_pid = await _ensure_active_ws(store, user)
+        project_id = ws.project_id
+        if not project_id:
+            return _result_to_mcp(
+                "Aktiv loyiha yo'q. session_use_project(project_id) chaqiring.",
+                is_error=True,
+                data=None,
+            )
+        record = await get_flow_version_store().get(project_id=project_id, version=version)
+        if record is None:
+            return _result_to_mcp(
+                _restore_prefix(
+                    f"v{version} topilmadi. flow_history bilan mavjud versiyalarni ko'ring.",
+                    restored_pid,
+                ),
+                is_error=True,
+                data=None,
+            )
+        flow = record.get("flow") or {"nodes": [], "edges": []}
+        # Snapshot current before overwriting (undo-able).
+        if ws.working_flow is not None:
+            ws.push_snapshot(f"flow_rollback_v{version}")
+        from ..flow import FlowDocument
+
+        ws.working_flow = FlowDocument.model_validate(flow).model_dump()
+        ws.flow_dirty = True
+        await _persist_draft(ws)
+        nodes = len(ws.working_flow.get("nodes") or [])
+        edges = len(ws.working_flow.get("edges") or [])
+    text = _restore_prefix(
+        f"v{version} workspace'ga yuklandi: {nodes} node, {edges} edge "
+        "(flow_dirty=true). Persist EMAS — flow_save bilan tasdiqlang. "
+        "(session_undo bilan qaytarish mumkin.)",
+        restored_pid,
+    )
+    return _result_to_mcp(
+        text, is_error=False, data={"version": version, "nodes": nodes, "edges": edges}
+    )
+
+
 async def _execute_registry_tool(
     reg_name: str,
     arguments: dict,
@@ -521,12 +1085,22 @@ async def _execute_registry_tool(
     explicit_pid = _explicit_project_id(arguments)
     # #2 — entire lookup + execute + merge is atomic per user so parallel
     # flow_patch calls can't see a half-built workspace ("Aktiv loyiha yo'q").
+    restored_pid: str | None = None
     async with store.lock(user.user_id):
         if explicit_pid is not None:
             ws = store.get(user.user_id, explicit_pid, client_key=user.client_key)
         else:
             ws = store.get(user.user_id, client_key=user.client_key)
         ws.sync_auth_claims(user.claims)
+
+        # #5 — transparent session recovery: if no active project (pointer lost
+        # after a restart/TTL), restore the user's last-edited draft and carry on
+        # instead of erroring. Only when project_id wasn't explicit.
+        if not ws.project_id and explicit_pid is None:
+            restored_pid = await _auto_restore_session(store, user)
+            if restored_pid is not None:
+                ws = store.get(user.user_id, client_key=user.client_key)
+                ws.sync_auth_claims(user.claims)
 
         # Flow tool'lari aktiv loyihani talab qiladi.
         if reg_name.startswith("flow.") and not ws.project_id:
@@ -559,6 +1133,14 @@ async def _execute_registry_tool(
         if reg_name == "flow.save" and not result.is_error:
             ws.flow_dirty = False
             await get_draft_store().clear(user_id=user.user_id, project_id=ws.project_id)
+            # #3 — append a flow version on every successful save. Save is
+            # already a slow op, so write synchronously, but never let a
+            # history failure leak into the save result (graceful degrade lives
+            # inside the store; this guard is belt-and-suspenders).
+            try:
+                await _append_flow_version(ws, user)
+            except Exception as exc:  # pragma: no cover — defensive
+                logger.warning("MCP flow-version append skipped: %s", exc)
         elif mutated and not result.is_error:
             await _persist_draft(ws)
 
@@ -566,6 +1148,9 @@ async def _execute_registry_tool(
         # #14 — recovery hint for destructive ops.
         if reg_name in ("flow.apply_template", "flow.clear") and not result.is_error:
             content = (content or "") + "\n(session_undo bilan qaytarish mumkin.)"
+        # #5 — surface the transparent restore on the result.
+        if restored_pid is not None:
+            content = _RESTORE_NOTICE.format(pid=restored_pid) + "\n" + (content or "")
         return _result_to_mcp(content, is_error=result.is_error, data=result.data)
 
 
@@ -595,6 +1180,16 @@ def build_mcp_server(registry: ToolRegistry | None = None) -> Server:
             return await _handle_session_undo(user)
         if name == _SESSION_LOG_PROMPT:
             return await _handle_session_log_prompt(user, arguments)
+        if name == _BOT_SIMULATE:
+            return await _handle_bot_simulate(user, arguments)
+        if name == _FLOW_EXPORT:
+            return await _handle_flow_export(user)
+        if name == _FLOW_IMPORT:
+            return await _handle_flow_import(user, arguments)
+        if name == _FLOW_HISTORY:
+            return await _handle_flow_history(user)
+        if name == _FLOW_ROLLBACK:
+            return await _handle_flow_rollback(user, arguments)
         if name == _DOCS_GUIDE:
             topic = str(arguments.get("topic") or "").strip()
             if topic not in _GUIDE_TOPICS:
