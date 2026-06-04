@@ -6,7 +6,8 @@ build_bot prompt pull) into the SAME Mongo used by the LLM conversation logger
 
 Document shape (A-band / AI training data):
     {
-        trace_id,         # unique id for this trace record
+        trace_id,         # groups one user task: the __prompt__ record + every
+                          #   tool-call record that follows share this id
         user_id,          # authenticated user
         client_key,       # per-client hash prefix (NOT the raw token)
         project_id,       # active project (or explicit override) when known
@@ -18,6 +19,17 @@ Document shape (A-band / AI training data):
         duration_ms,
         created_at,
     }
+
+Trace grouping (per-client current-trace pointer):
+  - `session_log_prompt(prompt)` calls `start_trace()` which mints a fresh
+    `trace_id`, stores it IN-MEMORY keyed by (user_id, client_key) — the same
+    per-client identity the workspace uses — and writes the `__prompt__` record.
+  - Every subsequent tool call reads `current_trace_id(user_id, client_key)` and
+    stamps its trace record with it, so the whole task is one linkable trace.
+  - A tool call with no open trace (no prompt yet) is written as an ORPHAN
+    (trace_id=None) — nothing is silently dropped.
+  - The pointer is plain in-memory state (no TTL): a new prompt simply replaces
+    the previous trace_id for that client.
 
 Design — mirrors mongo_log.py exactly:
   - Lazy Motor singleton against settings.mongo_base_url.
@@ -72,9 +84,33 @@ _col: Any = None
 # collected before completing; discarded on done.
 _pending: set[Any] = set()
 
+# Per-client current-trace pointer: (user_id, client_key) → trace_id. Plain
+# in-memory state, no TTL — a new prompt replaces the previous trace_id.
+_active: dict[tuple[str | None, str | None], str] = {}
+
 
 def _now() -> str:
     return datetime.datetime.utcnow().isoformat()
+
+
+# ── current-trace pointer (in-memory) ──────────────────────────────────────────
+
+
+def current_trace_id(user_id: str | None, client_key: str | None) -> str | None:
+    """Return the open trace for this client, or None if no prompt opened one."""
+    return _active.get((user_id, client_key))
+
+
+def start_trace(user_id: str | None, client_key: str | None) -> str:
+    """Mint a new trace_id and make it the client's current trace."""
+    trace_id = uuid.uuid4().hex
+    _active[(user_id, client_key)] = trace_id
+    return trace_id
+
+
+def clear_active() -> None:
+    """Test hook — drop all in-memory trace pointers."""
+    _active.clear()
 
 
 def _get_col() -> Any:
@@ -157,14 +193,23 @@ def log_tool_call(
     result_summary: str | None,
     is_error: bool,
     duration_ms: int,
+    trace_id: str | None = None,
 ) -> None:
-    """Persist one MCP tool-call trace (fire-and-forget, graceful degrade)."""
+    """Persist one MCP tool-call trace (fire-and-forget, graceful degrade).
+
+    `trace_id` links this record to the open trace for the user task (the one
+    `session_log_prompt` opened). If omitted, the caller's current-trace pointer
+    is consulted; if none is open the record is an ORPHAN (trace_id=None).
+    """
     col = _get_col()
     if col is None:
         return
 
+    if trace_id is None:
+        trace_id = current_trace_id(user_id, client_key)
+
     doc = {
-        "trace_id": uuid.uuid4().hex,
+        "trace_id": trace_id,
         "user_id": user_id,
         "client_key": client_key,
         "project_id": project_id,
@@ -185,14 +230,20 @@ def log_prompt(
     client_key: str | None,
     project_id: str | None,
     prompt: str,
-) -> None:
-    """Persist the user prompt as a separate `__prompt__` trace record."""
+) -> str:
+    """Open a new trace for the user's verbatim prompt; returns the trace_id.
+
+    Always sets the in-memory pointer (so subsequent tool calls attach) even if
+    the Mongo write degrades — the pointer is cheap and DB-independent.
+    """
+    trace_id = start_trace(user_id, client_key)
+
     col = _get_col()
     if col is None:
-        return
+        return trace_id
 
     doc = {
-        "trace_id": uuid.uuid4().hex,
+        "trace_id": trace_id,
         "user_id": user_id,
         "client_key": client_key,
         "project_id": project_id,
@@ -205,13 +256,22 @@ def log_prompt(
         "created_at": _now(),
     }
     _fire(_safe(col.insert_one(doc)))
+    return trace_id
 
 
 def _reset() -> None:
-    """Test hook — drop the cached client so settings can be re-read."""
+    """Test hook — drop the cached client and trace pointers."""
     global _client, _col
     _client = None
     _col = None
+    _active.clear()
 
 
-__all__ = ["PROMPT_TOOL", "log_prompt", "log_tool_call"]
+__all__ = [
+    "PROMPT_TOOL",
+    "clear_active",
+    "current_trace_id",
+    "log_prompt",
+    "log_tool_call",
+    "start_trace",
+]

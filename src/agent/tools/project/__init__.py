@@ -163,9 +163,20 @@ async def project_create(input: ProjectCreateInput, ctx: ToolContext) -> ToolRes
         except BackendError:
             note = " (Diqqat: default flow'ni tozalab bo'lmadi — flow.clear bilan tozalashingiz mumkin.)"
 
+    # #10 — single source of truth: do NOT echo the backend flow JSON here.
+    # The flow that session_use_project loads (after the clean overwrite) is
+    # authoritative. Return a compact summary + a pointer to load the session.
+    summary: dict[str, Any] = {
+        "id": project_id,
+        "name": project.get("name"),
+    }
+    for key in ("debug_link", "debug_uuid", "status", "username"):
+        if project.get(key):
+            summary[key] = project[key]
     return ToolResult.ok(
-        f"Project `{project.get('name')}` created with id `{project_id}`.{note}",
-        data={"project": project},
+        f"Project `{project.get('name')}` created with id `{project_id}`.{note} "
+        "Endi `session_use_project(project_id)` chaqirib flow ustida ishlang.",
+        data={"project": summary},
         state_updates=state_updates,
     )
 

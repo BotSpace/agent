@@ -92,7 +92,10 @@ def _referenced_collection_name(node) -> str | None:
 
 
 def validate(
-    flow: FlowDocument, *, known_collections: list[str] | None = None
+    flow: FlowDocument,
+    *,
+    known_collections: list[str] | None = None,
+    collection_schemas: dict[str, dict[str, str]] | None = None,
 ) -> ValidationResult:
     issues: list[ValidationIssue] = []
     # #12 — known collection names (from the workspace's loaded CMS list). When
@@ -102,6 +105,9 @@ def validate(
         if known_collections is not None
         else None
     )
+    # #4 — {collection_name: {field: kind}} so filter values can be type-checked
+    # against the loaded collection schema (warning only).
+    schemas: dict[str, dict[str, str]] = collection_schemas or {}
 
     # ── 1. Node-level checks ───────────────────────────────────────────
     node_ids: set[str] = set()
@@ -212,6 +218,15 @@ def validate(
                         node_id=node.id,
                     )
                 )
+
+        # #4 — filter value type vs loaded collection field kind (warning).
+        if schemas:
+            issues.extend(_filter_kind_warnings(node, schemas))
+
+        # #9a — CustomCodeNode declares output handles (data.outputs) that no
+        # edge uses. exit('NAME') without a wired edge is a dead branch.
+        if node.type == "CustomCodeNode":
+            issues.extend(_unused_output_warnings(node, flow))
 
     # ── 2. Edge-level checks ───────────────────────────────────────────
     nodes_by_id = {node.id: node for node in flow.nodes}
@@ -410,7 +425,204 @@ def validate(
                 )
             )
 
+    # ── 6. Unknown {{var}} references (#9b, conservative) ──────────────
+    issues.extend(_unknown_variable_warnings(flow))
+
     return ValidationResult(ok=not any(i.severity == "error" for i in issues), issues=issues)
+
+
+# ── #4: filter value type vs collection field kind ───────────────────────────
+
+# Map FieldKind → a predicate that accepts a concrete (non-template) filter value.
+def _kind_accepts(kind: str, value) -> bool:
+    kind = (kind or "").lower()
+    if isinstance(value, str) and ("{{" in value or "{%" in value):
+        return True  # template — can't type-check
+    if kind == "bool":
+        return isinstance(value, bool)
+    if kind in ("int",):
+        return isinstance(value, int) and not isinstance(value, bool)
+    if kind in ("float",):
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    # text/email/url/phone/enum/datetime/etc — accept strings (and most scalars).
+    return True
+
+
+def _iter_filter_conditions(node):
+    """Yield (field_name, value) pairs from the various filter shapes a node may
+    carry: LoadCollectionItem `filters:[{field, value|stateKey}]`, and the flat
+    `filter:{field: value}` / `where:{field: value}` Mongo-style maps."""
+    data = node.data if isinstance(node.data, dict) else {}
+    filters = data.get("filters")
+    if isinstance(filters, list):
+        for f in filters:
+            if not isinstance(f, dict):
+                continue
+            field = f.get("field")
+            # A state-sourced value is resolved at runtime — skip type-check.
+            if f.get("valueSource") == "state" or "stateKey" in f:
+                continue
+            if isinstance(field, str) and field and "value" in f:
+                yield field, f.get("value")
+    for key in ("filter", "where"):
+        flat = data.get(key)
+        coll_data = data.get("collectionData")
+        if isinstance(coll_data, dict) and isinstance(coll_data.get(key), dict):
+            flat = coll_data.get(key)
+        if isinstance(flat, dict):
+            for fld, value in flat.items():
+                if not isinstance(fld, str) or fld.startswith("$"):
+                    continue
+                # Skip Mongo operator objects ({$gte: ...}) — too ambiguous.
+                if isinstance(value, dict):
+                    continue
+                yield fld, value
+
+
+def _filter_kind_warnings(node, schemas: dict[str, dict[str, str]]) -> list[ValidationIssue]:
+    name = _referenced_collection_name(node)
+    if not name or name not in schemas:
+        return []
+    kinds = schemas[name]
+    if not kinds:
+        return []
+    out: list[ValidationIssue] = []
+    for fld, value in _iter_filter_conditions(node):
+        kind = kinds.get(fld)
+        if not kind:
+            continue
+        if not _kind_accepts(kind, value):
+            out.append(
+                ValidationIssue(
+                    "warning",
+                    "filter_kind_mismatch",
+                    f"`{node.type}` `{node.id}` filters `{name}.{fld}` (kind={kind}) "
+                    f"with value {value!r} of an incompatible type. "
+                    "Check the filter value type.",
+                    node_id=node.id,
+                )
+            )
+    return out
+
+
+# ── #9a: CustomCode declared outputs not wired by any edge ────────────────────
+
+
+def _unused_output_warnings(node, flow: FlowDocument) -> list[ValidationIssue]:
+    outputs = node.data.get("outputs") if isinstance(node.data, dict) else None
+    if not isinstance(outputs, list):
+        return []
+    declared: list[str] = [
+        out["name"]
+        for out in outputs
+        if isinstance(out, dict) and isinstance(out.get("name"), str) and out["name"]
+    ]
+    if not declared:
+        return []
+    used = {
+        e.sourceHandle
+        for e in flow.edges
+        if e.source == node.id and isinstance(e.sourceHandle, str)
+    }
+    out: list[ValidationIssue] = []
+    for name in declared:
+        handle = f"output-{name}"
+        if handle not in used:
+            out.append(
+                ValidationIssue(
+                    "warning",
+                    "unused_custom_output",
+                    f"CustomCodeNode `{node.id}` declares output `{name}` "
+                    f"(handle `{handle}`) but no edge uses it — exit('{name}') "
+                    "would dead-end. Wire an edge or drop the output.",
+                    node_id=node.id,
+                )
+            )
+    return out
+
+
+# ── #9b: unknown {{var}} references (conservative) ────────────────────────────
+
+# Standard runtime context keys always available to templates.
+_STANDARD_CONTEXT_VARS = frozenset(
+    {
+        "first_name", "last_name", "username", "user_id", "language_code",
+        "chat_id", "message_id", "message_text", "text", "phone", "phone_number",
+        "latitude", "longitude", "inserted_id", "agent_output", "callback_data",
+        "now", "today", "bot_username",
+    }
+)
+
+# Prefixes/roots that are always allowed (namespaced runtime data).
+_ALLOWED_VAR_PREFIXES = ("state.", "env.", "collection_", "item.", "doc.", "loop.",
+                         "response.", "http_", "context.")
+
+# Only scan these node fields for {{var}} usage — text/code carrying templates.
+_TEMPLATE_TEXT_FIELDS = ("messageText", "text", "caption")
+
+# `{{ var }}` with a simple root token (letters/digits/_), optional .path / [i].
+_SIMPLE_VAR_RE = re.compile(r"\{\{\s*([A-Za-z_][\w]*)\b[^}]*\}\}")
+
+
+def _collect_state_keys(flow: FlowDocument) -> set[str]:
+    """Best-effort set of state keys a flow writes (so they're known to {{var}})."""
+    keys: set[str] = set()
+    for n in flow.nodes:
+        data = n.data if isinstance(n.data, dict) else {}
+        # StateNode / capture: data.key
+        k = data.get("key")
+        if isinstance(k, str) and k:
+            keys.add(k)
+        # Triggers auto-saving via data.state = {key, type}
+        st = data.get("state")
+        if isinstance(st, dict) and isinstance(st.get("key"), str):
+            keys.add(st["key"])
+        # HTTPRequest saveAs / Download saveAs
+        for f in ("saveAs", "contextKey", "outputKey"):
+            v = data.get(f)
+            if isinstance(v, str) and v:
+                keys.add(v)
+        # CollectionNode fieldMappings values are state keys; CollectionData too.
+        fm = data.get("fieldMappings")
+        if isinstance(fm, dict):
+            keys.update(v for v in fm.values() if isinstance(v, str) and v)
+    return keys
+
+
+def _unknown_variable_warnings(flow: FlowDocument) -> list[ValidationIssue]:
+    state_keys = _collect_state_keys(flow)
+    allowed_roots = state_keys | set(_STANDARD_CONTEXT_VARS)
+    out: list[ValidationIssue] = []
+    for node in flow.nodes:
+        data = node.data if isinstance(node.data, dict) else {}
+        for fld in _TEMPLATE_TEXT_FIELDS:
+            text = data.get(fld)
+            if not isinstance(text, str) or "{{" not in text:
+                continue
+            for m in _SIMPLE_VAR_RE.finditer(text):
+                root = m.group(1)
+                whole = m.group(0)
+                inner = whole.strip("{} ").strip()
+                if root in allowed_roots:
+                    continue
+                if any(inner.startswith(p) or root + "." == p for p in _ALLOWED_VAR_PREFIXES):
+                    continue
+                if any(inner.startswith(p) for p in _ALLOWED_VAR_PREFIXES):
+                    continue
+                # Conservative: only warn on a bare unknown root (no namespace).
+                if "." in inner or "[" in inner:
+                    continue
+                out.append(
+                    ValidationIssue(
+                        "warning",
+                        "unknown_variable",
+                        f"`{node.id}` references `{{{{{root}}}}}` which is not a known "
+                        "state key, standard context var (first_name, user_id, …) or "
+                        "collection_* value. Check the variable name.",
+                        node_id=node.id,
+                    )
+                )
+    return out
 
 
 # Button `type` values that route via a flow edge and therefore can warn when

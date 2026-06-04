@@ -48,6 +48,25 @@ def _set_working_flow(flow: FlowDocument) -> dict[str, Any]:
     return {"working_flow": flow.model_dump(), "flow_dirty": True}
 
 
+def node_missing_error(node_id: str, flow: FlowDocument, *, role: str = "Node") -> ToolResult:
+    """Uniform 'node not found' error (feedback #1).
+
+    When the looked-up node is missing AND the working flow is empty/just
+    loaded, the likely cause is a STALE session — point the model at recovery
+    (session_use_project / flow_get) instead of a bare 'does not exist'.
+    """
+    if not flow.nodes:
+        return ToolResult.error(
+            f"`{node_id}` topilmadi — sessiya eskirgan yoki flow bo'sh bo'lishi "
+            "mumkin. session_use_project(project_id) bilan loyihani qayta yuklang "
+            "yoki flow_get bilan joriy holatni tekshiring."
+        )
+    return ToolResult.error(
+        f"{role} `{node_id}` topilmadi. Mavjud node id'lari: "
+        f"{[n.id for n in flow.nodes]}. flow_get(summary_only=true) bilan tekshiring."
+    )
+
+
 def _concrete_project_id(value: Any) -> str | None:
     if value is None:
         return None
@@ -63,6 +82,29 @@ def _project_id(ctx: ToolContext) -> str | None:
     return _concrete_project_id(ctx.state.get("project_id")) or _concrete_project_id(
         ctx.project_id
     )
+
+
+def _collection_schemas(ctx: ToolContext) -> dict[str, dict[str, str]] | None:
+    """{collection_name: {field_name: kind}} from the workspace CMS list (#4).
+
+    None when collections were never loaded (skip the filter-kind cross-check).
+    Empty inner dicts are fine — the validator just can't type-check that one."""
+    raw = ctx.state.get("collections")
+    if not isinstance(raw, list):
+        return None
+    out: dict[str, dict[str, str]] = {}
+    for c in raw:
+        if not isinstance(c, dict):
+            continue
+        name = c.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        kinds = c.get("field_kinds")
+        out[name] = {
+            str(k): str(v)
+            for k, v in (kinds.items() if isinstance(kinds, dict) else [])
+        }
+    return out or None
 
 
 def _known_collections(ctx: ToolContext) -> list[str] | None:
@@ -303,7 +345,7 @@ class FlowRemoveNodeInput(BaseModel):
 async def flow_remove_node(input: FlowRemoveNodeInput, ctx: ToolContext) -> ToolResult:
     flow = _load_working_flow(ctx)
     if flow.get_node(input.id) is None:
-        return ToolResult.error(f"Node `{input.id}` does not exist")
+        return node_missing_error(input.id, flow)
     flow.remove_node(input.id)
     return ToolResult.ok(
         f"Removed `{input.id}` and its edges.",
@@ -331,10 +373,7 @@ async def flow_patch(input: FlowPatchInput, ctx: ToolContext) -> ToolResult:
     flow = _load_working_flow(ctx)
     node = flow.get_node(input.id)
     if node is None:
-        return ToolResult.error(
-            f"Node `{input.id}` does not exist. "
-            "Next: check ids with flow.get(summary_only=true), then retry flow.patch."
-        )
+        return node_missing_error(input.id, flow)
     old_data = dict(node.data)
     node.data = {**node.data, **input.data}
     # #3 — if the keyboard text changed for a same-id button, the engine's
@@ -377,9 +416,17 @@ async def flow_patch_many(input: FlowPatchManyInput, ctx: ToolContext) -> ToolRe
     # Pre-flight: every id must exist before we mutate anything (atomicity).
     for idx, item in enumerate(input.patches):
         if flow.get_node(item.id) is None:
+            if not flow.nodes:
+                return ToolResult.error(
+                    f"patches[{idx}] `{item.id}` topilmadi va flow bo'sh — sessiya "
+                    "eskirgan bo'lishi mumkin. session_use_project(project_id) bilan "
+                    "qayta yuklang, keyin butun batch'ni qayta yuboring. Hech narsa "
+                    "qo'llanmadi."
+                )
             return ToolResult.error(
-                f"patches[{idx}] node `{item.id}` does not exist — NOTHING applied. "
-                "Next: fix the id (flow.get summary_only=true) and retry the whole batch."
+                f"patches[{idx}] node `{item.id}` topilmadi — HECH NARSA qo'llanmadi. "
+                f"Mavjud id'lar: {[n.id for n in flow.nodes]}. flow_get(summary_only=true) "
+                "bilan tekshirib, butun batch'ni qayta yuboring."
             )
     total_remapped = 0
     patched_ids: list[str] = []
@@ -431,9 +478,9 @@ class FlowConnectInput(BaseModel):
 async def flow_connect(input: FlowConnectInput, ctx: ToolContext) -> ToolResult:
     flow = _load_working_flow(ctx)
     if flow.get_node(input.source) is None:
-        return ToolResult.error(f"Source node `{input.source}` does not exist")
+        return node_missing_error(input.source, flow, role="Source node")
     if flow.get_node(input.target) is None:
-        return ToolResult.error(f"Target node `{input.target}` does not exist")
+        return node_missing_error(input.target, flow, role="Target node")
     edge_id = input.edge_id or f"e-{input.source}-{input.target}-{input.source_handle or 'src'}"
     flow.upsert_edge(
         FlowEdge(
@@ -488,7 +535,11 @@ class FlowValidateInput(BaseModel):
 )
 async def flow_validate(_: FlowValidateInput, ctx: ToolContext) -> ToolResult:
     flow = _load_working_flow(ctx)
-    result = validate(flow, known_collections=_known_collections(ctx))
+    result = validate(
+        flow,
+        known_collections=_known_collections(ctx),
+        collection_schemas=_collection_schemas(ctx),
+    )
     summary = {
         "ok": result.ok,
         "errors": [i.message for i in result.errors],
@@ -626,6 +677,13 @@ class FlowSaveInput(BaseModel):
         "edges, flow_dirty}. True also returns the full saved flow JSON (~30k tokens) — "
         "only set when you must echo the exact saved document.",
     )
+    restart_debug: bool = Field(
+        default=False,
+        description="If true, after a successful save, restart the project's DEBUG "
+        "container so the running debug bot picks up the new flow (a running debug "
+        "bot keeps using the OLD saved flow until restarted). Returns a fresh debug "
+        "link. No-op if no debug container is running / startable.",
+    )
 
 
 @tool(
@@ -640,7 +698,11 @@ class FlowSaveInput(BaseModel):
 )
 async def flow_save(input: FlowSaveInput, ctx: ToolContext) -> ToolResult:
     flow = _load_working_flow(ctx)
-    result = validate(flow, known_collections=_known_collections(ctx))
+    result = validate(
+        flow,
+        known_collections=_known_collections(ctx),
+        collection_schemas=_collection_schemas(ctx),
+    )
     if not result.ok:
         return ToolResult.error(
             "Flow has validation errors — fix them before saving:\n" + result.render()
@@ -700,8 +762,43 @@ async def flow_save(input: FlowSaveInput, ctx: ToolContext) -> ToolResult:
     }
     if input.verbose:
         data["flow"] = flow_dict
+
+    msg = f"Flow saved to project `{project_id}` ({n_nodes} nodes, {n_edges} edges)."
+
+    # #7 — a running debug bot keeps serving the OLD flow until restarted.
+    if input.restart_debug:
+        try:
+            await backend.start_debug(project_id, auth_claims=claims)
+            project = await backend.get_project(project_id, auth_claims=claims)
+            debug_uuid = (
+                project.get("debug_uuid") or project.get("debug_webhook_uuid")
+                if isinstance(project, dict)
+                else None
+            )
+            if debug_uuid:
+                link = f"https://t.me/botmother_test_robot?start={debug_uuid}"
+                data["debug_link"] = link
+                msg += f" Debug bot yangi flow bilan qayta ishga tushirildi: {link}"
+            else:
+                msg += " Debug bot qayta ishga tushirildi (test havolasi topilmadi)."
+        except BackendError as e:
+            from ...integrations.backend import format_backend_error
+            msg += (
+                " (Diqqat: debug botni qayta ishga tushirib bo'lmadi: "
+                + format_backend_error(None, e)
+                + " — release_debug bilan qo'lda qayta ishga tushiring.)"
+            )
+    else:
+        # Static reminder: we cannot cheaply tell whether a debug bot is live,
+        # so always nudge the model to refresh it if one is.
+        msg += (
+            " Eslatma: agar debug bot ishlayotgan bo'lsa, u hali ESKI flow bilan "
+            "ishlaydi — yangilash uchun release_debug ni qayta chaqiring "
+            "(yoki flow_save'ni restart_debug=true bilan chaqiring)."
+        )
+
     return ToolResult.ok(
-        f"Flow saved to project `{project_id}` ({n_nodes} nodes, {n_edges} edges).",
+        msg,
         state_updates={
             "working_flow": flow_dict,
             "baseline_flow": flow_dict,

@@ -436,6 +436,48 @@ async def release_logs(input: ReleaseLogsInput, ctx: ToolContext) -> ToolResult:
 # ── release.debug_logs ────────────────────────────────────────────────────────
 
 
+def _clean_log_lines(raw_lines: Any) -> list[str]:
+    """Normalise backend log payload into clean text lines (#8).
+
+    Handles: bytes / bytes-repr (`b'...'`), single blobs containing escaped or
+    real newlines, and already-split lists. Returns a flat list of trimmed,
+    non-empty strings with surrounding quotes/`b` prefixes stripped.
+    """
+    out: list[str] = []
+    items = raw_lines if isinstance(raw_lines, list) else [raw_lines]
+    for item in items:
+        if item is None:
+            continue
+        if isinstance(item, bytes):
+            text = item.decode("utf-8", errors="replace")
+        else:
+            text = str(item)
+        # Strip a leading bytes-literal wrapper: b'...' / b"..."
+        if len(text) >= 3 and text[0] == "b" and text[1] in ("'", '"') and text[-1] == text[1]:
+            text = text[2:-1]
+        # Turn escaped newlines/tabs from a repr'd blob into real ones.
+        text = text.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\t", "\t")
+        for line in text.split("\n"):
+            line = line.rstrip("\r").strip()
+            if line:
+                out.append(line)
+    return out
+
+
+def _filter_log_lines(
+    lines: list[str], *, level: str | None, node_id: str | None
+) -> list[str]:
+    """Filter by JSON `"level"` field substring and/or `node_id` substring."""
+    if level:
+        lvl = level.lower()
+        # Match common JSON shapes: "level":"error" or level=error.
+        needles = (f'"level":"{lvl}"', f'"level": "{lvl}"', f"level={lvl}")
+        lines = [ln for ln in lines if any(n in ln.lower() for n in needles)]
+    if node_id:
+        lines = [ln for ln in lines if node_id in ln]
+    return lines
+
+
 class ReleaseDebugLogsInput(BaseModel):
     project_id: str | int | None = Field(
         default=None,
@@ -450,6 +492,14 @@ class ReleaseDebugLogsInput(BaseModel):
     since_seconds: int | None = Field(
         default=None,
         description="Only return lines from the last N seconds (optional).",
+    )
+    level: Literal["info", "warn", "error"] | None = Field(
+        default=None,
+        description="Keep only lines whose JSON `level` field matches (info/warn/error).",
+    )
+    node_id: str | None = Field(
+        default=None,
+        description="Keep only lines containing this node_id substring.",
     )
 
 
@@ -479,26 +529,41 @@ async def release_debug_logs(input: ReleaseDebugLogsInput, ctx: ToolContext) -> 
     except BackendError as e:
         return ToolResult.error(_wrap_backend_err("Debug loglarini olish", e))
 
-    lines = snap.get("lines") if isinstance(snap, dict) else None
-    if not isinstance(lines, list):
-        lines = []
+    raw_lines = snap.get("lines") if isinstance(snap, dict) else None
     pod = snap.get("pod_name") if isinstance(snap, dict) else None
     truncated = bool(snap.get("truncated")) if isinstance(snap, dict) else False
 
+    # #8 — decode/clean noisy bytes & escaped newlines into plain text lines.
+    lines = _clean_log_lines(raw_lines)
+    total_before_filter = len(lines)
+    lines = _filter_log_lines(lines, level=input.level, node_id=input.node_id)
+
     if not lines:
         detail = snap.get("detail") if isinstance(snap, dict) else None
-        msg = detail or (
-            "No log lines available — debug konteyner ishlamayotgan bo'lishi mumkin. "
-            "Avval release.debug bilan ishga tushiring."
-        )
-        return ToolResult.ok(msg, data={"logs": snap})
+        if total_before_filter and (input.level or input.node_id):
+            msg = (
+                f"{total_before_filter} qator bor edi, lekin filtr "
+                f"(level={input.level}, node_id={input.node_id}) bo'yicha mos kelmadi."
+            )
+        else:
+            msg = detail or (
+                "Log qatorlari yo'q — debug konteyner ishlamayotgan bo'lishi mumkin. "
+                "Avval release_debug bilan ishga tushiring."
+            )
+        return ToolResult.ok(msg, data={"lines": [], "pod_name": pod, "truncated": truncated})
 
     head = "\n".join(lines[-50:])
+    flt = ""
+    if input.level or input.node_id:
+        flt = f" (filter: level={input.level}, node_id={input.node_id})"
     summary = (
         f"{len(lines)} line(s) from debug pod `{pod or '?'}`"
-        f"{' (truncated to tail)' if truncated else ''}.\n```\n{head}\n```"
+        f"{' (truncated to tail)' if truncated else ''}{flt}.\n```\n{head}\n```"
     )
-    return ToolResult.ok(summary, data={"logs": snap})
+    return ToolResult.ok(
+        summary,
+        data={"lines": lines, "pod_name": pod, "truncated": truncated},
+    )
 
 
 def build_release_tools() -> list[Tool]:

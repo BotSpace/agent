@@ -189,7 +189,9 @@ class CreateCollectionInput(BaseModel):
         "email, url, phone, enum, json, array, relation, file, image, audio, "
         "video, geo. RELATION kind requires `relation_collection` (collection id). "
         "Set `primary_field` to the field used as the display/title when this "
-        "collection is referenced from another via a relation (e.g. 'name')."
+        "collection is referenced from another via a relation (e.g. 'name'). "
+        "Returns the new collection's `id` (in content and structuredContent) — "
+        "use it as `relation_collection` when adding a RELATION field elsewhere."
     ),
     input_model=CreateCollectionInput,
 )
@@ -206,9 +208,12 @@ async def create_collection(input: CreateCollectionInput, ctx: ToolContext) -> T
         c = await _backend(ctx).cms_create_collection(pid, body, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
         return _error(e)
+    # #6 — surface the backend-assigned id explicitly (needed for relations).
+    new_id = c.get("id") if isinstance(c, dict) else None
     return ToolResult.ok(
-        f"Collection `{c.get('name')}` created (id={c.get('id')}).",
-        data={"collection": c},
+        f"Collection `{c.get('name')}` created (id={new_id}). "
+        "Use this id as `relation_collection` when linking from another collection.",
+        data={"collection": c, "id": new_id},
     )
 
 

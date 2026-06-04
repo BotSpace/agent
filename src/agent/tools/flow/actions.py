@@ -46,6 +46,20 @@ def _load_working_flow(ctx: ToolContext) -> FlowDocument:
     return FlowDocument()
 
 
+def _node_missing(node_id: str, flow: FlowDocument, *, role: str = "Node") -> ToolResult:
+    """Stale-session-aware 'node not found' error (feedback #1)."""
+    if not flow.nodes:
+        return ToolResult.error(
+            f"`{node_id}` topilmadi — sessiya eskirgan yoki flow bo'sh bo'lishi "
+            "mumkin. session_use_project(project_id) bilan loyihani qayta yuklang "
+            "yoki flow_get bilan joriy holatni tekshiring."
+        )
+    return ToolResult.error(
+        f"{role} `{node_id}` topilmadi. Mavjud node id'lari: "
+        f"{[n.id for n in flow.nodes]}. flow_get(summary_only=true) bilan tekshiring."
+    )
+
+
 def _set_working_flow(flow: FlowDocument) -> dict[str, Any]:
     return {"working_flow": flow.model_dump(), "flow_dirty": True}
 
@@ -220,7 +234,7 @@ def _make_popular_node_tool(
     async def _handler(input: TypedNodeInput, ctx: ToolContext) -> ToolResult:
         flow = _load_working_flow(ctx)
         if input.after and flow.get_node(input.after) is None:
-            return ToolResult.error(f"`after` node `{input.after}` does not exist.")
+            return _node_missing(input.after, flow, role="`after` node")
         data_dict = input.data.model_dump(by_alias=True, exclude_none=True)
         _node(flow, input.id, type_name, data_dict, input.position)
         _connect(
@@ -271,7 +285,7 @@ async def flow_connect_button(input: ConnectButtonInput, ctx: ToolContext) -> To
     flow = _load_working_flow(ctx)
     source = flow.get_node(input.source)
     if source is None:
-        return ToolResult.error(f"Source node `{input.source}` does not exist.")
+        return _node_missing(input.source, flow, role="Source node")
     if source.type not in _BUTTON_EDGE_NODE_TYPES:
         return ToolResult.error(
             f"`{input.source}` is `{source.type}`; button edges start from a "
@@ -280,7 +294,7 @@ async def flow_connect_button(input: ConnectButtonInput, ctx: ToolContext) -> To
             "source_handle='target-handler-{nodeId}-{buttonText}') directly."
         )
     if flow.get_node(input.target) is None:
-        return ToolResult.error(f"Target node `{input.target}` does not exist.")
+        return _node_missing(input.target, flow, role="Target node")
     handle = _button_handle(input.source, input.button_text)
     _connect(flow, source=input.source, target=input.target, source_handle=handle, target_handle=input.target_handle, edge_id=input.edge_id)
     return ToolResult.ok(
@@ -301,9 +315,9 @@ class ConnectBranchInput(BaseModel):
 async def flow_connect_branch(input: ConnectBranchInput, ctx: ToolContext) -> ToolResult:
     flow = _load_working_flow(ctx)
     if flow.get_node(input.source) is None:
-        return ToolResult.error(f"Source node `{input.source}` does not exist.")
+        return _node_missing(input.source, flow, role="Source node")
     if flow.get_node(input.target) is None:
-        return ToolResult.error(f"Target node `{input.target}` does not exist.")
+        return _node_missing(input.target, flow, role="Target node")
     _connect(flow, source=input.source, target=input.target, source_handle=input.handle, target_handle=input.target_handle, edge_id=input.edge_id)
     return ToolResult.ok(
         f"Branch `{input.handle}` connected `{input.source}` -> `{input.target}`.",
@@ -545,10 +559,10 @@ async def flow_connect_accessory(input: ConnectAccessoryInput, ctx: ToolContext)
     flow = _load_working_flow(ctx)
     acc_node = flow.get_node(input.accessory_id)
     if acc_node is None:
-        return ToolResult.error(f"Accessory node `{input.accessory_id}` does not exist.")
+        return _node_missing(input.accessory_id, flow, role="Accessory node")
     agent_node = flow.get_node(input.agent_id)
     if agent_node is None:
-        return ToolResult.error(f"AIAgentNode `{input.agent_id}` does not exist.")
+        return _node_missing(input.agent_id, flow, role="AIAgentNode")
     if agent_node.type != "AIAgentNode":
         return ToolResult.error(f"`{input.agent_id}` is `{agent_node.type}`, expected AIAgentNode.")
     accepted = _ACC_PORT_ACCEPTS.get(input.port)
@@ -761,28 +775,47 @@ def build_flow_action_tools() -> list[Tool]:
             ),
             Tool(
                 name="flow.ask_text",
-                description="Create a safe text question pair: SendTextMessageNode -> MessageTriggerNode(global=false,state).",
+                description=(
+                    "Create a safe text question pair: SendTextMessageNode -> "
+                    "MessageTriggerNode(global=false,state). Creates nodes "
+                    "`<id_prefix>-ask` and `<id_prefix>-capture` — connect follow-ups "
+                    "from `<id_prefix>-capture`."
+                ),
                 input_model=AskTextInput,
                 handler=flow_ask_text,
                 tags=["flow", "safe-pattern", "form"],
             ),
             Tool(
                 name="flow.ask_contact",
-                description="Create a safe contact question: text with request_contact keyboard -> MessageTriggerNode(type=contact,state phone_number).",
+                description=(
+                    "Create a safe contact question: text with request_contact keyboard "
+                    "-> MessageTriggerNode(type=contact,state phone_number). Creates "
+                    "`<id_prefix>-ask` and `<id_prefix>-capture` — connect follow-ups "
+                    "from `<id_prefix>-capture`."
+                ),
                 input_model=AskContactInput,
                 handler=flow_ask_contact,
                 tags=["flow", "safe-pattern", "form"],
             ),
             Tool(
                 name="flow.ask_location",
-                description="Create a safe location question and capture latitude/longitude state keys.",
+                description=(
+                    "Create a safe location question and capture latitude/longitude "
+                    "state keys. Creates `<id_prefix>-ask`, "
+                    "`<id_prefix>-capture-latitude` and `<id_prefix>-capture-longitude` "
+                    "— connect follow-ups from `<id_prefix>-capture-longitude`."
+                ),
                 input_model=AskLocationInput,
                 handler=flow_ask_location,
                 tags=["flow", "safe-pattern", "form"],
             ),
             Tool(
                 name="flow.ask_buttons",
-                description="Create a safe button question with reply/inline keyboard and exact button-handle edges into a StateNode.",
+                description=(
+                    "Create a safe button question with reply/inline keyboard and exact "
+                    "button-handle edges into a StateNode. Creates `<id_prefix>-ask` and "
+                    "`<id_prefix>-capture` — connect follow-ups from `<id_prefix>-capture`."
+                ),
                 input_model=AskButtonsInput,
                 handler=flow_ask_buttons,
                 tags=["flow", "safe-pattern", "form"],
