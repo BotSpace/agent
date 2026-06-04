@@ -57,7 +57,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     s = settings or get_settings()
     configure_logging(s.log_level)
 
-    # MCP server (`/mcp`) — Streamable HTTP, stateless. session_manager.run()
+    # MCP server (`/mcp`) — Streamable HTTP, stateful (per-connection session). session_manager.run()
     # lifespan'ga ulanishi SHART (aks holda handle_request RuntimeError beradi).
     mcp_asgi_app = None
     mcp_session_manager = None
