@@ -47,9 +47,17 @@ def _concrete_project_id(value: Any) -> str | None:
     return text
 
 
-def _power_project_id(ctx: ToolContext) -> str | None:
-    return _concrete_project_id(ctx.state.get("project_id")) or _concrete_project_id(
-        ctx.project_id
+def _power_project_id(ctx: ToolContext, explicit: Any = None) -> str | None:
+    """Resolve the project id. Priority: explicit tool arg → state → ctx.
+
+    The explicit arg matters in the dashboard agent: a sub-agent may know the
+    project from its prompt but not have it set in ctx (only the working flow is
+    propagated), so tools like flow.simulate/save MUST accept project_id directly
+    — exactly like flow.save already does."""
+    return (
+        _concrete_project_id(explicit)
+        or _concrete_project_id(ctx.state.get("project_id"))
+        or _concrete_project_id(ctx.project_id)
     )
 
 
@@ -209,6 +217,11 @@ class FlowSimulateStep(BaseModel):
 
 
 class FlowSimulateInput(BaseModel):
+    project_id: str | int | None = Field(
+        default=None,
+        description="Loyiha id (ixtiyoriy). Dashboard agentida ctx'da loyiha "
+        "o'rnatilmagan bo'lsa SHU bilan bering — promptdagi project_id'ni uzating.",
+    )
     steps: list[FlowSimulateStep] = Field(
         min_length=1,
         description=(
@@ -243,11 +256,11 @@ class FlowSimulateInput(BaseModel):
     )
 
 
-async def _seed_collections(ctx: ToolContext) -> dict[str, list[dict]]:
+async def _seed_collections(ctx: ToolContext, project_id: str | None = None) -> dict[str, list[dict]]:
     """Read the CURRENT documents of the project's collections (max 50 each) so
     the simulator runs against realistic data. Per-collection failures isolated."""
     out: dict[str, list[dict]] = {}
-    project_id = _power_project_id(ctx)
+    project_id = _concrete_project_id(project_id) or _power_project_id(ctx)
     if not project_id:
         return out
     raw = ctx.state.get("collections")
@@ -481,6 +494,7 @@ async def _run_simulation(
     steps: list[dict[str, Any]],
     seed_collections: bool,
     mode: str,
+    project_id: str | None = None,
 ) -> dict[str, Any]:
     """Thin wrapper around the simulator transport: seeds collections, fills the
     default chat, forwards `mode`. Raises SimulatorUnavailableError on outage."""
@@ -489,7 +503,7 @@ async def _run_simulation(
 
     collections: dict[str, list[dict]] = {}
     if seed_collections:
-        collections = await _seed_collections(ctx)
+        collections = await _seed_collections(ctx, project_id)
     return await simulate(
         simulator_url=get_settings().simulator_url,
         flow=flow,
@@ -519,7 +533,7 @@ async def _run_simulation(
 async def flow_simulate(input: FlowSimulateInput, ctx: ToolContext) -> ToolResult:
     from ...integrations.simulator import SimulatorUnavailableError
 
-    project_id = _power_project_id(ctx)
+    project_id = _power_project_id(ctx, getattr(input, "project_id", None))
     if not project_id:
         return ToolResult.error(
             "Aktiv loyiha yo'q — avval loyihani tanlang (session_use_project / "
@@ -544,6 +558,7 @@ async def flow_simulate(input: FlowSimulateInput, ctx: ToolContext) -> ToolResul
             steps=steps,
             seed_collections=input.seed_collections,
             mode=mode,
+            project_id=project_id,
         )
     except SimulatorUnavailableError:
         return ToolResult.error(
@@ -663,6 +678,11 @@ async def flow_import(input: FlowImportInput, ctx: ToolContext) -> ToolResult:
 
 
 class FlowHistoryInput(BaseModel):
+    project_id: str | int | None = Field(
+        default=None,
+        description="Loyiha id (ixtiyoriy). Dashboard agentida ctx'da loyiha "
+        "o'rnatilmagan bo'lsa SHU bilan bering — promptdagi project_id'ni uzating.",
+    )
     pass
 
 
@@ -675,10 +695,10 @@ class FlowHistoryInput(BaseModel):
     ),
     input_model=FlowHistoryInput,
 )
-async def flow_history(_: FlowHistoryInput, ctx: ToolContext) -> ToolResult:
+async def flow_history(input: FlowHistoryInput, ctx: ToolContext) -> ToolResult:
     from ...mcp.flow_versions import get_flow_version_store
 
-    project_id = _power_project_id(ctx)
+    project_id = _power_project_id(ctx, getattr(input, "project_id", None))
     if not project_id:
         return ToolResult.error(
             "Aktiv loyiha yo'q — avval loyihani tanlang."
@@ -706,6 +726,11 @@ async def flow_history(_: FlowHistoryInput, ctx: ToolContext) -> ToolResult:
 
 
 class FlowRollbackInput(BaseModel):
+    project_id: str | int | None = Field(
+        default=None,
+        description="Loyiha id (ixtiyoriy). Dashboard agentida ctx'da loyiha "
+        "o'rnatilmagan bo'lsa SHU bilan bering — promptdagi project_id'ni uzating.",
+    )
     version: int = Field(description="flow.history qaytargan version raqami.")
 
 
@@ -722,7 +747,7 @@ class FlowRollbackInput(BaseModel):
 async def flow_rollback(input: FlowRollbackInput, ctx: ToolContext) -> ToolResult:
     from ...mcp.flow_versions import get_flow_version_store
 
-    project_id = _power_project_id(ctx)
+    project_id = _power_project_id(ctx, getattr(input, "project_id", None))
     if not project_id:
         return ToolResult.error(
             "Aktiv loyiha yo'q — avval loyihani tanlang."
@@ -770,6 +795,7 @@ async def _run_saved_tests(
     flow: dict[str, Any],
     tests: list[dict[str, Any]],
     seed_collections: bool = True,
+    project_id: str | None = None,
 ) -> dict[str, Any]:
     """Run each saved test in mode=assert against `flow`. Returns aggregate:
       {"ran": bool, "passed": N, "total": M, "results": [{name, ok, passed, total,
@@ -793,6 +819,7 @@ async def _run_saved_tests(
                 flow=flow,
                 steps=normalized,
                 seed_collections=seed_collections,
+                project_id=project_id,
                 mode="assert",
             )
         except SimulatorUnavailableError:
@@ -845,6 +872,11 @@ def _fmt_test_results(agg: dict[str, Any]) -> str:
 
 
 class FlowTestSaveInput(BaseModel):
+    project_id: str | int | None = Field(
+        default=None,
+        description="Loyiha id (ixtiyoriy). Dashboard agentida ctx'da loyiha "
+        "o'rnatilmagan bo'lsa SHU bilan bering — promptdagi project_id'ni uzating.",
+    )
     name: str = Field(description="Test nomi (loyiha ichida unikal — qayta saqlasa almashadi).")
     steps: list[FlowSimulateStep] = Field(
         min_length=1,
@@ -871,7 +903,7 @@ class FlowTestSaveInput(BaseModel):
 async def flow_test_save(input: FlowTestSaveInput, ctx: ToolContext) -> ToolResult:
     from ...mcp.flow_tests import get_flow_test_store
 
-    project_id = _power_project_id(ctx)
+    project_id = _power_project_id(ctx, getattr(input, "project_id", None))
     if not project_id:
         return ToolResult.error("Aktiv loyiha yo'q — avval loyihani tanlang.")
     name = input.name.strip()
@@ -898,6 +930,11 @@ async def flow_test_save(input: FlowTestSaveInput, ctx: ToolContext) -> ToolResu
 
 
 class FlowTestListInput(BaseModel):
+    project_id: str | int | None = Field(
+        default=None,
+        description="Loyiha id (ixtiyoriy). Dashboard agentida ctx'da loyiha "
+        "o'rnatilmagan bo'lsa SHU bilan bering — promptdagi project_id'ni uzating.",
+    )
     pass
 
 
@@ -906,10 +943,10 @@ class FlowTestListInput(BaseModel):
     description="Loyihaning saqlangan regression testlari ro'yxati (nom, qadam soni, enabled).",
     input_model=FlowTestListInput,
 )
-async def flow_test_list(_: FlowTestListInput, ctx: ToolContext) -> ToolResult:
+async def flow_test_list(input: FlowTestListInput, ctx: ToolContext) -> ToolResult:
     from ...mcp.flow_tests import get_flow_test_store
 
-    project_id = _power_project_id(ctx)
+    project_id = _power_project_id(ctx, getattr(input, "project_id", None))
     if not project_id:
         return ToolResult.error("Aktiv loyiha yo'q — avval loyihani tanlang.")
     tests = await get_flow_test_store().list(project_id=project_id)
@@ -930,6 +967,11 @@ async def flow_test_list(_: FlowTestListInput, ctx: ToolContext) -> ToolResult:
 
 
 class FlowTestDeleteInput(BaseModel):
+    project_id: str | int | None = Field(
+        default=None,
+        description="Loyiha id (ixtiyoriy). Dashboard agentida ctx'da loyiha "
+        "o'rnatilmagan bo'lsa SHU bilan bering — promptdagi project_id'ni uzating.",
+    )
     name: str = Field(description="O'chiriladigan test nomi.")
     confirm: bool = Field(
         default=False,
@@ -949,7 +991,7 @@ class FlowTestDeleteInput(BaseModel):
 async def flow_test_delete(input: FlowTestDeleteInput, ctx: ToolContext) -> ToolResult:
     from ...mcp.flow_tests import get_flow_test_store
 
-    project_id = _power_project_id(ctx)
+    project_id = _power_project_id(ctx, getattr(input, "project_id", None))
     if not project_id:
         return ToolResult.error("Aktiv loyiha yo'q — avval loyihani tanlang.")
     name = input.name.strip()
@@ -967,6 +1009,11 @@ async def flow_test_delete(input: FlowTestDeleteInput, ctx: ToolContext) -> Tool
 
 
 class FlowTestRunInput(BaseModel):
+    project_id: str | int | None = Field(
+        default=None,
+        description="Loyiha id (ixtiyoriy). Dashboard agentida ctx'da loyiha "
+        "o'rnatilmagan bo'lsa SHU bilan bering — promptdagi project_id'ni uzating.",
+    )
     name: str | None = Field(
         default=None,
         description=(
@@ -993,7 +1040,7 @@ class FlowTestRunInput(BaseModel):
 async def flow_test_run(input: FlowTestRunInput, ctx: ToolContext) -> ToolResult:
     from ...mcp.flow_tests import get_flow_test_store
 
-    project_id = _power_project_id(ctx)
+    project_id = _power_project_id(ctx, getattr(input, "project_id", None))
     if not project_id:
         return ToolResult.error("Aktiv loyiha yo'q — avval loyihani tanlang.")
     store = get_flow_test_store()
@@ -1017,7 +1064,7 @@ async def flow_test_run(input: FlowTestRunInput, ctx: ToolContext) -> ToolResult
     except Exception as exc:
         return ToolResult.error(f"Flow'ni yuklab bo'lmadi: {exc}")
 
-    agg = await _run_saved_tests(ctx, flow=flow, tests=tests)
+    agg = await _run_saved_tests(ctx, flow=flow, tests=tests, project_id=project_id)
     if not agg.get("ran"):
         return ToolResult.error(
             "Simulyator servisi mavjud emas — testlar ishga tushmadi. Keyinroq "
