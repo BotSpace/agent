@@ -158,6 +158,22 @@ def _is_read_only(registry_name: str) -> bool:
     return any(verb == v or verb.startswith(v + "_") for v in _READ_ONLY_VERBS)
 
 
+def _explicit_project_id(arguments: dict) -> str | None:
+    """Tool argumentlaridagi konkret `project_id` (override). Yo'q / placeholder
+    (`global`/`none`/bo'sh) bo'lsa None — aktiv-loyiha pointer'i ishlaydi.
+
+    Mos `tools/flow._concrete_project_id` bilan bir xil placeholder ro'yxati."""
+    if not isinstance(arguments, dict):
+        return None
+    raw = arguments.get("project_id")
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if text.lower() in {"", "global", "none", "null"}:
+        return None
+    return text
+
+
 def _to_mcp_tool(reg_name: str, registry: ToolRegistry) -> mtypes.Tool:
     tool = registry.get(reg_name)
     assert tool is not None
@@ -267,7 +283,9 @@ async def _handle_session_use_project(
 
     store = get_workspace_store()
     async with store.lock(user.user_id):
-        ws = store.set_active(user.user_id, project_id)
+        # Aktiv loyiha pointer'i per-CLIENT (user_id, client_key) — bir user'ning
+        # boshqa klienti boshqa loyihada ishlayotgan bo'lsa, unga tegmaymiz.
+        ws = store.set_active(user.user_id, project_id, client_key=user.client_key)
         ws.sync_auth_claims(user.claims)
 
         backend = get_backend_client()
@@ -345,14 +363,17 @@ async def _handle_session_use_project(
 
 async def _handle_session_status(user: AuthedUser) -> mtypes.CallToolResult:
     store = get_workspace_store()
+    # Diagnostika uchun klient identifikatorining qisqartmasi (xom token EMAS).
+    client_short = user.client_key[:8] if user.client_key else "—"
     async with store.lock(user.user_id):
-        ws = store.get(user.user_id)
+        ws = store.get(user.user_id, client_key=user.client_key)
         if not ws.project_id:
             return _result_to_mcp(
                 "Aktiv loyiha yo'q. session_use_project(project_id) bilan loyiha "
-                "tanlang — saqlanmagan draft bo'lsa avtomatik tiklanadi.",
+                "tanlang — saqlanmagan draft bo'lsa avtomatik tiklanadi.\n"
+                f"(klient: {client_short})",
                 is_error=False,
-                data={"project_id": None},
+                data={"project_id": None, "client_key": client_short},
             )
         flow = ws.working_flow or {}
         nodes = len(flow.get("nodes") or [])
@@ -366,6 +387,7 @@ async def _handle_session_status(user: AuthedUser) -> mtypes.CallToolResult:
             + f"\nFlow: {nodes} node, {edges} edge"
             f"\nSaqlanmagan o'zgarishlar: {'BOR' if ws.flow_dirty else 'yoq'}"
             f"\nKolleksiyalar ({len(col_names)}): {', '.join(col_names) if col_names else '—'}"
+            f"\nKlient: {client_short}"
         )
         return _result_to_mcp(
             text,
@@ -377,6 +399,7 @@ async def _handle_session_status(user: AuthedUser) -> mtypes.CallToolResult:
                 "edges": edges,
                 "flow_dirty": ws.flow_dirty,
                 "collections": col_names,
+                "client_key": client_short,
             },
         )
 
@@ -384,7 +407,7 @@ async def _handle_session_status(user: AuthedUser) -> mtypes.CallToolResult:
 async def _handle_session_undo(user: AuthedUser) -> mtypes.CallToolResult:
     store = get_workspace_store()
     async with store.lock(user.user_id):
-        ws = store.get(user.user_id)
+        ws = store.get(user.user_id, client_key=user.client_key)
         if not ws.project_id:
             return _result_to_mcp(
                 "Aktiv loyiha yo'q — session_use_project(project_id) chaqiring.",
@@ -418,10 +441,18 @@ async def _execute_registry_tool(
     registry: ToolRegistry,
 ) -> mtypes.CallToolResult:
     store = get_workspace_store()
+    # Explicit `project_id` argumenti DOIM per-client aktiv-loyiha pointer'idan
+    # ustun (#4) — ko'p tool'larda (cms_*, env_*, release_*, flow_save, ...)
+    # optional project_id bor. Berilgan bo'lsa o'sha loyiha workspace'iga
+    # to'g'ridan-to'g'ri yo'naltiramiz; aks holda pointer ishlaydi.
+    explicit_pid = _explicit_project_id(arguments)
     # #2 — entire lookup + execute + merge is atomic per user so parallel
     # flow_patch calls can't see a half-built workspace ("Aktiv loyiha yo'q").
     async with store.lock(user.user_id):
-        ws = store.get(user.user_id)
+        if explicit_pid is not None:
+            ws = store.get(user.user_id, explicit_pid, client_key=user.client_key)
+        else:
+            ws = store.get(user.user_id, client_key=user.client_key)
         ws.sync_auth_claims(user.claims)
 
         # Flow tool'lari aktiv loyihani talab qiladi.
