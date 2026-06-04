@@ -561,6 +561,41 @@ async def _handle_session_log_prompt(
     )
 
 
+
+# ── build-rules digest (server-side guarantee) ───────────────────────────────
+
+# Qurish (flow mutatsiya) tool'lari — birinchisida qoidalar digest'i beriladi.
+_BUILD_TOOL_PREFIXES = (
+    "flow.add_",
+    "flow.ask_",
+    "flow.apply_template",
+    "flow.connect",
+    "flow.import",
+)
+
+# (user_id, client_key) → True. In-memory: pod restartda qayta beriladi — OK.
+_rules_served: dict[tuple[str, str], bool] = {}
+
+
+def _is_build_tool(reg_name: str) -> bool:
+    return reg_name.startswith(_BUILD_TOOL_PREFIXES)
+
+
+def _mark_rules_served(user_id: str, client_key: str) -> bool:
+    """True — hali berilmagan (endi beriladi); False — allaqachon berilgan."""
+    key = (user_id, client_key)
+    if _rules_served.get(key):
+        return False
+    _rules_served[key] = True
+    return True
+
+
+def _load_build_rules_digest() -> str:
+    from ..prompts.loader import load_prompt
+
+    return load_prompt("mcp/build_rules_digest.txt").strip()
+
+
 async def _execute_registry_tool(
     reg_name: str,
     arguments: dict,
@@ -636,6 +671,15 @@ async def _execute_registry_tool(
         # #5 — surface the transparent restore on the result.
         if restored_pid is not None:
             content = _RESTORE_NOTICE.format(pid=restored_pid) + "\n" + (content or "")
+        # Klient docs_guide o'qimasa ham qoidalar yetib borsin: shu klientning
+        # BIRINCHI qurish chaqirig'i natijasiga qisqa qoidalar digest'i qo'shiladi
+        # (server-side guarantee — instructions/docs maslahatiga tayanmaymiz).
+        if (
+            not result.is_error
+            and _is_build_tool(reg_name)
+            and _mark_rules_served(user.user_id, user.client_key)
+        ):
+            content = _load_build_rules_digest() + "\n\n" + (content or "")
         return _result_to_mcp(content, is_error=result.is_error, data=result.data)
 
 

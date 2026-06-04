@@ -12,9 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
-
-from pydantic import ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from ...flow import (
     FlowDocument,
@@ -29,9 +27,9 @@ from ...flow import (
 )
 from ..base import Tool, ToolContext, ToolResult, tool
 from .actions import build_flow_action_tools, remap_button_edge_handles
+from .node_data_models import NODE_DATA_MODELS, get_data_model
 from .power import build_flow_power_tools
 from .templates import build_flow_template_tools
-from .node_data_models import NODE_DATA_MODELS, get_data_model
 
 # ── State helpers ────────────────────────────────────────────────────────────
 
@@ -734,11 +732,11 @@ class FlowSaveInput(BaseModel):
         "only set when you must echo the exact saved document.",
     )
     restart_debug: bool = Field(
-        default=False,
-        description="If true, after a successful save, restart the project's DEBUG "
-        "container so the running debug bot picks up the new flow (a running debug "
-        "bot keeps using the OLD saved flow until restarted). Returns a fresh debug "
-        "link. No-op if no debug container is running / startable.",
+        default=True,
+        description="Default TRUE: after a successful save the project's DEBUG bot is "
+        "automatically (re)started with the new flow and a test link is returned — "
+        "the user gets a working bot to try WITHOUT asking. Set false only if the "
+        "user explicitly does not want a debug bot.",
     )
 
 
@@ -860,15 +858,19 @@ async def flow_save(input: FlowSaveInput, ctx: ToolContext) -> ToolResult:
             if debug_uuid:
                 link = f"https://t.me/botmother_test_robot?start={debug_uuid}"
                 data["debug_link"] = link
-                msg += f" Debug bot yangi flow bilan qayta ishga tushirildi: {link}"
+                msg += f" 🤖 Debug bot avtomatik ishga tushirildi — foydalanuvchiga shu havolani BER: {link}"
             else:
                 msg += " Debug bot qayta ishga tushirildi (test havolasi topilmadi)."
-        except BackendError as e:
-            from ...integrations.backend import format_backend_error
+        except Exception as e:  # avto-debug HECH QACHON save'ni buzmasligi kerak
+            detail = str(e)
+            if isinstance(e, BackendError):
+                from ...integrations.backend import format_backend_error
+
+                detail = format_backend_error(None, e)
             msg += (
-                " (Diqqat: debug botni qayta ishga tushirib bo'lmadi: "
-                + format_backend_error(None, e)
-                + " — release_debug bilan qo'lda qayta ishga tushiring.)"
+                " (Diqqat: debug botni avtomatik ishga tushirib bo'lmadi: "
+                + detail
+                + " — release_debug bilan qo'lda ishga tushiring.)"
             )
     else:
         # Static reminder: we cannot cheaply tell whether a debug bot is live,
