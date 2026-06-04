@@ -263,16 +263,30 @@ async def _seed_collections(ctx: ToolContext, project_id: str | None = None) -> 
     project_id = _concrete_project_id(project_id) or _power_project_id(ctx)
     if not project_id:
         return out
+    backend = _backend(ctx)
+    claims = ctx.state.get("auth_claims")
+    # Collection names from workspace state — but a flow-builder sub-agent's state
+    # can be STALE (e.g. collections created by a sibling cms-manager sub-agent
+    # during this run aren't in it). So always confirm against the backend; if the
+    # state list is empty/partial the simulator would otherwise see zero data and
+    # the agent loops "Hozircha kurslar mavjud emas".
     raw = ctx.state.get("collections")
     names = [
         c.get("name")
         for c in (raw if isinstance(raw, list) else [])
         if isinstance(c, dict) and c.get("name")
     ]
+    try:
+        live = await backend.cms_list_collections(project_id, auth_claims=claims)
+        live_names = [
+            c.get("name") for c in (live or []) if isinstance(c, dict) and c.get("name")
+        ]
+        # Union: live backend list is authoritative, keep any extra from state.
+        names = list(dict.fromkeys([*live_names, *names]))
+    except Exception:  # pragma: no cover — fall back to state names
+        pass
     if not names:
         return out
-    backend = _backend(ctx)
-    claims = ctx.state.get("auth_claims")
     for name in names:
         try:
             res = await backend.cms_list_documents(
