@@ -18,11 +18,13 @@ import contextvars
 import logging
 import time
 import uuid
+import weakref
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import mcp.types as mtypes
 from mcp.server.lowlevel import Server
+from mcp.server.lowlevel.server import request_ctx as sdk_request_ctx
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -58,6 +60,35 @@ _READ_ONLY_VERBS = (
 _current_user: contextvars.ContextVar[AuthedUser | None] = contextvars.ContextVar(
     "mcp_current_user", default=None
 )
+
+# Stateful transportda har ulanish (session) uchun SDK BITTA ServerSession
+# obyektini yaratadi va tool handler'lar aynan shu sessiya kontekstida ishlaydi.
+# Shu obyektdan barqaror per-connection client kalitini yasaymiz — ikki terminal /
+# sub-agent bir xil token bilan ulansa ham har ulanish alohida kalit oladi.
+# WeakKeyDictionary: sessiya obyekti o'chsa yozuv ham o'chadi (id() qayta
+# ishlatilish xavfisiz).
+_SESSION_KEYS: weakref.WeakKeyDictionary[object, str] = weakref.WeakKeyDictionary()
+
+
+def _session_client_key() -> str | None:
+    """SDK request kontekstidagi sessiya obyektidan per-connection kalit.
+
+    Tool/prompt handler ichida chaqirilganda SDK `request_ctx`ni o'rnatgan
+    bo'ladi (sessiya task'i ichida) — bu HTTP-header yondashuvidagi contextvar
+    tuzog'iga uchramaydi. Kontekst tashqarisida (yoki sessiz holatda) None —
+    chaqiruvchi token-hash fallback'ka qaytadi."""
+    try:
+        sess = sdk_request_ctx.get().session
+    except LookupError:
+        return None
+    if sess is None:
+        return None
+    key = _SESSION_KEYS.get(sess)
+    if key is None:
+        key = f"sid-{uuid.uuid4().hex[:16]}"
+        _SESSION_KEYS[sess] = key
+    return key
+
 
 # MCP-only session tool'lari — registry'da yo'q, server o'zi boshqaradi.
 _SESSION_USE_PROJECT = "session_use_project"
@@ -737,6 +768,11 @@ def build_mcp_server(registry: ToolRegistry | None = None) -> Server:
         if user is None:
             # Auth middleware har doim o'rnatadi; bu himoya chizig'i.
             return _result_to_mcp("Autentifikatsiya talab qilinadi.", is_error=True, data=None)
+        # Per-connection kimlik: SDK sessiya obyektidan (stateful). Token-hash
+        # faqat fallback (sessiyasiz chaqiruvlar uchun).
+        sid_key = _session_client_key()
+        if sid_key:
+            user.client_key = sid_key
 
         started = time.monotonic()
         result = await _dispatch(name, arguments, user)
@@ -791,6 +827,9 @@ def build_mcp_server(registry: ToolRegistry | None = None) -> Server:
         # record carrying `prompt`). Fire-and-forget, graceful degrade.
         if task:
             user = _current_user.get()
+            sid_key = _session_client_key()
+            if user and sid_key:
+                user.client_key = sid_key
             try:
                 trace.log_prompt(
                     user_id=user.user_id if user else None,
@@ -881,17 +920,11 @@ class _MCPApp:
             await response(scope, receive, send)
             return
 
-        # Stateful transport: each client connection gets a unique
-        # `Mcp-Session-Id` (assigned by the SDK on `initialize`, then sent back
-        # by the client on every request). Use it as the per-client identifier so
-        # two terminals / sub-agents on the SAME token (same machine, one Claude
-        # Code config) are still isolated — each connection is its own session.
-        # Falls back to the token-hash client_key on `initialize` (before a
-        # session id exists) and for any stateless caller.
-        session_id = request.headers.get("mcp-session-id")
-        if session_id:
-            user.client_key = f"sid-{session_id}"[:24]
-
+        # Per-connection kimlik bu yerda EMAS: stateful rejimda tool handler
+        # alohida sessiya task'ida ishlaydi va bu request-kontekst contextvar'i
+        # unga yetib bormaydi. client_key sessiyadan handler ichida olinadi —
+        # `_session_client_key()` (SDK request_ctx.session). Bu yerdagi user
+        # token-hash fallback bilan qoladi.
         token = _current_user.set(user)
         try:
             await self._session_manager.handle_request(scope, receive, send)

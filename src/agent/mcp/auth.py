@@ -45,12 +45,12 @@ class AuthedUser:
 
     `client_key` — bitta user'ning ALOHIDA MCP klient ulanishini ajratish uchun.
     Bu yerda token-hash (Authorization sha256 prefiksi) — FALLBACK qiymat.
-    Transport STATEFUL bo'lgani uchun server.py `_MCPApp` har request'dagi
-    `Mcp-Session-Id` header'ini o'qib client_key'ni O'SHANGA o'rnatadi (har
-    ulanish noyob session id oladi). Shu sabab bir xil token (ikki terminal /
-    sub-agent, bir Claude Code config) bo'lsa ham ular ALOHIDA session — aktiv
-    loyihasi to'qnashmaydi. Token-hash faqat `initialize`'gacha (session id hali
-    yo'q) yoki stateless caller uchun ishlatiladi.
+    Asosiy kimlik server.py `_session_client_key()`da: tool handler ichida SDK
+    `request_ctx.get().session` obyektidan `sid-...` kalit olinadi (stateful
+    transportda har ulanish = bitta sessiya obyekti). Shu sabab bir xil token
+    (ikki terminal / sub-agent, bir Claude Code config) bo'lsa ham har ulanish
+    ALOHIDA kalit oladi — aktiv loyihasi to'qnashmaydi. Token-hash faqat sessiya
+    konteksti bo'lmagan chaqiruvlar uchun ishlatiladi.
     Xavfsizlik: client_key faqat hash/session prefiksi, xom token EMAS —
     log'ga yozish xavfsiz, lekin baribir butun token'ni hech qachon log'lamaymiz.
     """
