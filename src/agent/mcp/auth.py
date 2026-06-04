@@ -43,15 +43,15 @@ class MCPAuthError(Exception):
 class AuthedUser:
     """`deps.CurrentUser`'ga mos struktura — user_id + tool'larga uzatiladigan claims.
 
-    `client_key` — bitta user'ning ALOHIDA MCP klient ulanishini ajratish uchun
-    (Authorization header'ining sha256 hash prefiksi). Streamable HTTP stateless
-    rejimda Mcp-Session-Id yo'q, shuning uchun "aktiv loyiha" pointer'ini
-    per-CLIENT qilishda token-hash yagona barqaror identifikatordir. OAuth DCR
-    tufayli har Claude Code instansi ALOHIDA access token oladi → har biri o'z
-    client_key'iga ega. CHEKLOV: bitta `bsp_` personal token bilan ulangan ikki
-    terminal bir xil client_key oladi (token bir xil), shuning uchun ularning
-    aktiv loyihasi umumiy bo'lib qoladi — bu qabul qilinadigan cheklov.
-    Xavfsizlik: client_key faqat hash prefiksi (16 hex), xom token EMAS —
+    `client_key` — bitta user'ning ALOHIDA MCP klient ulanishini ajratish uchun.
+    Bu yerda token-hash (Authorization sha256 prefiksi) — FALLBACK qiymat.
+    Transport STATEFUL bo'lgani uchun server.py `_MCPApp` har request'dagi
+    `Mcp-Session-Id` header'ini o'qib client_key'ni O'SHANGA o'rnatadi (har
+    ulanish noyob session id oladi). Shu sabab bir xil token (ikki terminal /
+    sub-agent, bir Claude Code config) bo'lsa ham ular ALOHIDA session — aktiv
+    loyihasi to'qnashmaydi. Token-hash faqat `initialize`'gacha (session id hali
+    yo'q) yoki stateless caller uchun ishlatiladi.
+    Xavfsizlik: client_key faqat hash/session prefiksi, xom token EMAS —
     log'ga yozish xavfsiz, lekin baribir butun token'ni hech qachon log'lamaymiz.
     """
 
