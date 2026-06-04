@@ -1,4 +1,10 @@
 📖 BOT QURISH QOIDALARI (avtomatik eslatma — birinchi qurish chaqiruvingiz):
+• 🎨 CHIROYLI QIL (majburiy): har xabar va HAR tugmada mos EMOJI ishlat
+  (👋📚🛒💳✅⬅️🏠☎️👤). HTML formatlash: parseMode:"HTML" + <b>sarlavha</b>,
+  bo'sh qatorlar bilan ajrat. Iliq, tabiiy o'zbekcha matn; {{first_name}} bilan
+  shaxsiylashtir. Quruq "salom"/"OK"/"Xato" YOZMA — emoji'li jonli matn yoz.
+  Hatto oddiy "salom" bot ham emoji'li iliq salom bo'lsin. To'liq tuzilma:
+  chiroyli /start menyu + har submenuda "⬅️ Ortga"/"🏠 Bosh menyu".
 • XABAR NODE: DOIM flow_add_edit_or_send (EditOrSendMessageNode) — xabarni joyida
   edit qiladi, menyu chatda to'planmaydi. flow_add_send_text_message FAQAT reply
   keyboard (request_contact/request_location) kerak bo'lganda.

@@ -99,6 +99,32 @@ Dinamik ro'yxatli ma'lumot (kurslar, mahsulotlar, FAQ...) flow'ga **HARDCODE QIL
 1. **cms-manager**'ga delegate: `task.run(subagent_type="cms-manager", prompt="collection yarat + 3-5 demo yozuv qo'sh")`
 2. Flow collection'dan o'qisin — `CustomCode db_find` / `LoadCollectionItem` / `AICollectionToolNode`.
 
+## Bot dizayni — CHIROYLI va professional qil (MAJBURIY)
+
+Bot shunchaki ishlashi yetarli emas — foydalanuvchiga YOQADIGAN, jonli va
+professional ko'rinishi kerak. Har bot uchun:
+
+- **Emoji ishlat** — har xabar va HAR tugmada mosini qo'y. Salom 👋, kurslar 📚,
+  buyurtma 🛒, to'lov 💳, tasdiq ✅, ortga ⬅️, bosh menyu 🏠, aloqa ☎️, profil 👤,
+  sozlama ⚙️. Emoji'siz quruq bot eskirgan ko'rinadi. Lekin haddan oshirma —
+  bir tugmaga bitta emoji, matnда 2-4 ta yetadi.
+- **HTML formatlash** — `parseMode:"HTML"` qo'y va matnni bezab yoz:
+  `<b>sarlavha</b>`, `<i>izoh</i>`, ro'yxatlar uchun `•` yoki raqamlar, bo'sh
+  qatorlar bilan ajrat. Misol salom xabari:
+  `"<b>Assalomu alaykum, {{first_name}}! 👋</b>\n\n📚 <b>Bilim Markazi</b> botiga xush kelibsiz.\n\nQuyidagidan birini tanlang:"`
+- **Iliq, tabiiy matn** — foydalanuvchi tilida (odatda o'zbekcha), qisqa va
+  samimiy. Quruq "Xato"/"OK" emas — "⚠️ Kechirasiz, xatolik yuz berdi, qaytadan
+  urinib ko'ring." Ismni `{{first_name}}` bilan shaxsiylashtirib murojaat qil.
+- **To'liq tuzilma** — /start = chiroyli salom + asosiy menyu (3-6 inline tugma).
+  Har bo'lim alohida sahifa. Har submenuda "⬅️ Ortga" va/yoki "🏠 Bosh menyu".
+  Hech qachon foydalanuvchini boshi berk ko'chada qoldirma.
+- **Tugma matnlari** — qisqa, aniq, emoji bilan ("✍️ Ro'yxatdan o'tish",
+  "📞 Aloqa", "💰 Narxlar"). Raqamlangan "1/2/3" emas.
+- **Tasdiq va yakun** — forma/buyurtma oxirida chiroyli xulosa ko'rsat
+  (kiritilgan ma'lumotlar ro'yxati + "✅ Qabul qilindi, tez orada bog'lanamiz!").
+
+Oddiy "salom" bot so'ralsa ham — quruq "salom" emas, emoji'li iliq salom yoz.
+
 ## Flow patternlari (qisqa)
 
 ### Pattern 1: Trigger → Xabar

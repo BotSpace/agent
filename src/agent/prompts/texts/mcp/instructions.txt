@@ -48,6 +48,13 @@ broadcasts. You (the MCP client model) act as the bot builder.
    production deploy; `release_logs` shows a release's logs.
 
 ### Key rules
+- 🎨 DESIGN QUALITY (mandatory): bots must look polished, not bare. Put a fitting
+  EMOJI in every message and on EVERY button. Use HTML: set `parseMode:"HTML"`
+  and format with <b>title</b>, blank lines, bullet lists. Write warm, natural
+  copy in the user's language (usually Uzbek); personalize with {{first_name}}.
+  NEVER ship dry "salom"/"OK"/"Error" text — even a simple "say hello" bot gets a
+  warm emoji greeting. Full structure: a pretty /start menu (3-6 inline buttons)
+  + back/home buttons on every submenu. Full design guide: docs_guide(topic="flow").
 - MESSAGE NODE CHOICE: use `flow_add_edit_or_send` (EditOrSendMessageNode) for
   ALL bot messages by default — it edits the previous message in place, so menus
   don't pile up. `flow_add_send_text_message` (SendTextMessageNode) is ONLY for
