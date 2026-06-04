@@ -303,6 +303,43 @@ def _format_assert(resp: dict, n_steps: int) -> tuple[str, dict]:
     Returns (text, structured) where structured matches the #1 assert contract:
       {"ok", "passed", "failed":[{step,input,reason,errors}], "final_state"}.
     """
+    # Engine assert rejimida KOMPAKT javob qaytaradi: {ok, passed, failed,
+    # final_state} — "steps" YO'Q. Avval shu native shaklni ishlatamiz; aks
+    # holda (mode=full yoki eski simulyator) steps'dan qayta hisoblaymiz.
+    if isinstance(resp.get("passed"), int) and "steps" not in resp:
+        passed = resp["passed"]
+        failed = []
+        for f in resp.get("failed") or []:
+            f = f if isinstance(f, dict) else {}
+            failed.append(
+                {
+                    # engine 0-based step indeksini 1-based ko'rsatamiz
+                    "step": (f.get("step") or 0) + 1,
+                    "input": _step_input_label(f.get("input")),
+                    "reason": str(f.get("reason") or "?"),
+                    "errors": [str(e) for e in (f.get("errors") or [])],
+                }
+            )
+        total = passed + len(failed) or n_steps
+        top_errors = resp.get("errors") if isinstance(resp.get("errors"), list) else []
+        ok = (not failed) and (not top_errors) and bool(resp.get("ok", True))
+        icon = "✅" if ok else "❌"
+        lines = [f"{icon} {passed}/{total} o'tdi"]
+        for f in failed:
+            line = f"  ❌ step {f['step']} ({f['input']}) — {f['reason']}"
+            if f["errors"]:
+                line += " | " + "; ".join(f["errors"])
+            lines.append(line)
+        if top_errors:
+            lines.append("Umumiy xatolar: " + "; ".join(str(e) for e in top_errors))
+        structured = {
+            "ok": ok,
+            "passed": passed,
+            "failed": failed,
+            "final_state": resp.get("final_state"),
+        }
+        return "\n".join(lines), structured
+
     sim_steps = resp.get("steps") if isinstance(resp.get("steps"), list) else []
     failed: list[dict] = []
     passed = 0
@@ -723,12 +760,19 @@ def _fmt_test_results(agg: dict[str, Any]) -> str:
             continue
         failed = r.get("failed") or []
         if failed:
-            f0 = failed[0]
-            detail = f"step {f0.get('step')} — {f0.get('reason')}"
-            more = f" (+{len(failed) - 1})" if len(failed) > 1 else ""
-            parts.append(f"❌ '{r.get('name')}': {detail}{more}")
+            details = []
+            for f in failed[:3]:
+                d = f"step {f.get('step')} ({f.get('input', '?')}) — {f.get('reason')}"
+                if f.get("errors"):
+                    d += " | " + "; ".join(str(e) for e in f["errors"])
+                details.append(d)
+            more = f" (+{len(failed) - 3} yana)" if len(failed) > 3 else ""
+            parts.append(f"❌ '{r.get('name')}': " + "; ".join(details) + more)
         else:
-            parts.append(f"❌ '{r.get('name')}': o'tmadi")
+            parts.append(
+                f"❌ '{r.get('name')}': o'tmadi "
+                f"({r.get('passed', '?')}/{r.get('total', '?')} step)"
+            )
     return "; ".join(parts)
 
 
