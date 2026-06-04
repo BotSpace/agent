@@ -81,6 +81,11 @@ class Settings(BaseSettings):
     engine_base_url: str = Field(
         default="http://localhost:9100", alias="ENGINE_BASE_URL"
     )
+    # Engine-side flow simulator service — `bot_simulate` MCP tool POSTs the
+    # working flow + a list of user steps and gets back per-step bot messages.
+    simulator_url: str = Field(
+        default="http://engine-simulator:8200", alias="AGENT_SIMULATOR_URL"
+    )
 
     # ── auth ────────────────────────────────────────────────────────────
     session_secret: str = Field(
