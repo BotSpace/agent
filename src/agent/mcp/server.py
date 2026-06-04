@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import contextvars
 import logging
+import time
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -36,6 +37,7 @@ from ..integrations.backend import (
 )
 from ..tools import ToolContext, build_default_registry
 from ..tools.registry import ToolRegistry
+from . import trace
 from .auth import AuthedUser, MCPAuthError, authenticate
 from .draft_store import get_draft_store
 from .workspace import Workspace, get_workspace_store
@@ -172,6 +174,31 @@ def _explicit_project_id(arguments: dict) -> str | None:
     if text.lower() in {"", "global", "none", "null"}:
         return None
     return text
+
+
+def _trace_project_id(user: AuthedUser, arguments: dict) -> str | None:
+    """Best-effort active project for a trace record: explicit arg override, else
+    the per-client active-project pointer. Read-only and never raises — tracing
+    must not affect tool execution."""
+    explicit = _explicit_project_id(arguments)
+    if explicit is not None:
+        return explicit
+    try:
+        return get_workspace_store().active_project_id(
+            user.user_id, client_key=user.client_key
+        )
+    except Exception:
+        return None
+
+
+def _result_text(result: mtypes.CallToolResult) -> str:
+    """Flatten a CallToolResult's text blocks for the trace result_summary."""
+    parts: list[str] = []
+    for block in result.content or []:
+        text = getattr(block, "text", None)
+        if isinstance(text, str):
+            parts.append(text)
+    return "\n".join(parts)
 
 
 def _to_mcp_tool(reg_name: str, registry: ToolRegistry) -> mtypes.Tool:
@@ -511,12 +538,9 @@ def build_mcp_server(registry: ToolRegistry | None = None) -> Server:
         tools.extend(_to_mcp_tool(reg_name, registry) for reg_name in name_map.values())
         return tools
 
-    @server.call_tool(validate_input=False)
-    async def call_tool(name: str, arguments: dict) -> mtypes.CallToolResult:
-        user = _current_user.get()
-        if user is None:
-            # Auth middleware har doim o'rnatadi; bu himoya chizig'i.
-            return _result_to_mcp("Autentifikatsiya talab qilinadi.", is_error=True, data=None)
+    async def _dispatch(
+        name: str, arguments: dict, user: AuthedUser
+    ) -> mtypes.CallToolResult:
         if name == _SESSION_USE_PROJECT:
             return await _handle_session_use_project(user, arguments)
         if name == _SESSION_STATUS:
@@ -542,6 +566,32 @@ def build_mcp_server(registry: ToolRegistry | None = None) -> Server:
                 data=None,
             )
         return await _execute_registry_tool(reg_name, arguments, user, registry)
+
+    @server.call_tool(validate_input=False)
+    async def call_tool(name: str, arguments: dict) -> mtypes.CallToolResult:
+        user = _current_user.get()
+        if user is None:
+            # Auth middleware har doim o'rnatadi; bu himoya chizig'i.
+            return _result_to_mcp("Autentifikatsiya talab qilinadi.", is_error=True, data=None)
+
+        started = time.monotonic()
+        result = await _dispatch(name, arguments, user)
+        # A-band trace (AI training data) — fire-and-forget, graceful degrade.
+        # Tracing must never affect the tool result.
+        try:
+            trace.log_tool_call(
+                user_id=user.user_id,
+                client_key=user.client_key,
+                project_id=_trace_project_id(user, arguments),
+                tool_name=name,
+                arguments=arguments,
+                result_summary=_result_text(result),
+                is_error=bool(result.isError),
+                duration_ms=int((time.monotonic() - started) * 1000),
+            )
+        except Exception as exc:  # pragma: no cover — defensive
+            logger.debug("MCP trace skipped for %s: %s", name, exc)
+        return result
 
     # ── Prompts — klient foydalanuvchisi /mcp__botspace__build_bot bilan to'liq
     # qo'llanmani kontekstga tortadi (tool chaqirig'ini kutmasdan).
@@ -570,6 +620,19 @@ def build_mcp_server(registry: ToolRegistry | None = None) -> Server:
         if name != "build_bot":
             raise ValueError(f"Noma'lum prompt: {name}")
         task = (arguments or {}).get("task", "").strip()
+        # A-band: record the user's intent as the `__prompt__` trace (the only
+        # record carrying `prompt`). Fire-and-forget, graceful degrade.
+        if task:
+            user = _current_user.get()
+            try:
+                trace.log_prompt(
+                    user_id=user.user_id if user else None,
+                    client_key=user.client_key if user else None,
+                    project_id=_trace_project_id(user, {}) if user else None,
+                    prompt=task,
+                )
+            except Exception as exc:  # pragma: no cover — defensive
+                logger.debug("MCP prompt trace skipped: %s", exc)
         guide = "\n\n---\n\n".join(
             [_load_guide("flow"), _load_guide("node_catalog"), _load_guide("flow_examples")]
         )
