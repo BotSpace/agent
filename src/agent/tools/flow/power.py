@@ -129,6 +129,21 @@ _STEP_TYPE_ALIASES = {
 
 _STEP_TYPES = ("command", "text", "contact", "location", "click", "click_text", "advance_time")
 
+# Maydon nomlarining tabiiy variantlari → kanonik. command:"/start" yozsa text'ga,
+# lat/lng → latitude/longitude, phone_number → phone, callback_data → data.
+_STEP_FIELD_ALIASES = {
+    "command": "text",
+    "message": "text",
+    "callback_data": "data",
+    "callbackData": "data",
+    "phone_number": "phone",
+    "phoneNumber": "phone",
+    "lat": "latitude",
+    "lon": "longitude",
+    "lng": "longitude",
+    "firstName": "first_name",
+}
+
 
 class FlowSimulateStep(BaseModel):
     type: Literal[
@@ -147,24 +162,31 @@ class FlowSimulateStep(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _normalize_type(cls, values: Any) -> Any:
-        """'callback_query'/'button' kabi tabiiy nomlarni 'click'ka keltiradi."""
+        """Tip va maydon nomlarini kanonik shaklga keltiradi — AI klient tabiiy
+        nomlar yozsa ham round-trip bo'lmasin ('command'→text, lat→latitude...)."""
         if isinstance(values, dict):
             raw = str(values.get("type") or "").strip().lower()
             if raw in _STEP_TYPE_ALIASES:
                 values["type"] = _STEP_TYPE_ALIASES[raw]
+                raw = values["type"]
             elif raw and raw not in _STEP_TYPES:
                 raise ValueError(
                     f"Noma'lum step type {raw!r}. Ruxsat etilganlar: {', '.join(_STEP_TYPES)}. "
                     "Inline tugma bosish uchun 'click' (data=callback_data) yoki "
                     "'click_text' (text=tugma matni) ishlating."
                 )
+            # Maydon aliaslari — agent docs o'qimasa ham to'g'ri o'qiladi.
+            for alias, canonical in _STEP_FIELD_ALIASES.items():
+                if alias in values and not values.get(canonical):
+                    values[canonical] = values.pop(alias)
         return values
+
     text: str | None = None
     data: str | None = None
     phone: str | None = None
     first_name: str | None = None
-    latitude: float | None = None
-    longitude: float | None = None
+    latitude: float | None = Field(default=None, serialization_alias="lat")
+    longitude: float | None = Field(default=None, serialization_alias="lon")
     seconds: int | None = Field(
         default=None,
         description="advance_time uchun: vaqtni necha soniya oldinga surish.",
@@ -502,7 +524,7 @@ async def flow_simulate(input: FlowSimulateInput, ctx: ToolContext) -> ToolResul
     else:
         flow = _working_flow(ctx)
 
-    steps = [s.model_dump(exclude_none=True) for s in input.steps]
+    steps = [s.model_dump(exclude_none=True, by_alias=True) for s in input.steps]
     mode = "assert" if str(input.mode).lower() == "assert" else "full"
 
     try:
@@ -728,7 +750,7 @@ def _validate_test_steps(raw_steps: list[Any]) -> tuple[list[dict] | None, str |
             model = FlowSimulateStep.model_validate(s)
         except Exception as exc:
             return None, f"steps[{i}] noto'g'ri: {exc}"
-        out.append(model.model_dump(exclude_none=True))
+        out.append(model.model_dump(exclude_none=True, by_alias=True))
     return out, None
 
 
@@ -845,7 +867,7 @@ async def flow_test_save(input: FlowTestSaveInput, ctx: ToolContext) -> ToolResu
     name = input.name.strip()
     if not name:
         return ToolResult.error("name bo'sh bo'lmasligi kerak.")
-    steps = [s.model_dump(exclude_none=True) for s in input.steps]
+    steps = [s.model_dump(exclude_none=True, by_alias=True) for s in input.steps]
     ok = await get_flow_test_store().save(
         project_id=project_id,
         user_id=str(ctx.user_id) if ctx.user_id is not None else None,
