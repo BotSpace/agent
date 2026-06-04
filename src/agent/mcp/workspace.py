@@ -29,6 +29,11 @@ from typing import Any
 # Workspace TTL — oxirgi tegishdan keyin shuncha soniya yashaydi.
 _DEFAULT_TTL_SECONDS = 2 * 60 * 60  # 2 soat
 
+# Aktiv-loyiha pointer TTL — per-(user, client) pointer'lar to'planib qolmasin.
+# Workspace TTL'dan uzunroq: foydalanuvchi sessiyalararo qaytib kelganda ham
+# "qaysi loyihada edim" eslab qolinadi (workspace qayta yuklanadi).
+_DEFAULT_ACTIVE_TTL_SECONDS = 24 * 60 * 60  # 24 soat
+
 # Snapshot ring (undo) — destructive amaldan oldin olinadi.
 _MAX_SNAPSHOTS = 5
 
@@ -131,13 +136,30 @@ class WorkspaceStore:
     Loyiha `session_use_project` orqali tanlanadi. Bitta user bir nechta loyiha
     bilan ishlashi mumkin — har biri alohida draft (#1). Har user uchun bitta
     `asyncio.Lock` (#2) — atomik lookup+execute+merge.
+
+    Aktiv-loyiha pointer'i per-CLIENT: kalit `(user_id, client_key)`. Stateless
+    HTTP'da bitta user IKKI Claude Code klientidan ulansa, har biri o'z aktiv
+    loyihasiga ega bo'ladi — A klient `use_project(1)` qilsa, B klient
+    `use_project(2)` qilsa, A'ning flow tool'lari 1'da, B'niki 2'da ishlaydi.
+    Workspace'lar (draft'lar) esa `(user_id, project_id)` bo'yicha UMUMIY qoladi —
+    bitta loyihada ikki klient ishlasa bitta draft ustida ishlaydi (per-user lock
+    serializatsiya qiladi). Faqat "qaysi loyiha aktiv" pointer'i per-client.
+
+    Eski API (`client_key` berilmaganda `client_key=""`) ham ishlaydi — testlar va
+    klient identifikatori bo'lmagan holatlar uchun yagona "bo'sh klient" pointer'i.
     """
 
-    def __init__(self, ttl_seconds: float = _DEFAULT_TTL_SECONDS) -> None:
+    def __init__(
+        self,
+        ttl_seconds: float = _DEFAULT_TTL_SECONDS,
+        active_ttl_seconds: float = _DEFAULT_ACTIVE_TTL_SECONDS,
+    ) -> None:
         self._ttl = ttl_seconds
+        self._active_ttl = active_ttl_seconds
         self._store: dict[tuple[str, str | None], Workspace] = {}
-        # Active (user → project) pointer: which workspace flow.* tools target.
-        self._active: dict[str, str | None] = {}
+        # Active pointer: (user_id, client_key) → (project_id, last_used_monotonic).
+        # Per-client — bir user'ning har klienti o'z aktiv loyihasiga ega.
+        self._active: dict[tuple[str, str], tuple[str | None, float]] = {}
         self._locks: dict[str, asyncio.Lock] = {}
 
     def lock(self, user_id: str) -> asyncio.Lock:
@@ -152,13 +174,27 @@ class WorkspaceStore:
         stale = [k for k, w in self._store.items() if now - w.last_used > self._ttl]
         for k in stale:
             self._store.pop(k, None)
+        # Eski (bekor qilingan) per-client pointer'larni ham tozalaymiz — aks holda
+        # ko'p ulanadigan klientlar pointer'lari cheksiz to'planib qoladi.
+        stale_active = [
+            k for k, (_pid, ts) in self._active.items() if now - ts > self._active_ttl
+        ]
+        for k in stale_active:
+            self._active.pop(k, None)
 
-    def get(self, user_id: str, project_id: str | None = None) -> Workspace:
+    def get(
+        self,
+        user_id: str,
+        project_id: str | None = None,
+        *,
+        client_key: str = "",
+    ) -> Workspace:
         """Return the workspace for (user, project). If project_id is None, use
-        the user's currently-active project (set by session_use_project)."""
+        this (user, client)'s currently-active project (set by
+        session_use_project). Workspace'lar user+project bo'yicha umumiy."""
         self._cleanup()
         if project_id is None:
-            project_id = self._active.get(user_id)
+            project_id = self._active_get(user_id, client_key)
         key = (user_id, project_id)
         ws = self._store.get(key)
         if ws is None:
@@ -167,11 +203,13 @@ class WorkspaceStore:
         ws.touch()
         return ws
 
-    def set_active(self, user_id: str, project_id: str) -> Workspace:
-        """Mark project_id active for user and return its workspace (creating
-        it if needed). Migrates any pre-selection (None) workspace's auth."""
+    def set_active(
+        self, user_id: str, project_id: str, *, client_key: str = ""
+    ) -> Workspace:
+        """Mark project_id active for THIS (user, client) and return its shared
+        workspace (creating it if needed)."""
         self._cleanup()
-        self._active[user_id] = project_id
+        self._active[(user_id, client_key)] = (project_id, time.monotonic())
         key = (user_id, project_id)
         ws = self._store.get(key)
         if ws is None:
@@ -180,13 +218,23 @@ class WorkspaceStore:
         ws.touch()
         return ws
 
-    def active_project_id(self, user_id: str) -> str | None:
-        return self._active.get(user_id)
+    def _active_get(self, user_id: str, client_key: str) -> str | None:
+        entry = self._active.get((user_id, client_key))
+        if entry is None:
+            return None
+        project_id, _ts = entry
+        # Touch the pointer so an actively-used client never expires mid-session.
+        self._active[(user_id, client_key)] = (project_id, time.monotonic())
+        return project_id
+
+    def active_project_id(self, user_id: str, *, client_key: str = "") -> str | None:
+        return self._active_get(user_id, client_key)
 
     def reset(self, user_id: str) -> None:
         for key in [k for k in self._store if k[0] == user_id]:
             self._store.pop(key, None)
-        self._active.pop(user_id, None)
+        for ak in [k for k in self._active if k[0] == user_id]:
+            self._active.pop(ak, None)
         self._locks.pop(user_id, None)
 
     def clear(self) -> None:
