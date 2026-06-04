@@ -1,4 +1,4 @@
-"""MCP power tools — bot_simulate (#1), flow_export/import (#2),
+"""MCP power tools — flow_simulate (#1), flow_export/import (#2),
 flow_history/rollback (#3), {{env.*}} validator whitelist (#4), transparent
 session auto-restore (#5)."""
 
@@ -165,6 +165,22 @@ async def _activate(srv, project_id="7", user=None, flow=None):
     return ws
 
 
+async def _record_version(ws, user=None):
+    """Append the current working_flow as a new version in the (fake) store —
+    stands in for what a successful flow.save now does at the registry level."""
+    from agent.mcp.flow_versions import get_flow_version_store
+
+    user = user or _user()
+    flow = ws.working_flow or {"nodes": [], "edges": []}
+    return await get_flow_version_store().append(
+        project_id=ws.project_id,
+        user_id=user.user_id,
+        flow=flow,
+        node_count=len(flow.get("nodes") or []),
+        edge_count=len(flow.get("edges") or []),
+    )
+
+
 # ── #4: {{env.*}} validator whitelist ────────────────────────────────────────
 
 
@@ -256,7 +272,7 @@ async def test_flow_save_records_version_and_history_lists_it():
     srv = build_mcp_server()
     ws = await _activate(srv)
     # simulate a successful flow.save by calling the version append path directly
-    await mcp_server._append_flow_version(ws, _user())
+    await _record_version(ws, _user())
     res = await _call(srv, "flow_history", {})
     assert not res.isError, _text(res)
     versions = res.structuredContent["versions"]
@@ -269,24 +285,24 @@ async def test_flow_rollback_loads_version_into_workspace():
     srv = build_mcp_server()
     ws = await _activate(srv)
     # v1 = current 2-node flow
-    await mcp_server._append_flow_version(ws, _user())
+    await _record_version(ws, _user())
     # mutate + save v2 (1 node)
     ws.working_flow = {"nodes": [{"id": "only", "type": "CommandTriggerNode",
                                   "data": {"command": "/x"}}], "edges": []}
-    await mcp_server._append_flow_version(ws, _user())
+    await _record_version(ws, _user())
 
     res = await _call(srv, "flow_rollback", {"version": 1})
     assert not res.isError, _text(res)
     ws2 = get_workspace_store().get("42", client_key="")
     assert [n["id"] for n in ws2.working_flow["nodes"]] == ["start", "msg"]
     assert ws2.flow_dirty is True
-    assert "flow_save" in _text(res)
+    assert "flow.save" in _text(res)
 
 
 async def test_flow_rollback_unknown_version_errors():
     srv = build_mcp_server()
     ws = await _activate(srv)
-    await mcp_server._append_flow_version(ws, _user())
+    await _record_version(ws, _user())
     res = await _call(srv, "flow_rollback", {"version": 99})
     assert res.isError
     assert "topilmadi" in _text(res)
@@ -300,7 +316,7 @@ async def test_flow_history_empty_when_never_saved():
     assert res.structuredContent["versions"] == []
 
 
-# ── #1: bot_simulate ─────────────────────────────────────────────────────────
+# ── #1: flow_simulate ─────────────────────────────────────────────────────────
 
 
 async def test_bot_simulate_formats_steps(monkeypatch):
@@ -326,7 +342,7 @@ async def test_bot_simulate_formats_steps(monkeypatch):
         }
 
     monkeypatch.setattr("agent.integrations.simulator.simulate", fake_simulate)
-    res = await _call(srv, "bot_simulate",
+    res = await _call(srv, "flow_simulate",
                       {"steps": [{"type": "command", "text": "/start"}],
                        "seed_collections": False})
     assert not res.isError, _text(res)
@@ -350,7 +366,7 @@ async def test_bot_simulate_seeds_collections(monkeypatch):
         mcp_server, "get_backend_client",
         lambda: _FakeBackend(docs={"orders": [{"id": 1, "status": "new"}]}),
     )
-    res = await _call(srv, "bot_simulate",
+    res = await _call(srv, "flow_simulate",
                       {"steps": [{"type": "command", "text": "/start"}],
                        "seed_collections": True})
     assert not res.isError, _text(res)
@@ -366,7 +382,7 @@ async def test_bot_simulate_service_down(monkeypatch):
         raise SimulatorUnavailableError("connection refused")
 
     monkeypatch.setattr("agent.integrations.simulator.simulate", fake_simulate)
-    res = await _call(srv, "bot_simulate",
+    res = await _call(srv, "flow_simulate",
                       {"steps": [{"type": "command", "text": "/start"}],
                        "seed_collections": False})
     assert res.isError
@@ -376,9 +392,10 @@ async def test_bot_simulate_service_down(monkeypatch):
 async def test_bot_simulate_requires_steps():
     srv = build_mcp_server()
     await _activate(srv)
-    res = await _call(srv, "bot_simulate", {"steps": []})
+    res = await _call(srv, "flow_simulate", {"steps": []})
     assert res.isError
-    assert "steps majburiy" in _text(res)
+    # Empty steps are rejected by the input model (min_length=1).
+    assert "steps" in _text(res)
 
 
 # ── #5: transparent session auto-restore ─────────────────────────────────────

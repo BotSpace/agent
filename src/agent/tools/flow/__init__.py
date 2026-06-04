@@ -29,6 +29,7 @@ from ...flow import (
 )
 from ..base import Tool, ToolContext, ToolResult, tool
 from .actions import build_flow_action_tools, remap_button_edge_handles
+from .power import build_flow_power_tools
 from .templates import build_flow_template_tools
 from .node_data_models import NODE_DATA_MODELS, get_data_model
 
@@ -750,6 +751,24 @@ async def flow_save(input: FlowSaveInput, ctx: ToolContext) -> ToolResult:
 
     n_nodes = len(flow_dict.get("nodes") or [])
     n_edges = len(flow_dict.get("edges") or [])
+
+    # Versiyalash — har muvaffaqiyatli save yangi versiya yozadi (flow.history /
+    # flow.rollback shu store'dan o'qiydi). LangGraph save'lari ham, MCP
+    # save'lari ham shu yo'l orqali versiyalanadi. Graceful degrade store ichida;
+    # bu guard versiyalash xatosi save natijasiga sizib chiqmasligini ta'minlaydi.
+    try:
+        from ...mcp.flow_versions import get_flow_version_store
+
+        await get_flow_version_store().append(
+            project_id=str(project_id),
+            user_id=str(ctx.user_id) if ctx.user_id is not None else None,
+            flow=flow_dict,
+            node_count=n_nodes,
+            edge_count=n_edges,
+        )
+    except Exception:  # pragma: no cover — defensive
+        pass
+
     # #6 — default to a compact summary so flow.save (and its MCP
     # structuredContent) does NOT echo the full ~30k-token flow back to the
     # model. Full flow only when verbose=true.
@@ -826,4 +845,5 @@ def build_flow_tools() -> list[Tool]:
         flow_list_node_types,
         flow_diff,
         flow_save,
+        *build_flow_power_tools(),
     ]
