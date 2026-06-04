@@ -18,7 +18,7 @@ broadcasts. You (the MCP client model) act as the bot builder.
    `docs_guide(topic="simulate")` — flow_simulate step types (click for inline
    buttons!), expect/assert mode, multi-user, regression tests. READ THIS
    BEFORE the first flow_simulate call.
-4. Build: typed helpers (`flow_add_command_trigger`, `flow_add_send_text_message`,
+4. Build: typed helpers (`flow_add_command_trigger`, `flow_add_edit_or_send`,
    `flow_ask_text`, `flow_add_if_condition`, ...) or generic `flow_add_node`;
    wire with `flow_connect` / `flow_connect_branch` / `flow_connect_button`.
    Use `flow_list_node_types(type=...)` for one type's exact field schema.
@@ -48,6 +48,13 @@ broadcasts. You (the MCP client model) act as the bot builder.
    production deploy; `release_logs` shows a release's logs.
 
 ### Key rules
+- MESSAGE NODE CHOICE: use `flow_add_edit_or_send` (EditOrSendMessageNode) for
+  ALL bot messages by default — it edits the previous message in place, so menus
+  don't pile up. `flow_add_send_text_message` (SendTextMessageNode) is ONLY for
+  reply keyboards (request_contact / request_location) or when a separate new
+  message is explicitly required.
+- KEYBOARDS: inline keyboards by default (`keyboard_kind:"inline"` + rows).
+  Reply keyboards ONLY for contact/location requests.
 - Every flow needs at least one trigger node (`flow_add_command_trigger` /start etc.).
 - Branch edges use exact handles: IfCondition → true/false; LoadCollectionItem →
   found/not_found; ForLoop → loop-body/no-items; Random → option_0..N;

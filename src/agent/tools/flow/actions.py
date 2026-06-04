@@ -29,6 +29,7 @@ from .node_data_models import (
     CollectionData,
     CommandTriggerData,
     CustomCodeData,
+    EditOrSendMessageData,
     HTTPRequestData,
     IfConditionData,
     MessageTriggerData,
@@ -697,10 +698,27 @@ def build_flow_action_tools() -> list[Tool]:
             description="Add a command trigger (/start etc.). state={key,type} captures args.",
         ),
         _make_popular_node_tool(
+            name="flow.add_edit_or_send",
+            type_name="EditOrSendMessageNode",
+            data_model=EditOrSendMessageData,
+            description=(
+                "PREFERRED message node: edits the previous bot message when possible, "
+                "sends a new one otherwise — menus/pages don't pile up in the chat. "
+                "messageText ({{var}} ok), inline keyboard via keyboard_kind+rows. "
+                "Use flow.add_send_text_message ONLY for reply keyboards "
+                "(request_contact/request_location)."
+            ),
+        ),
+        _make_popular_node_tool(
             name="flow.add_send_text_message",
             type_name="SendTextMessageNode",
             data_model=SendTextMessageData,
-            description="Send text. messageText (supports {{var}}). Optional keyboard, recipients.",
+            description=(
+                "Send a NEW text message. Use ONLY when a reply keyboard is needed "
+                "(request_contact/request_location) or a separate message is explicitly "
+                "required — otherwise PREFER flow.add_edit_or_send (edits in place, "
+                "keeps the chat clean)."
+            ),
         ),
         _make_popular_node_tool(
             name="flow.add_message_trigger",
