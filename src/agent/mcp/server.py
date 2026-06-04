@@ -49,7 +49,9 @@ _EXCLUDED_NAMESPACES = frozenset({"plan", "task"})
 _EXCLUDED_NAMES = frozenset({"ask_user"})
 
 # Read-only deb hisoblanadigan operatsiya nomlari (oxirgi segment bo'yicha).
-_READ_ONLY_VERBS = ("get", "list", "diff", "validate", "search", "export", "history")
+_READ_ONLY_VERBS = (
+    "get", "list", "diff", "validate", "search", "export", "history", "snapshot",
+)
 
 # Joriy request'ning autentifikatsiyalangan foydalanuvchisi (Starlette middleware
 # o'rnatadi, tool handler o'qiydi).

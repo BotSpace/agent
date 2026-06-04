@@ -531,3 +531,48 @@ def test_unknown_collection_warns_when_list_known():
     # No list provided → check skipped entirely.
     result3 = validate(flow)
     assert not any(i.code == "unknown_collection" for i in result3.issues)
+
+
+# ── #8 — set_context('key', ...) in CustomCodeNode jsCode whitelists {{key}} ──
+
+
+def test_set_context_keys_are_known_variables():
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="t", type="CommandTriggerNode", data={"command": "/start"}),
+            FlowNode(
+                id="code",
+                type="CustomCodeNode",
+                data={"jsCode": "set_context('enroll_id', 42); set_context(\"course\", 'math');"},
+            ),
+            FlowNode(
+                id="m",
+                type="SendTextMessageNode",
+                data={"messageText": "Ro'yxat: {{enroll_id}} / {{state_enroll_id}} / {{course}}"},
+            ),
+        ],
+        edges=[
+            FlowEdge(id="e1", source="t", target="code"),
+            FlowEdge(id="e2", source="code", target="m"),
+        ],
+    )
+    result = validate(flow)
+    # No unknown_variable warning for keys written via set_context (nor state_*).
+    unknown = [i for i in result.warnings if i.code == "unknown_variable"]
+    assert unknown == [], [i.message for i in unknown]
+
+
+def test_unset_variable_still_warns():
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="t", type="CommandTriggerNode", data={"command": "/start"}),
+            FlowNode(
+                id="m",
+                type="SendTextMessageNode",
+                data={"messageText": "Salom {{never_set}}"},
+            ),
+        ],
+        edges=[FlowEdge(id="e1", source="t", target="m")],
+    )
+    result = validate(flow)
+    assert any(i.code == "unknown_variable" for i in result.warnings)

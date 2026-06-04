@@ -29,7 +29,13 @@ broadcasts. You (the MCP client model) act as the bot builder.
    each menu branch) and VERIFY the bot behaves correctly YOURSELF before asking
    the user to test — read the per-step messages/errors it returns. You can also
    simulate the UNSAVED working draft (use_saved=false, the default) to catch
-   problems before saving.
+   problems before saving. When checking MANY scenarios at once, add an `expect`
+   to each step (contains/keyboard_contains/...) and pass `mode:"assert"` — it
+   returns a compact "✅ 9/10 o'tdi" plus only the failed steps (saves tokens).
+   Once a bot is built and verified, SAVE the main scenarios as regression tests
+   with `flow_test_save(name, steps)` (use `expect` in the steps). Every later
+   `flow_save` re-runs all saved tests automatically and reports regressions, so
+   a future edit can't silently break an earlier flow.
 6. Data-driven bots: create collections FIRST (`cms_create_collection`,
    `cms_add_field`, `cms_insert`/`cms_bulk_insert`), then reference them in
    flow nodes (CollectionNode, LoadCollection*).
@@ -58,6 +64,16 @@ broadcasts. You (the MCP client model) act as the bot builder.
 - `flow_history` / `flow_rollback(version)` list and restore past saved versions
   (each `flow_save` records one; last 20 kept). Rollback loads into the working
   flow — confirm with `flow_save`.
+- `flow_test_save` / `flow_test_list` / `flow_test_run` / `flow_test_delete`
+  manage SAVED regression tests (named simulate scenarios with `expect`). Save the
+  key flows once; `flow_save` auto-runs them and `flow_test_run` re-runs them on
+  demand (mode=assert). If the simulator is down they just degrade to a notice.
+- `project_snapshot` returns the WHOLE project state in one call (flow summary,
+  collections + doc counts, debug/release status, last versions, unsaved changes)
+  — use it to orient before working instead of several separate reads.
+- Destructive irreversible tools (`project_delete`, `cms_delete_collection`,
+  `flow_test_delete`) require `confirm:true`; called without it they only report
+  what WOULD be deleted and do nothing.
 - After a pod restart / TTL expiry the session is recovered transparently: flow
   tools auto-restore your last-edited draft and prepend "Sessiya avtomatik
   tiklandi" — you don't need to re-run `session_use_project`.

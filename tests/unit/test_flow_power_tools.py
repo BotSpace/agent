@@ -63,9 +63,10 @@ def test_power_tools_present_and_annotated():
 async def test_flow_simulate_passes_working_flow_and_formats(monkeypatch):
     captured = {}
 
-    async def fake_simulate(*, simulator_url, flow, steps, collections, chat):
+    async def fake_simulate(*, simulator_url, flow, steps, collections, chat, mode="full"):
         captured["flow"] = flow
         captured["steps"] = steps
+        captured["mode"] = mode
         return {
             "ok": True,
             "steps": [
@@ -99,7 +100,7 @@ async def test_flow_simulate_passes_working_flow_and_formats(monkeypatch):
 async def test_flow_simulate_seeds_collections_from_backend(monkeypatch):
     captured = {}
 
-    async def fake_simulate(*, simulator_url, flow, steps, collections, chat):
+    async def fake_simulate(*, simulator_url, flow, steps, collections, chat, mode="full"):
         captured["collections"] = collections
         return {"ok": True, "steps": [], "errors": []}
 
