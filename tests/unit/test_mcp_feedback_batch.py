@@ -245,11 +245,22 @@ def _save_ctx(backend):
 
 @pytest.mark.asyncio
 async def test_flow_save_static_debug_reminder():
+    # restart_debug endi default TRUE (avto-debug) — reminder faqat false'da.
     backend = _SaveBackend()
-    res = await _flow_tools()["flow.save"].run({}, _save_ctx(backend))
+    res = await _flow_tools()["flow.save"].run({"restart_debug": False}, _save_ctx(backend))
     assert not res.is_error, res.content
     assert "release_debug" in res.content
     assert backend.debug_started is False
+
+
+@pytest.mark.asyncio
+async def test_flow_save_auto_debug_by_default():
+    # Foydalanuvchi so'ramasa ham: default save'da debug avtomatik ishga tushadi.
+    backend = _SaveBackend()
+    res = await _flow_tools()["flow.save"].run({}, _save_ctx(backend))
+    assert not res.is_error, res.content
+    assert backend.debug_started is True
+    assert res.data.get("debug_link", "").endswith("start=dbg-123")
 
 
 @pytest.mark.asyncio
