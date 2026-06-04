@@ -61,6 +61,7 @@ _current_user: contextvars.ContextVar[AuthedUser | None] = contextvars.ContextVa
 _SESSION_USE_PROJECT = "session_use_project"
 _SESSION_STATUS = "session_status"
 _SESSION_UNDO = "session_undo"
+_SESSION_LOG_PROMPT = "session_log_prompt"
 _DOCS_GUIDE = "docs_guide"
 
 # Registry tool'lar — bajarilishidan OLDIN avtomatik undo snapshot olinadi (#11).
@@ -262,6 +263,27 @@ def _session_tools() -> list[mtypes.Tool]:
             annotations=mtypes.ToolAnnotations(),
         ),
         mtypes.Tool(
+            name=_SESSION_LOG_PROMPT,
+            description=(
+                "Foydalanuvchining ASL tabiiy-til so'rovini (verbatim, o'zgartirmasdan) "
+                "yozib qo'yadi va yangi 'trace' boshlaydi. Har YANGI foydalanuvchi "
+                "vazifasini boshlashda BIRINCHI bo'lib chaqir — shundan keyingi barcha "
+                "tool chaqiriqlari shu trace'ga bog'lanadi (AI o'qitish ma'lumoti uchun). "
+                "trace_id qaytaradi. Yangi chaqiruv — yangi trace (eskisi yopiladi)."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "prompt": {
+                        "type": "string",
+                        "description": "Foydalanuvchi so'rovi — verbatim, qisqartirilmagan.",
+                    }
+                },
+                "required": ["prompt"],
+            },
+            annotations=mtypes.ToolAnnotations(readOnlyHint=True),
+        ),
+        mtypes.Tool(
             name=_DOCS_GUIDE,
             description=(
                 "Botmother bot qurish qo'llanmalarini qaytaradi — agent'ning "
@@ -461,6 +483,30 @@ async def _handle_session_undo(user: AuthedUser) -> mtypes.CallToolResult:
         )
 
 
+async def _handle_session_log_prompt(
+    user: AuthedUser, arguments: dict
+) -> mtypes.CallToolResult:
+    prompt = str(arguments.get("prompt") or "").strip()
+    if not prompt:
+        return _result_to_mcp("prompt majburiy.", is_error=True, data=None)
+    # Open a new Mongo trace and set the per-(user, client) current-trace
+    # pointer; every subsequent tool call attaches to this trace_id. The write
+    # is fire-and-forget + graceful degrade inside trace.log_prompt, but the
+    # pointer (and trace_id) are returned even if Mongo is down.
+    trace_id = trace.log_prompt(
+        user_id=user.user_id,
+        client_key=user.client_key,
+        project_id=_trace_project_id(user, {}),
+        prompt=prompt,
+    )
+    return _result_to_mcp(
+        f"So'rov yozildi, trace boshlandi (trace_id={trace_id}). Keyingi tool "
+        "chaqiriqlari shu trace'ga bog'lanadi.",
+        is_error=False,
+        data={"trace_id": trace_id},
+    )
+
+
 async def _execute_registry_tool(
     reg_name: str,
     arguments: dict,
@@ -547,6 +593,8 @@ def build_mcp_server(registry: ToolRegistry | None = None) -> Server:
             return await _handle_session_status(user)
         if name == _SESSION_UNDO:
             return await _handle_session_undo(user)
+        if name == _SESSION_LOG_PROMPT:
+            return await _handle_session_log_prompt(user, arguments)
         if name == _DOCS_GUIDE:
             topic = str(arguments.get("topic") or "").strip()
             if topic not in _GUIDE_TOPICS:
@@ -576,18 +624,21 @@ def build_mcp_server(registry: ToolRegistry | None = None) -> Server:
 
         started = time.monotonic()
         result = await _dispatch(name, arguments, user)
-        # A-band trace (AI training data) — fire-and-forget, graceful degrade.
-        # Tracing must never affect the tool result.
+        # A-band trace (AI training data) — append this call to the open trace
+        # (the one session_log_prompt started; orphan if none). Fire-and-forget
+        # + graceful degrade inside trace.log_tool_call, so tracing never adds
+        # latency to or affects the tool result.
         try:
             trace.log_tool_call(
                 user_id=user.user_id,
                 client_key=user.client_key,
                 project_id=_trace_project_id(user, arguments),
                 tool_name=name,
-                arguments=arguments,
+                arguments=arguments if isinstance(arguments, dict) else {},
                 result_summary=_result_text(result),
                 is_error=bool(result.isError),
                 duration_ms=int((time.monotonic() - started) * 1000),
+                trace_id=trace.current_trace_id(user.user_id, user.client_key),
             )
         except Exception as exc:  # pragma: no cover — defensive
             logger.debug("MCP trace skipped for %s: %s", name, exc)
