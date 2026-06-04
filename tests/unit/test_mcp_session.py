@@ -12,10 +12,11 @@ from agent.mcp.server import build_mcp_server
 from agent.mcp.workspace import get_workspace_store
 
 
-def _user(uid: str = "42") -> AuthedUser:
+def _user(uid: str = "42", client_key: str = "") -> AuthedUser:
     return AuthedUser(
         user_id=uid,
         claims={"user_id": uid, "access_token": "acc", "refresh_token": "ref"},
+        client_key=client_key,
     )
 
 
@@ -297,3 +298,138 @@ async def test_session_undo_restores_flow_after_clear(monkeypatch):
     assert undone.structuredContent["restored"] is True
     ws = get_workspace_store().get("42")
     assert len(ws.working_flow["nodes"]) == 2
+
+
+# ── per-CLIENT active project pointer ────────────────────────────────────────
+
+
+def _seed_flow_loaders(monkeypatch):
+    """load_saved_flow returns a 1-node flow tagged with the project id so we can
+    tell which project a flow tool actually operated on."""
+
+    async def fake_load_flow(project_id, **kwargs):
+        return {
+            "nodes": [{"id": f"n{project_id}", "type": "SendTextMessageNode",
+                       "data": {"messageText": str(project_id)}}],
+            "edges": [],
+        }
+
+    async def fake_load_collections(project_id, **kwargs):
+        return []
+
+    monkeypatch.setattr(mcp_server, "load_saved_flow", fake_load_flow)
+    monkeypatch.setattr(mcp_server, "load_project_collections", fake_load_collections)
+
+
+@pytest.mark.asyncio
+async def test_two_clients_same_user_independent_active_project(monkeypatch):
+    """Same user_id, two different client_key — A use_project(1) and B
+    use_project(2): A's flow tools target project 1, B's target project 2."""
+    _seed_flow_loaders(monkeypatch)
+    srv = build_mcp_server()
+    store = get_workspace_store()
+
+    user_a = _user("42", client_key="clientAAAA")
+    user_b = _user("42", client_key="clientBBBB")
+
+    # A selects project 1.
+    tok = mcp_server._current_user.set(user_a)
+    try:
+        await _call(srv, "session_use_project", {"project_id": "1"})
+    finally:
+        mcp_server._current_user.reset(tok)
+
+    # B selects project 2 — must NOT clobber A's pointer.
+    tok = mcp_server._current_user.set(user_b)
+    try:
+        await _call(srv, "session_use_project", {"project_id": "2"})
+    finally:
+        mcp_server._current_user.reset(tok)
+
+    # Pointers are independent per (user, client).
+    assert store.active_project_id("42", client_key="clientAAAA") == "1"
+    assert store.active_project_id("42", client_key="clientBBBB") == "2"
+
+    # A's session_status still reports project 1 (the live bug: it used to be 2).
+    tok = mcp_server._current_user.set(user_a)
+    try:
+        status_a = await _call(srv, "session_status", {})
+    finally:
+        mcp_server._current_user.reset(tok)
+    assert status_a.structuredContent["project_id"] == "1"
+
+    # B's session_status reports project 2.
+    tok = mcp_server._current_user.set(user_b)
+    try:
+        status_b = await _call(srv, "session_status", {})
+    finally:
+        mcp_server._current_user.reset(tok)
+    assert status_b.structuredContent["project_id"] == "2"
+
+    # A flow tool from client A lands on project 1's shared workspace.
+    tok = mcp_server._current_user.set(user_a)
+    try:
+        r = await _call(srv, "flow_patch", {"id": "n1", "data": {"messageText": "A!"}})
+    finally:
+        mcp_server._current_user.reset(tok)
+    assert r.isError is False
+    ws1 = store.get("42", "1")
+    assert ws1.working_flow["nodes"][0]["data"]["messageText"] == "A!"
+    # Project 2's workspace is untouched by A.
+    ws2 = store.get("42", "2")
+    assert ws2.working_flow["nodes"][0]["data"]["messageText"] == "2"
+
+
+@pytest.mark.asyncio
+async def test_same_client_sequential_use_project_last_wins(monkeypatch):
+    """Single client calling use_project twice — the last selection wins
+    (regression of the simple single-client case)."""
+    _seed_flow_loaders(monkeypatch)
+    srv = build_mcp_server()
+    store = get_workspace_store()
+    user = _user("42", client_key="solo")
+
+    tok = mcp_server._current_user.set(user)
+    try:
+        await _call(srv, "session_use_project", {"project_id": "1"})
+        await _call(srv, "session_use_project", {"project_id": "2"})
+        status = await _call(srv, "session_status", {})
+    finally:
+        mcp_server._current_user.reset(tok)
+
+    assert status.structuredContent["project_id"] == "2"
+    assert store.active_project_id("42", client_key="solo") == "2"
+
+
+@pytest.mark.asyncio
+async def test_explicit_project_id_overrides_active_pointer(monkeypatch):
+    """A tool argument project_id always wins over the client's active pointer."""
+    _seed_flow_loaders(monkeypatch)
+    srv = build_mcp_server()
+    store = get_workspace_store()
+    user = _user("42", client_key="ovr")
+
+    # Active pointer → project 1.
+    tok = mcp_server._current_user.set(user)
+    try:
+        await _call(srv, "session_use_project", {"project_id": "1"})
+        # Make project 2's workspace exist too (so flow_patch can run on it).
+        await _call(srv, "session_use_project", {"project_id": "2"})
+        # Re-point active back to 1.
+        await _call(srv, "session_use_project", {"project_id": "1"})
+        # Explicit project_id=2 on the tool overrides the active pointer (1).
+        r = await _call(
+            srv, "flow_patch", {"id": "n2", "data": {"messageText": "OVR"}, "project_id": "2"}
+        )
+    finally:
+        mcp_server._current_user.reset(tok)
+
+    assert r.isError is False
+    # Project 2 got the edit despite the active pointer being 1.
+    ws2 = store.get("42", "2")
+    assert ws2.working_flow["nodes"][0]["data"]["messageText"] == "OVR"
+    # Project 1 untouched.
+    ws1 = store.get("42", "1")
+    assert ws1.working_flow["nodes"][0]["data"]["messageText"] == "1"
+    # And the active pointer is still 1.
+    assert store.active_project_id("42", client_key="ovr") == "1"

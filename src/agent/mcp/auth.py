@@ -41,10 +41,23 @@ class MCPAuthError(Exception):
 
 @dataclass
 class AuthedUser:
-    """`deps.CurrentUser`'ga mos struktura — user_id + tool'larga uzatiladigan claims."""
+    """`deps.CurrentUser`'ga mos struktura — user_id + tool'larga uzatiladigan claims.
+
+    `client_key` — bitta user'ning ALOHIDA MCP klient ulanishini ajratish uchun
+    (Authorization header'ining sha256 hash prefiksi). Streamable HTTP stateless
+    rejimda Mcp-Session-Id yo'q, shuning uchun "aktiv loyiha" pointer'ini
+    per-CLIENT qilishda token-hash yagona barqaror identifikatordir. OAuth DCR
+    tufayli har Claude Code instansi ALOHIDA access token oladi → har biri o'z
+    client_key'iga ega. CHEKLOV: bitta `bsp_` personal token bilan ulangan ikki
+    terminal bir xil client_key oladi (token bir xil), shuning uchun ularning
+    aktiv loyihasi umumiy bo'lib qoladi — bu qabul qilinadigan cheklov.
+    Xavfsizlik: client_key faqat hash prefiksi (16 hex), xom token EMAS —
+    log'ga yozish xavfsiz, lekin baribir butun token'ni hech qachon log'lamaymiz.
+    """
 
     user_id: str
     claims: dict
+    client_key: str = ""
 
 
 # ── bsp_ exchange cache ──────────────────────────────────────────────────────
@@ -64,6 +77,20 @@ _exchange_cache: dict[str, _ExchangedToken] = {}
 
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+# Per-client identifikator uzunligi (hex belgilar). 16 hex = 64 bit — bitta
+# user'ning bir nechta klientini ajratish uchun to'qnashuvga deyarli chidamli.
+_CLIENT_KEY_LEN = 16
+
+
+def _client_key(authorization: str) -> str:
+    """Authorization header'idan barqaror per-client kalit (sha256 prefiksi).
+
+    Xom token'ni hech qachon qaytarmaymiz — faqat hash prefiksi. Log'ga yozilsa
+    ham token oshkor bo'lmaydi.
+    """
+    return hashlib.sha256(authorization.encode("utf-8")).hexdigest()[:_CLIENT_KEY_LEN]
 
 
 def _invalidate_exchange_cache() -> None:
@@ -215,6 +242,11 @@ async def authenticate(
         raise MCPAuthError("Authorization `Bearer <token>` formatida bo'lishi kerak")
     token = parts[1].strip()
 
+    # Per-client kalit — xom token (parts[1]) bo'yicha, header prefiksisiz, shunda
+    # "Bearer "/"bearer " holatlarida ham bir xil bo'ladi. Aynan shu token bir
+    # klientni ifodalaydi (DCR'da har klient alohida access token oladi).
+    client_key = _client_key(token)
+
     if token.startswith("bsp_"):
         exchanged = await _exchange_bsp(token, settings)
         return AuthedUser(
@@ -224,5 +256,8 @@ async def authenticate(
                 "access_token": exchanged.access,
                 "refresh_token": exchanged.refresh,
             },
+            client_key=client_key,
         )
-    return _verify_jwt(token, settings)
+    user = _verify_jwt(token, settings)
+    user.client_key = client_key
+    return user
