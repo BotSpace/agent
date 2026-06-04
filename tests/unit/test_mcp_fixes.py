@@ -104,6 +104,28 @@ async def test_project_create_clean_overwrites_default_flow():
 
 
 @pytest.mark.asyncio
+async def test_project_create_returns_compact_result_no_flow():
+    # #10 — project.create must NOT echo a flow JSON; only a compact summary
+    # and a pointer to session_use_project.
+    class _BackendWithFlow(_FakeBackend):
+        async def create_project(self, body, *, auth_claims=None):
+            self.created.append(body)
+            return {"id": 777, "name": body.get("name"),
+                    "flow": {"nodes": [{"id": "x"}], "edges": []}}
+
+    backend = _BackendWithFlow()
+    ctx = ToolContext(run_id="r", project_id=None, user_id="u",
+                      services={"backend": backend})
+    res = await _project_tools()["project.create"].run(
+        {"name": "MyBot", "default_flow": "clean"}, ctx
+    )
+    assert not res.is_error, res.content
+    assert "flow" not in res.data["project"]
+    assert res.data["project"]["id"] == "777"
+    assert "session_use_project" in res.content
+
+
+@pytest.mark.asyncio
 async def test_project_create_keep_skips_overwrite():
     backend = _FakeBackend()
     ctx = ToolContext(run_id="r", project_id=None, user_id="u",
