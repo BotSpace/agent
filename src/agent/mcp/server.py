@@ -1,7 +1,7 @@
 """MCP server — agent tool registry'sini Model Context Protocol orqali ochadi.
 
 Gibrid transport: rasmiy `mcp` SDK low-level `Server` + `StreamableHTTPSessionManager`
-(`stateless_http=True`, `json_response=True` — LB-friendly). Ikki ishga tushirish:
+(`stateless=False` — per-connection Mcp-Session-Id; `json_response=True` — LB-friendly). Ikki ishga tushirish:
   - `create_app()` ichiga `/mcp` path'ga mount (api/app.py)
   - `python -m agent.mcp` — standalone uvicorn
 
@@ -881,6 +881,17 @@ class _MCPApp:
             await response(scope, receive, send)
             return
 
+        # Stateful transport: each client connection gets a unique
+        # `Mcp-Session-Id` (assigned by the SDK on `initialize`, then sent back
+        # by the client on every request). Use it as the per-client identifier so
+        # two terminals / sub-agents on the SAME token (same machine, one Claude
+        # Code config) are still isolated — each connection is its own session.
+        # Falls back to the token-hash client_key on `initialize` (before a
+        # session id exists) and for any stateless caller.
+        session_id = request.headers.get("mcp-session-id")
+        if session_id:
+            user.client_key = f"sid-{session_id}"[:24]
+
         token = _current_user.set(user)
         try:
             await self._session_manager.handle_request(scope, receive, send)
@@ -894,7 +905,10 @@ def build_session_manager(registry: ToolRegistry | None = None) -> StreamableHTT
         app=server,
         event_store=None,
         json_response=True,
-        stateless=True,
+        # Stateful: per-connection Mcp-Session-Id → true client isolation even on
+        # a shared token. SAFE while the agent runs a single replica; multi-replica
+        # would need session affinity (route a session id to the same pod).
+        stateless=False,
     )
 
 
