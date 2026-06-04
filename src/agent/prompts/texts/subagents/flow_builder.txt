@@ -261,6 +261,18 @@ ishlat. Handle'lar: `true`/`false`, `found`/`not_found`, `is-member`/`not-member
 
 **Bitta CustomCode = bitta logik qadam** (5–40 qator JS). Ikki alohida qadamni bitta blokka tiqma; bitta qadamning ichki ishlarini (masalan `db_insert` + javob xabari) ajratma.
 
+**⚠️ CustomCode JS API'ni TAXMIN QILMA** — to'liq signature'lar (`send_message`,
+`edit_or_send`, `edit_message_text`, `db_*`, `callback_query.message.message_id`,
+pagination edit-in-place namunasi) `docs_guide(topic="custom_code")`da. CustomCode
+yozishdan oldin O'QI. Asosiy nuqtalar:
+- Trigger saqlagan qiymat context'da `state_<key>` (prefiks `state_`!) — masalan
+  `state:{key:"movie_code"}` → `get_context("state_movie_code")`.
+- **Edit-in-place (pagination/menyu yangilash):** callback bosilganda YANGI xabar
+  emas, o'sha xabarni tahrirla — `edit_or_send({text, parse_mode, inline_keyboard})`
+  (mumkin bo'lsa edit, bo'lmasa send). callback ichida argumentsiz `edit_message_text`
+  ham tugma turgan xabarni o'zi topadi (`callback_query.message.message_id`).
+- `_id` bo'yicha qidiruvda 24-hex string avtomatik ObjectId bo'ladi.
+
 **CustomCode'ni afzal ko'r:**
 - Validatsiya, saqlash va branching bir-biriga zich bog'liq bo'lsa
   (telefon/email tekshirish + DB upsert + javob)

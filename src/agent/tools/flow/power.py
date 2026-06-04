@@ -315,6 +315,16 @@ def _fmt_simulate_step(idx: int, step: dict) -> list[str]:
             txt = txt[:117] + "…"
         if txt:
             lines.append(f"     🤖 {txt}")
+    # Edit'larni ham KO'RSAT — pagination/edit-in-place o'zgargan matnni ko'rsin
+    # (faqat soni emas). Aks holda agent "0 xabar" ko'rib edit ishladimi bilmaydi.
+    for ed in (step.get("edits") or []) if isinstance(step, dict) else []:
+        if not isinstance(ed, dict):
+            continue
+        etxt = str(ed.get("text") or ed.get("caption") or "").replace("\n", " ")
+        if len(etxt) > 120:
+            etxt = etxt[:117] + "…"
+        if etxt:
+            lines.append(f"     ✏️ (edit) {etxt}")
     errs = step.get("errors") if isinstance(step, dict) else None
     for e in errs if isinstance(errs, list) else []:
         lines.append(f"     ❌ XATO: {e}")
