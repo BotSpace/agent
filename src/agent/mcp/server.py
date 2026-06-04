@@ -150,6 +150,7 @@ _GUIDE_TOPICS = {
     "cms": "CMS kolleksiyalari bilan ishlash qo'llanmasi",
     "crm": "CRM (chat tarixi, broadcast) qo'llanmasi",
     "deploy": "Deploy/release qo'llanmasi",
+    "simulate": "Bot simulyatsiyasi qo'llanmasi (flow_simulate step turlari, expect/assert, multi-user, regression testlar)",
 }
 
 
@@ -165,6 +166,7 @@ def _load_guide(topic: str) -> str:
         "cms": "subagents/cms_manager.txt",
         "crm": "subagents/crm_manager.txt",
         "deploy": "subagents/deploy_manager.txt",
+        "simulate": "mcp/guide_simulate.txt",
     }
     return load_prompt(files[topic])
 

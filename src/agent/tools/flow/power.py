@@ -16,9 +16,9 @@ Tashqi servislar:
 from __future__ import annotations
 
 import json as _json
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from ...flow import FlowDocument, validate
 from ..base import ToolContext, ToolResult, tool
@@ -113,16 +113,52 @@ class FlowSimulateExpect(BaseModel):
     )
 
 
+# AI klientlar tabiiy ravishda yozadigan muqobil nomlar → canonical tur.
+_STEP_TYPE_ALIASES = {
+    "callback": "click",
+    "callback_query": "click",
+    "callbackquery": "click",
+    "callback_data": "click",
+    "callback_query_data": "click",
+    "button": "click",
+    "inline": "click",
+    "press": "click",
+    "message": "text",
+    "cmd": "command",
+}
+
+_STEP_TYPES = ("command", "text", "contact", "location", "click", "click_text", "advance_time")
+
+
 class FlowSimulateStep(BaseModel):
-    type: str = Field(
+    type: Literal[
+        "command", "text", "contact", "location", "click", "click_text", "advance_time"
+    ] = Field(
         description=(
             "Qadam turi: 'command' (text=/start), 'text' (text='salom'), "
             "'contact' (phone, first_name?), 'location' (latitude, longitude), "
-            "'click' (callback button: data=callback_data), 'click_text' "
-            "(reply/inline tugma matnini bosish: text='Tugma'), 'advance_time' "
+            "'click' (INLINE tugma bosish: data=callback_data — 'callback'/'button' "
+            "emas, aynan 'click'!), 'click_text' (tugma MATNI bo'yicha bosish: "
+            "text='Tugma' — callback_data noma'lum bo'lsa), 'advance_time' "
             "(vaqtni seconds soniyaga oldinga suradi — CronTriggerNode'larni sinash)."
         )
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_type(cls, values: Any) -> Any:
+        """'callback_query'/'button' kabi tabiiy nomlarni 'click'ka keltiradi."""
+        if isinstance(values, dict):
+            raw = str(values.get("type") or "").strip().lower()
+            if raw in _STEP_TYPE_ALIASES:
+                values["type"] = _STEP_TYPE_ALIASES[raw]
+            elif raw and raw not in _STEP_TYPES:
+                raise ValueError(
+                    f"Noma'lum step type {raw!r}. Ruxsat etilganlar: {', '.join(_STEP_TYPES)}. "
+                    "Inline tugma bosish uchun 'click' (data=callback_data) yoki "
+                    "'click_text' (text=tugma matni) ishlating."
+                )
+        return values
     text: str | None = None
     data: str | None = None
     phone: str | None = None

@@ -15,6 +15,9 @@ broadcasts. You (the MCP client model) act as the bot builder.
    `docs_guide(topic="flow")` — flow-builder rules (handles, triggers, AI nodes,
    keyboards, state). `docs_guide(topic="node_catalog")` — all node types.
    `docs_guide(topic="flow_examples")` — complete bot examples.
+   `docs_guide(topic="simulate")` — flow_simulate step types (click for inline
+   buttons!), expect/assert mode, multi-user, regression tests. READ THIS
+   BEFORE the first flow_simulate call.
 4. Build: typed helpers (`flow_add_command_trigger`, `flow_add_send_text_message`,
    `flow_ask_text`, `flow_add_if_condition`, ...) or generic `flow_add_node`;
    wire with `flow_connect` / `flow_connect_branch` / `flow_connect_button`.
