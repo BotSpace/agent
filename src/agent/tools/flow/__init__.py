@@ -663,6 +663,61 @@ async def flow_diff(_: FlowDiffInput, ctx: ToolContext) -> ToolResult:
     )
 
 
+# ── #10 — regression run after flow.save ─────────────────────────────────────
+
+
+async def _run_regression_after_save(
+    ctx: ToolContext, project_id: str, saved_flow: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Run the project's enabled saved tests against the just-saved flow.
+
+    Returns {"text", "data"} to append to the save result, or None if there are
+    no tests. NEVER raises and NEVER breaks the save — simulator/store outages
+    degrade to an informational line. The save is already persisted at this
+    point, so a regression FAILURE only warns (rollback/fix is the user's call).
+    """
+    try:
+        from ...mcp.flow_tests import get_flow_test_store
+        from .power import _fmt_test_results, _run_saved_tests
+
+        tests = await get_flow_test_store().list(
+            project_id=str(project_id), only_enabled=True
+        )
+        if not tests:
+            return None
+        # Simulate against the flow we just saved (clone ctx state so we don't
+        # mutate the live workspace; collections come from the same state).
+        sim_state = dict(ctx.state)
+        sim_state["working_flow"] = saved_flow
+        sim_ctx = ToolContext(
+            run_id=ctx.run_id,
+            project_id=ctx.project_id,
+            user_id=ctx.user_id,
+            state=sim_state,
+            services=ctx.services,
+        )
+        agg = await _run_saved_tests(sim_ctx, flow=saved_flow, tests=tests)
+        if not agg.get("ran"):
+            return {
+                "text": "🧪 Regression: testlar o'tkazilmadi (simulyator mavjud emas).",
+                "data": {"ran": False},
+            }
+        passed = agg["passed"]
+        total = agg["total"]
+        if passed == total:
+            return {"text": f"🧪 Regression: {passed}/{total} o'tdi", "data": agg}
+        detail = _fmt_test_results(agg)
+        return {
+            "text": (
+                f"🧪 Regression: {detail}\n"
+                "Tuzatish yoki flow_rollback bilan oldingi versiyaga qaytish mumkin."
+            ),
+            "data": agg,
+        }
+    except Exception:  # pragma: no cover — regression must never break save
+        return None
+
+
 # ── flow.save (DESTRUCTIVE) ──────────────────────────────────────────────────
 
 
@@ -783,6 +838,14 @@ async def flow_save(input: FlowSaveInput, ctx: ToolContext) -> ToolResult:
         data["flow"] = flow_dict
 
     msg = f"Flow saved to project `{project_id}` ({n_nodes} nodes, {n_edges} edges)."
+
+    # #10 — auto-run saved regression tests against the JUST-SAVED flow. A failure
+    # must NOT undo the save (already persisted) — we only surface the result.
+    # Simulator/store outages degrade to a one-line notice.
+    regression = await _run_regression_after_save(ctx, project_id, flow_dict)
+    if regression:
+        data["regression"] = regression.get("data")
+        msg += "\n" + regression["text"]
 
     # #7 — a running debug bot keeps serving the OLD flow until restarted.
     if input.restart_debug:

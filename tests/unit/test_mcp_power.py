@@ -323,7 +323,7 @@ async def test_bot_simulate_formats_steps(monkeypatch):
     srv = build_mcp_server()
     await _activate(srv)
 
-    async def fake_simulate(*, simulator_url, flow, steps, collections, chat):
+    async def fake_simulate(*, simulator_url, flow, steps, collections, chat, mode="full"):
         assert flow["nodes"]  # working draft passed
         return {
             "ok": True,
@@ -357,7 +357,7 @@ async def test_bot_simulate_seeds_collections(monkeypatch):
     await _activate(srv)
     captured = {}
 
-    async def fake_simulate(*, simulator_url, flow, steps, collections, chat):
+    async def fake_simulate(*, simulator_url, flow, steps, collections, chat, mode="full"):
         captured["collections"] = collections
         return {"ok": True, "steps": [], "errors": []}
 

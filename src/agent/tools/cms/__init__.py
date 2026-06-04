@@ -220,11 +220,22 @@ async def create_collection(input: CreateCollectionInput, ctx: ToolContext) -> T
 class DeleteCollectionInput(BaseModel):
     name: str
     project_id: str | int | None = None
+    confirm: bool = Field(
+        default=False,
+        description=(
+            "Tasdiqlash. False (default) — o'chirilMAYDI, nima o'chishi haqida "
+            "xulosa qaytaradi. Faqat tasdiqlangach confirm=true."
+        ),
+    )
 
 
 @tool(
     name="cms.delete_collection",
-    description="Soft-delete a collection schema. Documents remain in MongoDB until purged.",
+    description=(
+        "Soft-delete a collection schema (documents remain in MongoDB until "
+        "purged). confirm=true talab qiladi — confirm berilmasa nima o'chishini "
+        "qaytaradi, o'chirmaydi."
+    ),
     input_model=DeleteCollectionInput,
     destructive=True,
 )
@@ -232,6 +243,12 @@ async def delete_collection(input: DeleteCollectionInput, ctx: ToolContext) -> T
     pid = _pid(ctx, input.project_id)
     if pid is None:
         return ToolResult.error("No project_id.")
+    if not input.confirm:
+        return ToolResult.error(
+            f"DIQQAT: `{input.name}` kolleksiyasi sxemasi o'chiriladi (hujjatlar "
+            "MongoDB'da qoladi, lekin sxema soft-delete bo'ladi). Tasdiqlash uchun "
+            "confirm=true bilan qayta chaqiring."
+        )
     try:
         await _backend(ctx).cms_delete_collection(pid, input.name, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:

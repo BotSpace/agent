@@ -81,13 +81,46 @@ def _validate_flow_dict(flow: dict) -> tuple[bool, str, dict]:
 # ── flow.simulate ─────────────────────────────────────────────────────────────
 
 
+class FlowSimulateChat(BaseModel):
+    """Per-step user identity (simulator v2) — multi-user stsenariy uchun
+    (masalan referral: user A user B'ni taklif qiladi)."""
+
+    id: int = Field(description="Telegram chat/user id (har user uchun farqli).")
+    first_name: str | None = None
+    username: str | None = None
+
+
+class FlowSimulateExpect(BaseModel):
+    """Qadamdan keyin bot javobiga qo'yiladigan tekshiruvlar (simulator v2).
+
+    Hamma maydonlar ixtiyoriy; berilganlari tekshiriladi. Bittasi ham bajarilmasa
+    qadam 'failed' deb belgilanadi."""
+
+    contains: str | None = Field(
+        default=None, description="Bot xabarlaridan birortasi shu matnni o'z ichiga olishi shart."
+    )
+    not_contains: str | None = Field(
+        default=None, description="Hech bir bot xabarida shu matn BO'LMASLIGI kerak."
+    )
+    keyboard_contains: str | None = Field(
+        default=None, description="Klaviatura tugmalaridan biri shu matnni o'z ichiga olishi shart."
+    )
+    message_count: int | None = Field(
+        default=None, description="Shu qadamda bot AYNAN shuncha xabar yuborishi kerak."
+    )
+    no_errors: bool | None = Field(
+        default=None, description="True — shu qadamda hech qanday engine xatosi bo'lmasligi kerak."
+    )
+
+
 class FlowSimulateStep(BaseModel):
     type: str = Field(
         description=(
             "Qadam turi: 'command' (text=/start), 'text' (text='salom'), "
             "'contact' (phone, first_name?), 'location' (latitude, longitude), "
             "'click' (callback button: data=callback_data), 'click_text' "
-            "(reply/inline tugma matnini bosish: text='Tugma')."
+            "(reply/inline tugma matnini bosish: text='Tugma'), 'advance_time' "
+            "(vaqtni seconds soniyaga oldinga suradi — CronTriggerNode'larni sinash)."
         )
     )
     text: str | None = None
@@ -96,6 +129,25 @@ class FlowSimulateStep(BaseModel):
     first_name: str | None = None
     latitude: float | None = None
     longitude: float | None = None
+    seconds: int | None = Field(
+        default=None,
+        description="advance_time uchun: vaqtni necha soniya oldinga surish.",
+    )
+    chat: FlowSimulateChat | None = Field(
+        default=None,
+        description=(
+            "Shu qadamni BOSHQA foydalanuvchi nomidan yuborish (multi-user). "
+            "Berilmasa — default test foydalanuvchisi. Referral/2-user oqimlarda ishlat."
+        ),
+    )
+    expect: FlowSimulateExpect | None = Field(
+        default=None,
+        description=(
+            "Shu qadamdan keyin bot javobini avtomatik tekshirish "
+            "(contains/not_contains/keyboard_contains/message_count/no_errors). "
+            "Ko'p stsenariy tekshirayotganda mode='assert' bilan birga ishlat."
+        ),
+    )
 
 
 class FlowSimulateInput(BaseModel):
@@ -103,7 +155,8 @@ class FlowSimulateInput(BaseModel):
         min_length=1,
         description=(
             "Foydalanuvchi kiritmalari ketma-ketligi (kamida bitta). Har element "
-            "{type, ...}."
+            "{type, ...}. Har qadamga ixtiyoriy `chat` (boshqa user) va `expect` "
+            "(javob tekshiruvi) qo'shsa bo'ladi."
         ),
     )
     seed_collections: bool = Field(
@@ -119,6 +172,15 @@ class FlowSimulateInput(BaseModel):
         description=(
             "False (default) — workspace'dagi working (saqlanmagan) flow'ni "
             "sinaydi. True — backend'dagi SAQLANGAN flow'ni."
+        ),
+    )
+    mode: str = Field(
+        default="full",
+        description=(
+            "'full' (default) — har qadam batafsil ko'rsatiladi (xabarlar, node yo'li). "
+            "'assert' — KOMPAKT natija: '✅ 9/10 o'tdi' + faqat FAILED qadamlar batafsil. "
+            "Ko'p `expect` bilan stsenariy tekshirayotganda mode='assert' ishlat — "
+            "token sezilarli tejaydi."
         ),
     )
 
@@ -198,7 +260,139 @@ def _fmt_simulate_step(idx: int, step: dict) -> list[str]:
     errs = step.get("errors") if isinstance(step, dict) else None
     for e in errs if isinstance(errs, list) else []:
         lines.append(f"     ❌ XATO: {e}")
+    # simulator v2 — per-step expect verdict.
+    if isinstance(step, dict) and step.get("expect_passed") is not None:
+        if step.get("expect_passed"):
+            lines.append("     ✅ expect: o'tdi")
+        else:
+            fails = step.get("expect_failures")
+            detail = "; ".join(str(f) for f in fails) if isinstance(fails, list) and fails else "?"
+            lines.append(f"     ⚠️ expect: o'tmadi — {detail}")
     return lines
+
+
+def _step_input_label(inp: Any) -> str:
+    """Short '{type}:{value}' label for an assert-mode failed step."""
+    if not isinstance(inp, dict):
+        return "—"
+    itype = inp.get("type") or "?"
+    val = (
+        inp.get("text")
+        or inp.get("data")
+        or inp.get("phone")
+        or (str(inp.get("seconds")) if inp.get("seconds") is not None else "")
+        or ""
+    )
+    return f"{itype}:{val}".rstrip(":")
+
+
+def _expect_failures(step: dict) -> list[str]:
+    """Collect failure reasons for one step: explicit expect failures + engine
+    errors (so an assert failure always carries actionable detail)."""
+    reasons: list[str] = []
+    fails = step.get("expect_failures")
+    if isinstance(fails, list):
+        reasons.extend(str(f) for f in fails if f)
+    return reasons
+
+
+def _format_assert(resp: dict, n_steps: int) -> tuple[str, dict]:
+    """Compact assert-mode render: '✅ 9/10 o'tdi' + only failed steps detailed.
+
+    A step counts as FAILED if expect_passed is False OR it carries engine errors.
+    Returns (text, structured) where structured matches the #1 assert contract:
+      {"ok", "passed", "failed":[{step,input,reason,errors}], "final_state"}.
+    """
+    sim_steps = resp.get("steps") if isinstance(resp.get("steps"), list) else []
+    failed: list[dict] = []
+    passed = 0
+    for i, st in enumerate(sim_steps, 1):
+        st = st if isinstance(st, dict) else {}
+        errors = st.get("errors") if isinstance(st.get("errors"), list) else []
+        expect_passed = st.get("expect_passed")
+        is_fail = (expect_passed is False) or bool(errors)
+        if is_fail:
+            reasons = _expect_failures(st)
+            if not reasons and errors:
+                reasons = ["engine xatosi"]
+            failed.append(
+                {
+                    "step": i,
+                    "input": _step_input_label(st.get("input")),
+                    "reason": "; ".join(reasons) or "?",
+                    "errors": [str(e) for e in errors],
+                }
+            )
+        else:
+            passed += 1
+    total = len(sim_steps) or n_steps
+    top_errors = resp.get("errors") if isinstance(resp.get("errors"), list) else []
+    ok = (not failed) and (not top_errors) and bool(resp.get("ok", True))
+    icon = "✅" if ok else "❌"
+    lines = [f"{icon} {passed}/{total} o'tdi"]
+    for f in failed:
+        line = f"  ❌ step {f['step']} ({f['input']}) — {f['reason']}"
+        if f["errors"]:
+            line += " | " + "; ".join(f["errors"])
+        lines.append(line)
+    if top_errors:
+        lines.append("Umumiy xatolar: " + "; ".join(str(e) for e in top_errors))
+    structured = {
+        "ok": ok,
+        "passed": passed,
+        "failed": failed,
+        "final_state": resp.get("final_state"),
+    }
+    return "\n".join(lines), structured
+
+
+def _default_chat(ctx: ToolContext) -> dict[str, Any]:
+    claims = ctx.state.get("auth_claims")
+    claims_dict = claims if isinstance(claims, dict) else {}
+    return {
+        "id": 1,
+        "first_name": str(claims_dict.get("first_name") or "Test"),
+        "username": str(claims_dict.get("username") or "test_user"),
+    }
+
+
+async def _resolve_sim_flow(ctx: ToolContext, *, use_saved: bool) -> dict[str, Any]:
+    """The flow simulator runs against — saved (backend) or working draft."""
+    if use_saved:
+        from ...integrations.backend import load_saved_flow
+
+        flow = await load_saved_flow(
+            _power_project_id(ctx), auth_claims=ctx.state.get("auth_claims"),
+            client=_backend(ctx),
+        )
+        return flow if isinstance(flow, dict) else {"nodes": [], "edges": []}
+    return _working_flow(ctx)
+
+
+async def _run_simulation(
+    ctx: ToolContext,
+    *,
+    flow: dict[str, Any],
+    steps: list[dict[str, Any]],
+    seed_collections: bool,
+    mode: str,
+) -> dict[str, Any]:
+    """Thin wrapper around the simulator transport: seeds collections, fills the
+    default chat, forwards `mode`. Raises SimulatorUnavailableError on outage."""
+    from ...config import get_settings
+    from ...integrations.simulator import simulate
+
+    collections: dict[str, list[dict]] = {}
+    if seed_collections:
+        collections = await _seed_collections(ctx)
+    return await simulate(
+        simulator_url=get_settings().simulator_url,
+        flow=flow,
+        steps=steps,
+        collections=collections,
+        chat=_default_chat(ctx),
+        mode=mode,
+    )
 
 
 @tool(
@@ -208,16 +402,17 @@ def _fmt_simulate_step(idx: int, step: dict) -> list[str]:
         "Telegram'siz. Foydalanuvchi qadamlari ketma-ketligini (steps) "
         "yuborasiz, har qadam uchun bot QANDAY javob berishini (xabarlar, "
         "klaviatura, o'zgartirish/o'chirish, kechgan node'lar, xatolar) "
-        "qaytaradi. flow.save'dan keyin asosiy stsenariylarni O'ZINGIZ "
-        "tekshiring — foydalanuvchidan so'rashdan oldin verify qiling. "
-        "use_saved=false (default) SAQLANMAGAN working draft'ni ham sinaydi."
+        "qaytaradi. Har qadamga `expect` qo'shib javobni AVTOMATIK tekshiring "
+        "(contains/keyboard_contains/...); `chat` bilan boshqa user nomidan "
+        "yuboring (referral/multi-user). KO'P stsenariy tekshirayotganda "
+        "mode='assert' ishlat — kompakt '✅ 9/10 o'tdi' natija qaytaradi va "
+        "TOKEN tejaydi. flow.save'dan keyin asosiy stsenariylarni O'ZINGIZ "
+        "verify qiling. use_saved=false (default) SAQLANMAGAN working draft'ni sinaydi."
     ),
     input_model=FlowSimulateInput,
 )
 async def flow_simulate(input: FlowSimulateInput, ctx: ToolContext) -> ToolResult:
-    from ...config import get_settings
-    from ...integrations.backend import load_saved_flow
-    from ...integrations.simulator import SimulatorUnavailableError, simulate
+    from ...integrations.simulator import SimulatorUnavailableError
 
     project_id = _power_project_id(ctx)
     if not project_id:
@@ -226,37 +421,24 @@ async def flow_simulate(input: FlowSimulateInput, ctx: ToolContext) -> ToolResul
             "project.create)."
         )
 
-    claims = ctx.state.get("auth_claims")
     if input.use_saved:
         try:
-            flow = await load_saved_flow(
-                project_id, auth_claims=claims, client=_backend(ctx)
-            )
-            flow = flow if isinstance(flow, dict) else {"nodes": [], "edges": []}
+            flow = await _resolve_sim_flow(ctx, use_saved=True)
         except Exception as exc:
             return ToolResult.error(f"Saqlangan flow'ni yuklab bo'lmadi: {exc}")
     else:
         flow = _working_flow(ctx)
 
-    collections: dict[str, list[dict]] = {}
-    if input.seed_collections:
-        collections = await _seed_collections(ctx)
-
-    claims_dict = claims if isinstance(claims, dict) else {}
-    chat = {
-        "id": 1,
-        "first_name": str(claims_dict.get("first_name") or "Test"),
-        "username": str(claims_dict.get("username") or "test_user"),
-    }
     steps = [s.model_dump(exclude_none=True) for s in input.steps]
+    mode = "assert" if str(input.mode).lower() == "assert" else "full"
 
     try:
-        resp = await simulate(
-            simulator_url=get_settings().simulator_url,
+        resp = await _run_simulation(
+            ctx,
             flow=flow,
             steps=steps,
-            collections=collections,
-            chat=chat,
+            seed_collections=input.seed_collections,
+            mode=mode,
         )
     except SimulatorUnavailableError:
         return ToolResult.error(
@@ -265,12 +447,21 @@ async def flow_simulate(input: FlowSimulateInput, ctx: ToolContext) -> ToolResul
             "botda sinab ko'ring)."
         )
 
-    sim_steps = resp.get("steps") if isinstance(resp, dict) else None
-    top_errors = resp.get("errors") if isinstance(resp, dict) else None
+    resp = resp if isinstance(resp, dict) else {"ok": False, "steps": []}
+
+    # mode=assert — compact pass/fail summary (token-saving).
+    if mode == "assert":
+        text, structured = _format_assert(resp, len(steps))
+        return ToolResult(
+            content=text, is_error=not structured["ok"], data=structured
+        )
+
+    # mode=full — per-step detail + expect verdict markers.
+    sim_steps = resp.get("steps")
+    top_errors = resp.get("errors")
     flow_src = "saqlangan flow" if input.use_saved else "working draft (saqlanmagan)"
     lines = [
-        f"Simulyatsiya — {flow_src}, {len(steps)} qadam "
-        f"({len(collections)} kolleksiya seed):"
+        f"Simulyatsiya — {flow_src}, {len(steps)} qadam:"
     ]
     if isinstance(sim_steps, list):
         for i, st in enumerate(sim_steps, 1):
@@ -281,18 +472,14 @@ async def flow_simulate(input: FlowSimulateInput, ctx: ToolContext) -> ToolResul
         lines.append("")
         lines.append("Umumiy xatolar:")
         lines.extend(f"  ❌ {e}" for e in top_errors)
-    ok = bool(resp.get("ok")) if isinstance(resp, dict) else False
+    ok = bool(resp.get("ok"))
     lines.append("")
     lines.append(
         "✅ Simulyatsiya muvaffaqiyatli"
         if ok
         else "⚠️ Simulyatsiyada xatolar bor — yuqoriga qarang"
     )
-    return ToolResult(
-        content="\n".join(lines),
-        is_error=not ok,
-        data=resp if isinstance(resp, dict) else None,
-    )
+    return ToolResult(content="\n".join(lines), is_error=not ok, data=resp)
 
 
 # ── flow.export ───────────────────────────────────────────────────────────────
@@ -455,6 +642,279 @@ async def flow_rollback(input: FlowRollbackInput, ctx: ToolContext) -> ToolResul
     )
 
 
+# ── flow.test_* — saved regression tests (#10) ───────────────────────────────
+
+
+def _validate_test_steps(raw_steps: list[Any]) -> tuple[list[dict] | None, str | None]:
+    """Validate steps against the simulate step schema. Returns (steps, error)."""
+    if not isinstance(raw_steps, list) or not raw_steps:
+        return None, "steps majburiy — kamida bitta qadam bering (simulate formati)."
+    out: list[dict] = []
+    for i, s in enumerate(raw_steps):
+        try:
+            model = FlowSimulateStep.model_validate(s)
+        except Exception as exc:
+            return None, f"steps[{i}] noto'g'ri: {exc}"
+        out.append(model.model_dump(exclude_none=True))
+    return out, None
+
+
+async def _run_saved_tests(
+    ctx: ToolContext,
+    *,
+    flow: dict[str, Any],
+    tests: list[dict[str, Any]],
+    seed_collections: bool = True,
+) -> dict[str, Any]:
+    """Run each saved test in mode=assert against `flow`. Returns aggregate:
+      {"ran": bool, "passed": N, "total": M, "results": [{name, ok, passed, total,
+        failed:[...]}]}. `ran` is False ONLY if the simulator was unavailable —
+    callers degrade gracefully (e.g. flow.save must not break)."""
+    from ...integrations.simulator import SimulatorUnavailableError
+
+    results: list[dict[str, Any]] = []
+    passed = 0
+    for t in tests:
+        steps = t.get("steps") if isinstance(t.get("steps"), list) else []
+        normalized, err = _validate_test_steps(steps)
+        if err or normalized is None:
+            results.append(
+                {"name": t.get("name"), "ok": False, "error": err or "bad steps"}
+            )
+            continue
+        try:
+            resp = await _run_simulation(
+                ctx,
+                flow=flow,
+                steps=normalized,
+                seed_collections=seed_collections,
+                mode="assert",
+            )
+        except SimulatorUnavailableError:
+            return {"ran": False, "passed": 0, "total": len(tests), "results": []}
+        resp = resp if isinstance(resp, dict) else {"ok": False, "steps": []}
+        _, structured = _format_assert(resp, len(normalized))
+        ok = bool(structured["ok"])
+        if ok:
+            passed += 1
+        results.append(
+            {
+                "name": t.get("name"),
+                "ok": ok,
+                "passed": structured["passed"],
+                "total": len(normalized),
+                "failed": structured["failed"],
+            }
+        )
+    return {"ran": True, "passed": passed, "total": len(tests), "results": results}
+
+
+def _fmt_test_results(agg: dict[str, Any]) -> str:
+    """'✅ 3/4 test o'tdi; ❌ 'referral': step 2 — ...'"""
+    total = agg.get("total", 0)
+    passed = agg.get("passed", 0)
+    icon = "✅" if passed == total and total else ("❌" if total else "ℹ️")  # noqa: RUF001
+    parts = [f"{icon} {passed}/{total} test o'tdi"]
+    for r in agg.get("results", []):
+        if r.get("ok"):
+            continue
+        if r.get("error"):
+            parts.append(f"❌ '{r.get('name')}': {r['error']}")
+            continue
+        failed = r.get("failed") or []
+        if failed:
+            f0 = failed[0]
+            detail = f"step {f0.get('step')} — {f0.get('reason')}"
+            more = f" (+{len(failed) - 1})" if len(failed) > 1 else ""
+            parts.append(f"❌ '{r.get('name')}': {detail}{more}")
+        else:
+            parts.append(f"❌ '{r.get('name')}': o'tmadi")
+    return "; ".join(parts)
+
+
+class FlowTestSaveInput(BaseModel):
+    name: str = Field(description="Test nomi (loyiha ichida unikal — qayta saqlasa almashadi).")
+    steps: list[FlowSimulateStep] = Field(
+        min_length=1,
+        description=(
+            "Simulate qadamlari (expect'lar bilan) — bot qurib bo'lgach asosiy "
+            "stsenariyni shu yerda saqlang. Har qadamga `expect` qo'shing "
+            "(contains/keyboard_contains/...) — aks holda test faqat xato yo'qligini "
+            "tekshiradi."
+        ),
+    )
+    enabled: bool = Field(default=True, description="False — testni o'chirmasdan vaqtincha o'chirib qo'yadi.")
+
+
+@tool(
+    name="flow.test_save",
+    description=(
+        "Asosiy stsenariyni SAQLANADIGAN regression test sifatida yozadi (simulate "
+        "qadamlari + expect'lar). Bot qurib bo'lgach yoki muhim oqim qo'shgach "
+        "saqlang — keyin flow.save har safar bu testlarni avtomatik ishga tushiradi "
+        "va regressiyani ushlaydi. Nom loyiha ichida unikal (upsert)."
+    ),
+    input_model=FlowTestSaveInput,
+)
+async def flow_test_save(input: FlowTestSaveInput, ctx: ToolContext) -> ToolResult:
+    from ...mcp.flow_tests import get_flow_test_store
+
+    project_id = _power_project_id(ctx)
+    if not project_id:
+        return ToolResult.error("Aktiv loyiha yo'q — avval loyihani tanlang.")
+    name = input.name.strip()
+    if not name:
+        return ToolResult.error("name bo'sh bo'lmasligi kerak.")
+    steps = [s.model_dump(exclude_none=True) for s in input.steps]
+    ok = await get_flow_test_store().save(
+        project_id=project_id,
+        user_id=str(ctx.user_id) if ctx.user_id is not None else None,
+        name=name,
+        steps=steps,
+        enabled=input.enabled,
+    )
+    if not ok:
+        return ToolResult.error(
+            "Testni saqlab bo'lmadi (test ombori hozircha mavjud emas). Keyinroq "
+            "qayta urinib ko'ring."
+        )
+    return ToolResult.ok(
+        f"Regression test `{name}` saqlandi ({len(steps)} qadam, "
+        f"enabled={input.enabled}). flow.save endi uni avtomatik ishga tushiradi.",
+        data={"name": name, "steps": len(steps), "enabled": input.enabled},
+    )
+
+
+class FlowTestListInput(BaseModel):
+    pass
+
+
+@tool(
+    name="flow.test_list",
+    description="Loyihaning saqlangan regression testlari ro'yxati (nom, qadam soni, enabled).",
+    input_model=FlowTestListInput,
+)
+async def flow_test_list(_: FlowTestListInput, ctx: ToolContext) -> ToolResult:
+    from ...mcp.flow_tests import get_flow_test_store
+
+    project_id = _power_project_id(ctx)
+    if not project_id:
+        return ToolResult.error("Aktiv loyiha yo'q — avval loyihani tanlang.")
+    tests = await get_flow_test_store().list(project_id=project_id)
+    if not tests:
+        return ToolResult.ok(
+            "Saqlangan test yo'q — flow.test_save bilan asosiy stsenariylarni saqlang.",
+            data={"tests": []},
+        )
+    lines = [f"Loyiha {project_id} — {len(tests)} saqlangan test:"]
+    summary = []
+    for t in tests:
+        n_steps = len(t.get("steps") or [])
+        mark = "" if t.get("enabled") else " (o'chirilgan)"
+        lines.append(f"  • {t['name']} — {n_steps} qadam{mark}")
+        summary.append({"name": t["name"], "steps": n_steps, "enabled": t["enabled"]})
+    lines.append("flow.test_run bilan barchasini ishga tushiring.")
+    return ToolResult.ok("\n".join(lines), data={"tests": summary})
+
+
+class FlowTestDeleteInput(BaseModel):
+    name: str = Field(description="O'chiriladigan test nomi.")
+    confirm: bool = Field(
+        default=False,
+        description="Tasdiqlash — false bo'lsa o'chirilmaydi (qaytarib bo'lmaydi).",
+    )
+
+
+@tool(
+    name="flow.test_delete",
+    description=(
+        "Saqlangan regression testni o'chiradi (qaytarib bo'lmaydi). "
+        "confirm=true talab qiladi."
+    ),
+    input_model=FlowTestDeleteInput,
+    destructive=True,
+)
+async def flow_test_delete(input: FlowTestDeleteInput, ctx: ToolContext) -> ToolResult:
+    from ...mcp.flow_tests import get_flow_test_store
+
+    project_id = _power_project_id(ctx)
+    if not project_id:
+        return ToolResult.error("Aktiv loyiha yo'q — avval loyihani tanlang.")
+    name = input.name.strip()
+    if not input.confirm:
+        return ToolResult.error(
+            f"`{name}` testini o'chirish qaytarib bo'lmaydi. Tasdiqlash uchun "
+            "confirm=true bilan qayta chaqiring."
+        )
+    deleted = await get_flow_test_store().delete(project_id=project_id, name=name)
+    if not deleted:
+        return ToolResult.error(
+            f"`{name}` topilmadi yoki o'chirib bo'lmadi (flow.test_list bilan tekshiring)."
+        )
+    return ToolResult.ok(f"Regression test `{name}` o'chirildi.")
+
+
+class FlowTestRunInput(BaseModel):
+    name: str | None = Field(
+        default=None,
+        description=(
+            "Bitta testni ishga tushirish uchun nom. Berilmasa — BARCHA enabled "
+            "testlar mode=assert bilan ishga tushadi va jamlangan natija qaytadi."
+        ),
+    )
+    use_saved: bool = Field(
+        default=False,
+        description="True — backend'dagi SAQLANGAN flow'da, False (default) — working draft'da.",
+    )
+
+
+@tool(
+    name="flow.test_run",
+    description=(
+        "Saqlangan regression testlarni ishga tushiradi (mode=assert). name "
+        "berilmasa BARCHA enabled testlar ishga tushadi: '✅ 3/4 test o'tdi; "
+        "❌ \"referral\": step 2 — ...'. O'zgarish kiritgach yoki flow.save'dan "
+        "oldin chaqirib regressiyani tekshiring."
+    ),
+    input_model=FlowTestRunInput,
+)
+async def flow_test_run(input: FlowTestRunInput, ctx: ToolContext) -> ToolResult:
+    from ...mcp.flow_tests import get_flow_test_store
+
+    project_id = _power_project_id(ctx)
+    if not project_id:
+        return ToolResult.error("Aktiv loyiha yo'q — avval loyihani tanlang.")
+    store = get_flow_test_store()
+    if input.name:
+        one = await store.get(project_id=project_id, name=input.name.strip())
+        if one is None:
+            return ToolResult.error(
+                f"`{input.name}` topilmadi. flow.test_list bilan mavjudlarini ko'ring."
+            )
+        tests = [one]
+    else:
+        tests = await store.list(project_id=project_id, only_enabled=True)
+        if not tests:
+            return ToolResult.ok(
+                "Ishga tushiriladigan enabled test yo'q — flow.test_save bilan saqlang.",
+                data={"ran": False, "total": 0, "results": []},
+            )
+
+    try:
+        flow = await _resolve_sim_flow(ctx, use_saved=input.use_saved)
+    except Exception as exc:
+        return ToolResult.error(f"Flow'ni yuklab bo'lmadi: {exc}")
+
+    agg = await _run_saved_tests(ctx, flow=flow, tests=tests)
+    if not agg.get("ran"):
+        return ToolResult.error(
+            "Simulyator servisi mavjud emas — testlar ishga tushmadi. Keyinroq "
+            "qayta urinib ko'ring (yoki release_debug bilan debug botda sinang)."
+        )
+    text = _fmt_test_results(agg)
+    return ToolResult(content=text, is_error=agg["passed"] != agg["total"], data=agg)
+
+
 def build_flow_power_tools() -> list:
     return [
         flow_simulate,
@@ -462,4 +922,8 @@ def build_flow_power_tools() -> list:
         flow_import,
         flow_history,
         flow_rollback,
+        flow_test_save,
+        flow_test_list,
+        flow_test_delete,
+        flow_test_run,
     ]
