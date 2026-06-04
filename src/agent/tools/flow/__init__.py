@@ -694,7 +694,9 @@ async def _run_regression_after_save(
             state=sim_state,
             services=ctx.services,
         )
-        agg = await _run_saved_tests(sim_ctx, flow=saved_flow, tests=tests)
+        agg = await _run_saved_tests(
+            sim_ctx, flow=saved_flow, tests=tests, project_id=str(project_id)
+        )
         if not agg.get("ran"):
             return {
                 "text": "🧪 Regression: testlar o'tkazilmadi (simulyator mavjud emas).",
