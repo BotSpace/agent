@@ -216,15 +216,41 @@ async def project_update(input: ProjectUpdateInput, ctx: ToolContext) -> ToolRes
 
 class ProjectDeleteInput(BaseModel):
     id: str | int
+    confirm: bool = Field(
+        default=False,
+        description=(
+            "Tasdiqlash. False (default) — o'chirilMAYDI, nima o'chishi haqida "
+            "xulosa qaytaradi. Faqat foydalanuvchi aniq tasdiqlagach confirm=true."
+        ),
+    )
 
 
 @tool(
     name="project.delete",
-    description="Delete a bot project permanently. Requires approval.",
+    description=(
+        "Delete a bot project permanently (flow, kolleksiyalar, releaselar bilan). "
+        "QAYTARIB BO'LMAYDI. confirm=true talab qiladi — confirm berilmasa nima "
+        "o'chishini qaytaradi, o'chirmaydi."
+    ),
     input_model=ProjectDeleteInput,
     destructive=True,
 )
 async def project_delete(input: ProjectDeleteInput, ctx: ToolContext) -> ToolResult:
+    if not input.confirm:
+        name = input.id
+        try:
+            project = await _backend(ctx).get_project(
+                input.id, auth_claims=ctx.state.get("auth_claims")
+            )
+            if isinstance(project, dict) and project.get("name"):
+                name = f"{project['name']} (id={input.id})"
+        except BackendError:
+            pass
+        return ToolResult.error(
+            f"DIQQAT: `{name}` loyihasi butunlay o'chadi — flow, barcha "
+            "kolleksiyalar va releaselar bilan, QAYTARIB BO'LMAYDI. Tasdiqlash "
+            "uchun confirm=true bilan qayta chaqiring."
+        )
     try:
         await _backend(ctx).delete_project(input.id, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
@@ -233,4 +259,13 @@ async def project_delete(input: ProjectDeleteInput, ctx: ToolContext) -> ToolRes
 
 
 def build_project_tools() -> list[Tool]:
-    return [project_list, project_get, project_create, project_update, project_delete]
+    from .snapshot import build_project_snapshot_tools
+
+    return [
+        project_list,
+        project_get,
+        project_create,
+        project_update,
+        project_delete,
+        *build_project_snapshot_tools(),
+    ]

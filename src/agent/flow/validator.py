@@ -563,6 +563,11 @@ _TEMPLATE_TEXT_FIELDS = ("messageText", "text", "caption")
 # `{{ var }}` with a simple root token (letters/digits/_), optional .path / [i].
 _SIMPLE_VAR_RE = re.compile(r"\{\{\s*([A-Za-z_][\w]*)\b[^}]*\}\}")
 
+# #8 — CustomCodeNode jsCode writes state via set_context('key', value). Capture
+# every literal key it sets so {{key}} / {{state_key}} don't warn. Matches both
+# single- and double-quoted first arguments: set_context('enroll_id', ...).
+_SET_CONTEXT_RE = re.compile(r"""set_context\(\s*['"]([A-Za-z_]\w*)['"]""")
+
 
 def _collect_state_keys(flow: FlowDocument) -> set[str]:
     """Best-effort set of state keys a flow writes (so they're known to {{var}})."""
@@ -586,6 +591,15 @@ def _collect_state_keys(flow: FlowDocument) -> set[str]:
         fm = data.get("fieldMappings")
         if isinstance(fm, dict):
             keys.update(v for v in fm.values() if isinstance(v, str) and v)
+        # #8 — CustomCodeNode jsCode sets state via set_context('key', ...). Each
+        # key it writes is then valid as {{key}} AND {{state_key}} downstream.
+        if n.type == "CustomCodeNode":
+            code = data.get("jsCode")
+            if isinstance(code, str) and code:
+                for m in _SET_CONTEXT_RE.finditer(code):
+                    key = m.group(1)
+                    keys.add(key)
+                    keys.add(f"state_{key}")
     return keys
 
 
