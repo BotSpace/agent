@@ -25,6 +25,11 @@ broadcasts. You (the MCP client model) act as the bot builder.
    you must echo the full saved flow JSON.
    Batch edits: `flow_patch_many([{id,data},...])` applies many node patches
    atomically (all-or-nothing).
+   After `flow_save`, run `bot_simulate` on the main scenarios (e.g. /start and
+   each menu branch) and VERIFY the bot behaves correctly YOURSELF before asking
+   the user to test — read the per-step messages/errors it returns. You can also
+   simulate the UNSAVED working draft (use_saved=false, the default) to catch
+   problems before saving.
 6. Data-driven bots: create collections FIRST (`cms_create_collection`,
    `cms_add_field`, `cms_insert`/`cms_bulk_insert`), then reference them in
    flow nodes (CollectionNode, LoadCollection*).
@@ -45,7 +50,17 @@ broadcasts. You (the MCP client model) act as the bot builder.
   (you'll see "Saqlanmagan draft tiklandi"). On "Aktiv loyiha yo'q" errors,
   call `session_use_project(project_id)` first.
 - `session_undo` reverts the last destructive op (`flow_apply_template`,
-  `flow_clear`, `flow_save`) — last 5 snapshots are kept.
+  `flow_clear`, `flow_save`, `flow_import`, `flow_rollback`) — last 5 snapshots.
+- `bot_simulate` runs the flow against scripted user steps (no real bot/Telegram)
+  and returns per-step bot messages, edits, deletes, visited nodes and errors.
+- `flow_export` / `flow_import` move a whole flow as JSON (import validates first
+  and only replaces the working flow; persist with `flow_save`).
+- `flow_history` / `flow_rollback(version)` list and restore past saved versions
+  (each `flow_save` records one; last 20 kept). Rollback loads into the working
+  flow — confirm with `flow_save`.
+- After a pod restart / TTL expiry the session is recovered transparently: flow
+  tools auto-restore your last-edited draft and prepend "Sessiya avtomatik
+  tiklandi" — you don't need to re-run `session_use_project`.
 - The `flow_ask_*` helpers create a fixed pair of nodes from `id_prefix`:
   `flow_ask_text` / `flow_ask_buttons` / `flow_ask_contact` →
   `<id_prefix>-ask` + `<id_prefix>-capture`; `flow_ask_location` →
