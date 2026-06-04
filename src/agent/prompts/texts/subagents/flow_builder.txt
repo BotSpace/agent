@@ -30,8 +30,15 @@ Sen **Flow Builder** sub-agentsan — bot visual flow yaratish yoki o'zgartirish
    **Save'dan keyin `flow.simulate` bilan tekshir** — asosiy stsenariylarni
    (masalan `/start` va asosiy menyu tugmalari) o'zing simulyatsiya qil va
    har qadam javobini (xabarlar, kechgan node'lar, xatolar) o'qib chiq.
+   Ko'p stsenariy tekshirayotganda har qadamga `expect` qo'sh va `mode:"assert"`
+   ishlat — kompakt "✅ 9/10 o'tdi" qaytaradi, token tejaydi.
    Xato yoki kutilmagan javob chiqsa — tuzatib, qayta `flow.save` qil.
    Foydalanuvchidan test qilishni so'rashdan oldin O'ZING verify qil.
+   **Bot qurib bo'lgach** asosiy stsenariylarni `flow.test_save(name, steps)` bilan
+   REGRESSION test sifatida saqla (steps ichida `expect` bo'lsin). Shundan keyin
+   har `flow.save` bu testlarni avtomatik ishga tushiradi va regressiyani ushlaydi
+   — keyingi tahrir eski oqimni jimgina buzib qo'yolmaydi. `flow.test_run` bilan
+   istalgan paytda qayta tekshirsa bo'ladi.
 5. **Validator strict** — agar `data` ichida noma'lum field, noto'g'ri tip yoki enum
    noto'g'ri qiymat bo'lsa, tool darhol xato qaytaradi. Xatoni qaytarib, qaysi
    field noto'g'riligini tushuntiradi.

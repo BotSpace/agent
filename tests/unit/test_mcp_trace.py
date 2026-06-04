@@ -153,10 +153,11 @@ async def test_log_tool_call_attaches_to_open_trace(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_log_tool_call_orphan_without_prompt(monkeypatch):
+async def test_log_tool_call_auto_starts_trace_without_prompt(monkeypatch):
     col = _FakeCol()
     monkeypatch.setattr(trace, "_get_col", lambda: col)
-    # No prompt opened a trace for (u2, c2) → orphan row (trace_id None).
+    # No prompt opened a trace for (u2, c2). Auto-trace (#13): the first tool
+    # call mints a trace so the record is NOT an orphan and later calls link.
     trace.log_tool_call(
         user_id="u2",
         client_key="c2",
@@ -168,7 +169,33 @@ async def test_log_tool_call_orphan_without_prompt(monkeypatch):
         duration_ms=1,
     )
     await asyncio.sleep(0)
-    assert col.docs[0]["trace_id"] is None
+    tid = col.docs[0]["trace_id"]
+    assert tid is not None
+    # The minted trace becomes the client's current trace for the next calls.
+    assert trace.current_trace_id("u2", "c2") == tid
+    trace.log_tool_call(
+        user_id="u2",
+        client_key="c2",
+        project_id=None,
+        tool_name="flow_validate",
+        arguments={},
+        result_summary="ok",
+        is_error=False,
+        duration_ms=1,
+    )
+    await asyncio.sleep(0)
+    assert col.docs[1]["trace_id"] == tid
+
+
+@pytest.mark.asyncio
+async def test_ensure_trace_is_idempotent(monkeypatch):
+    trace.clear_active()
+    tid = trace.ensure_trace("uu", "cc")
+    assert trace.ensure_trace("uu", "cc") == tid
+    # A fresh prompt opens a NEW trace, replacing the auto-started one.
+    new = trace.start_trace("uu", "cc")
+    assert new != tid
+    assert trace.ensure_trace("uu", "cc") == new
 
 
 # ── server wiring ────────────────────────────────────────────────────────────
@@ -349,7 +376,7 @@ async def test_tool_calls_attach_to_trace(monkeypatch, wired):
 
 
 @pytest.mark.asyncio
-async def test_tool_call_without_prompt_is_orphan(monkeypatch, wired):
+async def test_tool_call_without_prompt_auto_starts_trace(monkeypatch, wired):
     col = _FakeCol()
     monkeypatch.setattr(trace, "_get_col", lambda: col)
 
@@ -366,14 +393,16 @@ async def test_tool_call_without_prompt_is_orphan(monkeypatch, wired):
     token = mcp_server._current_user.set(_user())
     try:
         await _call(srv, "session_use_project", {"project_id": "3"})
+        await _call(srv, "session_status", {})
         await _drain()
     finally:
         mcp_server._current_user.reset(token)
-    # No prompt opened a trace → orphan row (trace_id None) but still logged.
-    assert any(
-        d["tool_name"] == "session_use_project" and d["trace_id"] is None
-        for d in col.docs
-    )
+    # No prompt opened a trace → auto-trace (#13): both calls share one minted id.
+    tool_docs = [d for d in col.docs if d["tool_name"] != trace.PROMPT_TOOL]
+    assert tool_docs
+    ids = {d["trace_id"] for d in tool_docs}
+    assert len(ids) == 1
+    assert None not in ids
 
 
 def teardown_function() -> None:

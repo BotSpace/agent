@@ -26,8 +26,10 @@ Trace grouping (per-client current-trace pointer):
     per-client identity the workspace uses — and writes the `__prompt__` record.
   - Every subsequent tool call reads `current_trace_id(user_id, client_key)` and
     stamps its trace record with it, so the whole task is one linkable trace.
-  - A tool call with no open trace (no prompt yet) is written as an ORPHAN
-    (trace_id=None) — nothing is silently dropped.
+  - A tool call with no open trace AUTO-STARTS one (#13) via `ensure_trace` so
+    the whole task is one linkable trace even when `session_log_prompt` was
+    skipped (no `__prompt__` record — the prompt simply stays unknown). A record
+    is only an ORPHAN (trace_id=None) if the auto-mint itself can't run.
   - The pointer is plain in-memory state (no TTL): a new prompt simply replaces
     the previous trace_id for that client.
 
@@ -106,6 +108,20 @@ def start_trace(user_id: str | None, client_key: str | None) -> str:
     trace_id = uuid.uuid4().hex
     _active[(user_id, client_key)] = trace_id
     return trace_id
+
+
+def ensure_trace(user_id: str | None, client_key: str | None) -> str:
+    """Return the open trace for this client, minting one if none is open.
+
+    Auto-trace (#13): when the client forgot `session_log_prompt`, the first tool
+    call still opens a trace (no `__prompt__` record, prompt stays unknown) so the
+    whole task is ONE linkable trace instead of a stream of orphans. A later
+    `session_log_prompt` opens a fresh trace as usual (replacing this one).
+    """
+    existing = _active.get((user_id, client_key))
+    if existing is not None:
+        return existing
+    return start_trace(user_id, client_key)
 
 
 def clear_active() -> None:
@@ -199,14 +215,17 @@ def log_tool_call(
 
     `trace_id` links this record to the open trace for the user task (the one
     `session_log_prompt` opened). If omitted, the caller's current-trace pointer
-    is consulted; if none is open the record is an ORPHAN (trace_id=None).
+    is consulted; if still none, a trace is AUTO-STARTED here (#13) so this and
+    every following tool call share one trace even when the prompt was never
+    logged. A record only stays an ORPHAN (trace_id=None) if the auto-mint itself
+    can't run (no user identity at all).
     """
     col = _get_col()
     if col is None:
         return
 
     if trace_id is None:
-        trace_id = current_trace_id(user_id, client_key)
+        trace_id = ensure_trace(user_id, client_key)
 
     doc = {
         "trace_id": trace_id,
@@ -271,6 +290,7 @@ __all__ = [
     "PROMPT_TOOL",
     "clear_active",
     "current_trace_id",
+    "ensure_trace",
     "log_prompt",
     "log_tool_call",
     "start_trace",

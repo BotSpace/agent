@@ -4,16 +4,22 @@ The simulator is a separate engine service that runs a flow against a scripted
 sequence of user inputs and returns, per step, the bot messages / edits /
 deletes / visited nodes / errors — without touching Telegram or a real bot.
 
-Contract (QAT'IY — engine team owns the other side):
+Contract (QAT'IY — engine team owns the other side; simulator v2):
   POST {simulator_url}/simulate
   Request : {"flow": {nodes, edges},
-             "steps": [{"type": "command|text|contact|location|click|click_text", ...}],
+             "steps": [{"type": "command|text|contact|location|click|click_text|"
+                        "advance_time", ...,
+                        "chat"?: {id, first_name, username},   # multi-user step
+                        "expect"?: {contains, not_contains, keyboard_contains,
+                                    message_count, no_errors}}],
              "collections": {name: [docs]},
-             "chat": {id, first_name, username}}
+             "chat": {id, first_name, username},   # default chat
+             "mode": "full" | "assert"}
   Response: {"ok": bool,
              "steps": [{"input", "bot_messages": [{message_id, text, parse_mode,
                         keyboard, reply_keyboard, removed_keyboard}],
-                        "edits", "deletes", "nodes": [{id, type}], "errors"}],
+                        "edits", "deletes", "nodes": [{id, type}], "errors",
+                        "expect_passed"?: bool, "expect_failures"?: [str]}],
              "final_state": {state, context},
              "collections_after", "errors"}
 
@@ -49,8 +55,13 @@ async def simulate(
     steps: list[dict[str, Any]],
     collections: dict[str, list[dict[str, Any]]] | None = None,
     chat: dict[str, Any] | None = None,
+    mode: str = "full",
 ) -> dict[str, Any]:
     """POST a simulation request and return the parsed JSON response.
+
+    `mode` is the simulator v2 request switch: "full" (default, per-step detail)
+    or "assert" (compact pass/fail summary). Per-step `chat`/`expect` keys ride
+    inside each step dict — this transport never inspects them.
 
     Raises SimulatorUnavailableError if the service is unreachable (connect
     error / timeout). Any non-2xx HTTP status is surfaced as a normal dict with
@@ -62,6 +73,7 @@ async def simulate(
         "steps": steps or [],
         "collections": collections or {},
         "chat": chat or {"id": 1, "first_name": "Test", "username": "test_user"},
+        "mode": mode or "full",
     }
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as client:
