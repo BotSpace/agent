@@ -151,6 +151,7 @@ _GUIDE_TOPICS = {
     "crm": "CRM (chat tarixi, broadcast) qo'llanmasi",
     "deploy": "Deploy/release qo'llanmasi",
     "simulate": "Bot simulyatsiyasi qo'llanmasi (flow_simulate step turlari, expect/assert, multi-user, regression testlar)",
+    "custom_code": "CustomCodeNode JS API to'liq ma'lumotnoma (send/edit_or_send, db_*, callback_query.message.message_id, pagination edit-in-place namunasi)",
 }
 
 
@@ -167,6 +168,7 @@ def _load_guide(topic: str) -> str:
         "crm": "subagents/crm_manager.txt",
         "deploy": "subagents/deploy_manager.txt",
         "simulate": "mcp/guide_simulate.txt",
+        "custom_code": "mcp/guide_custom_code.txt",
     }
     return load_prompt(files[topic])
 
