@@ -25,7 +25,7 @@ broadcasts. You (the MCP client model) act as the bot builder.
    you must echo the full saved flow JSON.
    Batch edits: `flow_patch_many([{id,data},...])` applies many node patches
    atomically (all-or-nothing).
-   After `flow_save`, run `bot_simulate` on the main scenarios (e.g. /start and
+   After `flow_save`, run `flow_simulate` on the main scenarios (e.g. /start and
    each menu branch) and VERIFY the bot behaves correctly YOURSELF before asking
    the user to test — read the per-step messages/errors it returns. You can also
    simulate the UNSAVED working draft (use_saved=false, the default) to catch
@@ -51,7 +51,7 @@ broadcasts. You (the MCP client model) act as the bot builder.
   call `session_use_project(project_id)` first.
 - `session_undo` reverts the last destructive op (`flow_apply_template`,
   `flow_clear`, `flow_save`, `flow_import`, `flow_rollback`) — last 5 snapshots.
-- `bot_simulate` runs the flow against scripted user steps (no real bot/Telegram)
+- `flow_simulate` runs the flow against scripted user steps (no real bot/Telegram)
   and returns per-step bot messages, edits, deletes, visited nodes and errors.
 - `flow_export` / `flow_import` move a whole flow as JSON (import validates first
   and only replaces the working flow; persist with `flow_save`).
