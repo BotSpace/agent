@@ -1121,12 +1121,20 @@ async def load_project_collections(
         if not name:
             continue
         fields: list[str] = []
+        # field name → kind (e.g. {"is_active": "bool"}). Kept separate from
+        # `fields` so existing name-only consumers (system prompt, validator
+        # cross-check) stay unchanged; the validator's filter-kind check (#4)
+        # reads `field_kinds` when present.
+        field_kinds: dict[str, str] = {}
         try:
             detail = await backend.cms_get_collection(pid, name, auth_claims=auth_claims)
             for f in (detail.get("fields") or []) if isinstance(detail, dict) else []:
                 fname = f.get("name") if isinstance(f, dict) else None
                 if fname:
                     fields.append(str(fname))
+                    kind = f.get("kind") if isinstance(f, dict) else None
+                    if kind:
+                        field_kinds[str(fname)] = str(kind)
         except Exception:
             logger.warning(
                 "Failed to load fields for collection=%s (project=%s); listing name only",
@@ -1134,7 +1142,7 @@ async def load_project_collections(
                 pid,
                 exc_info=True,
             )
-        out.append({"name": str(name), "fields": fields})
+        out.append({"name": str(name), "fields": fields, "field_kinds": field_kinds})
     return out
 
 

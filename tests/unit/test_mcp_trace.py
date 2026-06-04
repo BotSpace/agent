@@ -1,4 +1,12 @@
-"""MCP A-band trace — Mongo write shape, redaction, graceful degrade, wiring."""
+"""MCP A-band trace — Mongo write shape, redaction, graceful degrade, wiring.
+
+Two groups:
+  - main (562a0bd): redaction, graceful degrade, write shape, call_tool /
+    get_prompt wiring — a `_FakeCol` stands in for Mongo so no DB is needed.
+  - feedback batch: `session_log_prompt` opens a trace, returns trace_id in
+    structuredContent, and links every subsequent tool call to that trace
+    (orphan when no prompt opened one). Ported from the old Postgres variant.
+"""
 
 from __future__ import annotations
 
@@ -10,8 +18,10 @@ import pytest
 from agent.mcp import server as mcp_server
 from agent.mcp import trace
 from agent.mcp.auth import AuthedUser
+from agent.mcp.draft_store import set_draft_store
 from agent.mcp.server import build_mcp_server
 from agent.mcp.workspace import get_workspace_store
+from tests.unit.test_mcp_session import FakeDraftStore, _FakeBackend
 
 
 class _FakeCol:
@@ -105,13 +115,60 @@ async def test_log_tool_call_writes_redacted_doc(monkeypatch):
 async def test_log_prompt_writes_prompt_record(monkeypatch):
     col = _FakeCol()
     monkeypatch.setattr(trace, "_get_col", lambda: col)
-    trace.log_prompt(user_id="u", client_key="c", project_id="3", prompt="build a shop bot")
+    tid = trace.log_prompt(
+        user_id="u", client_key="c", project_id="3", prompt="build a shop bot"
+    )
     await asyncio.sleep(0)
     assert len(col.docs) == 1
     doc = col.docs[0]
     assert doc["tool_name"] == trace.PROMPT_TOOL
     assert doc["prompt"] == "build a shop bot"
     assert doc["project_id"] == "3"
+    # log_prompt opens a trace and returns its id (also written on the record).
+    assert doc["trace_id"] == tid
+    assert trace.current_trace_id("u", "c") == tid
+
+
+# ── current-trace pointer ────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_log_tool_call_attaches_to_open_trace(monkeypatch):
+    col = _FakeCol()
+    monkeypatch.setattr(trace, "_get_col", lambda: col)
+    tid = trace.start_trace("u", "c")
+    trace.log_tool_call(
+        user_id="u",
+        client_key="c",
+        project_id=None,
+        tool_name="flow_save",
+        arguments={},
+        result_summary="ok",
+        is_error=False,
+        duration_ms=1,
+    )
+    await asyncio.sleep(0)
+    # trace_id falls back to the per-client pointer when not passed explicitly.
+    assert col.docs[0]["trace_id"] == tid
+
+
+@pytest.mark.asyncio
+async def test_log_tool_call_orphan_without_prompt(monkeypatch):
+    col = _FakeCol()
+    monkeypatch.setattr(trace, "_get_col", lambda: col)
+    # No prompt opened a trace for (u2, c2) → orphan row (trace_id None).
+    trace.log_tool_call(
+        user_id="u2",
+        client_key="c2",
+        project_id=None,
+        tool_name="flow_save",
+        arguments={},
+        result_summary="ok",
+        is_error=False,
+        duration_ms=1,
+    )
+    await asyncio.sleep(0)
+    assert col.docs[0]["trace_id"] is None
 
 
 # ── server wiring ────────────────────────────────────────────────────────────
@@ -168,6 +225,153 @@ async def test_get_prompt_emits_prompt_trace(monkeypatch):
     await asyncio.sleep(0)
     assert any(
         d["tool_name"] == trace.PROMPT_TOOL and d["prompt"] == "loyaliti bot"
+        for d in col.docs
+    )
+
+
+# ── session_log_prompt tool + trace linkage (feedback batch) ─────────────────
+
+
+def _user(uid: str = "42", client_key: str = "ck") -> AuthedUser:
+    return AuthedUser(
+        user_id=uid,
+        claims={"user_id": uid, "access_token": "acc", "refresh_token": "ref"},
+        client_key=client_key,
+    )
+
+
+@pytest.fixture
+def wired(monkeypatch):
+    """Session store + draft store + backend wired so registry tools run."""
+    get_workspace_store().clear()
+    set_draft_store(FakeDraftStore())
+    monkeypatch.setattr(mcp_server, "get_backend_client", lambda: _FakeBackend())
+    yield
+    get_workspace_store().clear()
+    set_draft_store(None)
+
+
+async def _call(srv, name, args):
+    handler = srv.request_handlers[mtypes.CallToolRequest]
+    req = mtypes.CallToolRequest(
+        method="tools/call",
+        params=mtypes.CallToolRequestParams(name=name, arguments=args),
+    )
+    return (await handler(req)).root
+
+
+async def _drain():
+    # Let fire-and-forget trace writes complete.
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+
+@pytest.mark.asyncio
+async def test_session_log_prompt_opens_trace_and_returns_id(monkeypatch, wired):
+    col = _FakeCol()
+    monkeypatch.setattr(trace, "_get_col", lambda: col)
+    srv = build_mcp_server()
+    token = mcp_server._current_user.set(_user())
+    try:
+        res = await _call(srv, "session_log_prompt", {"prompt": "/start bot qur"})
+        await _drain()
+    finally:
+        mcp_server._current_user.reset(token)
+    assert res.isError is False
+    tid = res.structuredContent["trace_id"]
+    assert tid
+    assert trace.current_trace_id("42", "ck") == tid
+    # The __prompt__ record carries the verbatim prompt and this trace_id.
+    prompt_docs = [d for d in col.docs if d["tool_name"] == trace.PROMPT_TOOL]
+    assert prompt_docs[0]["prompt"] == "/start bot qur"
+    assert prompt_docs[0]["trace_id"] == tid
+
+
+@pytest.mark.asyncio
+async def test_session_log_prompt_requires_prompt(monkeypatch, wired):
+    monkeypatch.setattr(trace, "_get_col", lambda: _FakeCol())
+    srv = build_mcp_server()
+    token = mcp_server._current_user.set(_user())
+    try:
+        res = await _call(srv, "session_log_prompt", {"prompt": "  "})
+    finally:
+        mcp_server._current_user.reset(token)
+    assert res.isError is True
+
+
+@pytest.mark.asyncio
+async def test_tool_calls_attach_to_trace(monkeypatch, wired):
+    col = _FakeCol()
+    monkeypatch.setattr(trace, "_get_col", lambda: col)
+
+    async def fake_load_flow(project_id, **kwargs):
+        return {
+            "nodes": [
+                {
+                    "id": "start",
+                    "type": "CommandTriggerNode",
+                    "data": {"command": "/start"},
+                }
+            ],
+            "edges": [],
+        }
+
+    async def fake_load_collections(project_id, **kwargs):
+        return []
+
+    monkeypatch.setattr(mcp_server, "load_saved_flow", fake_load_flow)
+    monkeypatch.setattr(mcp_server, "load_project_collections", fake_load_collections)
+
+    srv = build_mcp_server()
+    token = mcp_server._current_user.set(_user())
+    try:
+        res = await _call(srv, "session_log_prompt", {"prompt": "build"})
+        tid = res.structuredContent["trace_id"]
+        await _call(srv, "session_use_project", {"project_id": "9"})
+        await _call(
+            srv,
+            "flow_add_send_text_message",
+            {"id": "m1", "data": {"messageText": "hi"}, "after": "start"},
+        )
+        await _drain()
+    finally:
+        mcp_server._current_user.reset(token)
+
+    names = [d["tool_name"] for d in col.docs]
+    assert "session_use_project" in names
+    assert "flow_add_send_text_message" in names
+    # Every tool-call record links to the single open trace.
+    tool_docs = [d for d in col.docs if d["tool_name"] != trace.PROMPT_TOOL]
+    assert tool_docs
+    for d in tool_docs:
+        assert d["trace_id"] == tid
+        assert isinstance(d["duration_ms"], int)
+
+
+@pytest.mark.asyncio
+async def test_tool_call_without_prompt_is_orphan(monkeypatch, wired):
+    col = _FakeCol()
+    monkeypatch.setattr(trace, "_get_col", lambda: col)
+
+    async def fake_load_flow(project_id, **kwargs):
+        return {"nodes": [], "edges": []}
+
+    async def fake_load_collections(project_id, **kwargs):
+        return []
+
+    monkeypatch.setattr(mcp_server, "load_saved_flow", fake_load_flow)
+    monkeypatch.setattr(mcp_server, "load_project_collections", fake_load_collections)
+
+    srv = build_mcp_server()
+    token = mcp_server._current_user.set(_user())
+    try:
+        await _call(srv, "session_use_project", {"project_id": "3"})
+        await _drain()
+    finally:
+        mcp_server._current_user.reset(token)
+    # No prompt opened a trace → orphan row (trace_id None) but still logged.
+    assert any(
+        d["tool_name"] == "session_use_project" and d["trace_id"] is None
         for d in col.docs
     )
 

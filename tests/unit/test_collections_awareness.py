@@ -35,8 +35,8 @@ def test_load_collections_compact_shape():
     )
     out = _run(load_project_collections("123", client=backend))
     assert out == [
-        {"name": "orders", "fields": ["total", "status"]},
-        {"name": "leads", "fields": ["phone"]},
+        {"name": "orders", "fields": ["total", "status"], "field_kinds": {}},
+        {"name": "leads", "fields": ["phone"], "field_kinds": {}},
     ]
 
 
@@ -68,8 +68,8 @@ def test_load_collections_isolated_field_failure():
     out = _run(load_project_collections("123", client=PartlyBroken()))
     # bad_col survives with empty fields; ok_col keeps its fields.
     assert out == [
-        {"name": "ok_col", "fields": ["a"]},
-        {"name": "bad_col", "fields": []},
+        {"name": "ok_col", "fields": ["a"], "field_kinds": {}},
+        {"name": "bad_col", "fields": [], "field_kinds": {}},
     ]
 
 
