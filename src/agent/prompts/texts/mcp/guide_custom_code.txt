@@ -49,6 +49,27 @@ yo'l uchun `outputs:[{name:"default"}]` + `exit("default")`.)
 ### inline_keyboard / reply_markup formati
 `inline_keyboard: [[{text, callback_data}], [{text, url}]]` — qatorlar massivi.
 `reply_markup` formati ham qabul qilinadi: `{type:"inline", buttons:[[...]]}`.
+Web App tugma: `{text, type:"web_app", value:"https://..."}` (faqat https; inline va
+reply ikkalasida) — `value` URL string yoki `{url:"..."}`:
+`inline_keyboard: [[{text:"Ochish", type:"web_app", value:"https://app.example.com"}]]`
+
+## Raw Telegram Bot API (tg_call + wrapper'lar)
+- `tg_call(method, params)` — ISTALGAN Telegram Bot API metodi. Nested
+  ob'ekt/massiv (reply_markup, permissions, prices...) avto JSON-string. →
+  `{ok, result}` yoki `{ok:false, description}`. `params.chat_id` berilmasa joriy chat.
+  ```javascript
+  tg_call('banChatMember', { chat_id: -1001234567890, user_id: user_id });
+  tg_call('sendInvoice', { title:'Premium', description:'1 oy', payload:'p1',
+    provider_token:'', currency:'XTR', prices:[{label:'Narx', amount:100}] });
+  ```
+- Nomli wrapper'lar (bir xil `{ok,result}`; chat_id ixtiyoriy = joriy chat):
+  guruh — `ban_chat_member`, `unban_chat_member`, `restrict_chat_member`,
+  `promote_chat_member`, `get_chat`, `get_chat_member`, `get_chat_member_count`,
+  `set_chat_title`, `set_chat_description`, `create_chat_invite_link`,
+  `approve_chat_join_request`, `decline_chat_join_request`; to'lov —
+  `send_invoice`, `answer_pre_checkout_query`, `answer_shipping_query`,
+  `refund_star_payment`; boshqa — `set_message_reaction`, `create_forum_topic`,
+  `close_forum_topic`.
 
 ## MongoDB (collection)
 - `db_find_one(collection, filter?)` → `{success, data}`  (data=hujjat yoki null)
