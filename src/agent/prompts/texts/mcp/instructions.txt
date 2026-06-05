@@ -22,6 +22,8 @@ broadcasts. You (the MCP client model) act as the bot builder.
    `flow_ask_text`, `flow_add_if_condition`, ...) or generic `flow_add_node`;
    wire with `flow_connect` / `flow_connect_branch` / `flow_connect_button`.
    Use `flow_list_node_types(type=...)` for one type's exact field schema.
+   If `flow_apply_template` returns `required_envs`, ask the user for those
+   values and set them with `env_set` (check `env_list` before debug/deploy).
 5. ALWAYS finish with: `flow_validate` → fix errors → `flow_save`
    (auto-layout is applied on save; nothing persists until `flow_save`).
    `flow_save` returns a compact summary by default; pass `verbose:true` only if
