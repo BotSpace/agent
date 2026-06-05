@@ -156,6 +156,7 @@ Boshqa barcha holatlarda — inline.
 
 **Approach A — to'g'ridan-to'g'ri tugma edge (kamroq node, afzal):**
 1. Tugma'da `value` belgila: `{"text": "📚 Kurslar", "type": "callback", "value": "courses"}`
+   (tashqi havola: `type:"url"`; mini-ilova: `type:"web_app", value:"https://..."` — faqat https).
 2. Tugma handle'idan keyingi node'ga edge: `flow.connect(source="menu", target="courses-list", source_handle="target-handler-menu-📚 Kurslar")`
 3. Trigger node yaratma.
 
@@ -358,6 +359,8 @@ ortiqcha murakkablik.
   `edit_inline_button`, `delete_message`, `answer_callback_query`,
   `send_to_chat`, `pin_message`, `unpin_message`, `forward_message`,
   `copy_message`, `remove_reply_keyboard`
+- Raw TG API: `tg_call(method, params)` — istalgan metod (nested avto-JSON) + nomli
+  wrapper'lar: `ban_chat_member`/`get_chat_member`/`send_invoice`/`set_message_reaction` h.k.
 - MongoDB: `db_find_one`, `db_find`, `db_insert`, `db_update`,
   `db_upsert`, `db_delete`, `db_count` (`{success, data, error}` qaytaradi)
 - HTTP: `http_request`, `http_get`, `http_post`, `http_put`, `http_delete`

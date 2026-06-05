@@ -107,13 +107,45 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         required_data=["provider"],
         is_trigger=True,
     ),
+    "PreCheckoutTriggerNode": NodeTypeSpec(
+        type="PreCheckoutTriggerNode",
+        category="trigger",
+        description=(
+            "To'lov tasdiqlash (pre_checkout_query) trigger. filter: any/equals/"
+            "starts_with/contains (invoice payload bo'yicha), value: filter qiymati. "
+            "autoAnswer (default true) — engine avtomatik ok=true javob beradi "
+            "(10s ichida javob bo'lmasa to'lov yiqiladi). Doim global. Context: "
+            "pre_checkout_payload, pre_checkout_total_amount, pre_checkout_currency."
+        ),
+        is_trigger=True,
+    ),
+    "SuccessfulPaymentTriggerNode": NodeTypeSpec(
+        type="SuccessfulPaymentTriggerNode",
+        category="trigger",
+        description=(
+            "Muvaffaqiyatli to'lov trigger. filter/value — payload bo'yicha "
+            "(any/equals/starts_with/contains). Doim global. Context: payment_payload, "
+            "payment_total_amount, payment_currency, payment_telegram_charge_id."
+        ),
+        is_trigger=True,
+    ),
+    "ChatJoinRequestTriggerNode": NodeTypeSpec(
+        type="ChatJoinRequestTriggerNode",
+        category="trigger",
+        description=(
+            "Guruh/kanalga qo'shilish so'rovi trigger. Maydonsiz, doim global. "
+            "Context: join_request_chat_id, join_request_user_id, first_name. "
+            "Approve/decline: CustomCode approve_chat_join_request/decline_chat_join_request."
+        ),
+        is_trigger=True,
+    ),
     # ── Senders ────────────────────────────────────────────────────────
     "SendTextMessageNode": NodeTypeSpec(
         type="SendTextMessageNode",
         category="send",
         description=(
             "Text xabar yuborish. keyboard.active: 'inline'/'reply'/'none'. "
-            "keyboard.inline: [[{text,type:'callback'/'url',value}]]. "
+            "keyboard.inline: [[{text,type:'callback'/'url'/'web_app',value}]] (web_app value=https URL). "
             "keyboard.reply: [[{id:'btn-xxx',text,type:'reply'/'request_contact'/'request_location'}]]. "
             "recipients: {sendToSender:bool, additionalIds:[chatId]}. "
             "{{state.key}} — saqlangan qiymat, {{first_name}} — user ismi. "
@@ -213,6 +245,20 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         category="send",
         description="Dice/emoji yuborish",
         optional_data=["remove_keyboard", "emoji"],
+    ),
+    "SendInvoiceNode": NodeTypeSpec(
+        type="SendInvoiceNode",
+        category="send",
+        description=(
+            "Telegram to'lov invoice yuborish. title/description/payload majburiy "
+            "({{var}} qo'llanadi). providerToken bo'sh = Telegram Stars; currency "
+            "default 'XTR'. prices: [{label, amount}] (amount eng kichik birlik, "
+            "XTR=stars soni). Ixtiyoriy: photoUrl, needName/needPhone/needEmail/"
+            "needShippingAddress. To'lov oqimi: SendInvoice -> PreCheckoutTrigger "
+            "(autoAnswer) -> SuccessfulPaymentTrigger."
+        ),
+        required_data=["title", "description", "payload", "prices"],
+        optional_data=["providerToken", "currency", "photoUrl"],
     ),
     "SendMediaGroupNode": NodeTypeSpec(
         type="SendMediaGroupNode",
