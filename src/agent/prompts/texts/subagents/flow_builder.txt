@@ -252,9 +252,24 @@ Approach A: tugma'da `value: "back-menu"` belgila, keyin
   (chunki CustomCode output'dan statik edge tortib bo'lmaydi)
 
 ### Pattern 5: Branching
-IfCondition, LoadCollectionItem, CheckMembership, ForLoop uchun `flow.connect_branch`
-ishlat. Handle'lar: `true`/`false`, `found`/`not_found`, `is-member`/`not-member`,
-`loop-body`/`no-items`.
+IfCondition, LoadCollectionItem, CheckMembership, ForLoop, PaymentNode uchun
+`flow.connect_branch` ishlat. Handle'lar: `true`/`false`, `found`/`not_found`,
+`is-member`/`not-member`, `loop-body`/`no-items`, `paid`/`failed`.
+
+### Pattern 5a: To'lov — `PaymentNode` (Botspace Click)
+Mahsulot/xizmat uchun pul yig'ish kerak bo'lsa `PaymentNode` ishlat. Bu node
+Botspace orqali Click to'lovini yuritadi — mijozga "To'lash" tugmasini yuboradi,
+order yaratadi; egasi to'lov tizimi bilan O'ZI integratsiya QILMAYDI.
+- `data`: `amount` (son yoki `{{state.total}}`), ixtiyoriy `comment`, `buttonText`
+  (default "💳 To'lash"), `paymentType` (hozircha faqat `click`).
+- Ikki tarmoq: `paid` (to'lov tasdiqlandi) va `failed`. Doim ikkalasini ham ula
+  (`flow.connect_branch`); kamida `paid`'dan keyin tasdiq xabari bo'lsin.
+- To'lovdan keyin context o'zgaruvchilari: `{{payment_order_id}}`,
+  `{{payment_amount}}`, `{{payment_net}}`, `{{payment_status}}`,
+  `{{payment_comment}}`, `{{payment_provider}}`.
+- FARQ: `PaymentNode` = Botspace Click (lokal kartalar). Telegram Stars yoki
+  provider token orqali to'lov uchun esa `SendInvoiceNode` (Telegram invoice)
+  ishlatiladi — ularni aralashtirma.
 
 ### Pattern 6: Expression
 `{{first_name}}`, `{{username}}`, `{{state.var}}`, `{{collection.X.field}}`,

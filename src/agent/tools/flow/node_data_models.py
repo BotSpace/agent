@@ -487,6 +487,31 @@ class CronData(_StrictData):
     cronExpression: str
 
 
+class PaymentNodeData(_StrictData):
+    """Botspace orqali to'lov (Click). Egasi to'lov tizimi bilan o'zi integratsiya qilmaydi.
+
+    To'lov tasdiqlansa `paid`, aks holda `failed` source handle bo'yicha davom etadi.
+    To'lovdan keyin context: payment_order_id, payment_amount, payment_net,
+    payment_status, payment_comment, payment_provider.
+    """
+
+    paymentType: Literal["click"] = Field(
+        default="click",
+        description="To'lov provayderi. Hozircha faqat 'click' (kelajakda payme/uzum).",
+    )
+    amount: str | int = Field(
+        description="To'lov summasi — son yoki {{var}} (masalan {{state.total}}).",
+    )
+    comment: str | None = Field(
+        default=None,
+        description="To'lov izohi. {{}} o'zgaruvchilar qo'llab-quvvatlanadi.",
+    )
+    buttonText: str = Field(
+        default="💳 To'lash",
+        description="Mijozga ko'rinadigan 'To'lash' tugmasi matni.",
+    )
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # INTERACTION (3)
 # ═════════════════════════════════════════════════════════════════════════════
@@ -724,6 +749,7 @@ NODE_DATA_MODELS: dict[str, type[_StrictData]] = {
     "CheckMembershipNode": CheckMembershipData,
     "DownloadNode": DownloadData,
     "CronNode": CronData,
+    "PaymentNode": PaymentNodeData,
     # interaction
     "ChatActionNode": ChatActionData,
     "CallbackQueryAnswerNode": CallbackQueryAnswerData,
