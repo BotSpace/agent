@@ -464,3 +464,72 @@ async def test_add_node_accepts_remove_keyboard():
     flow = res.state_updates["working_flow"]
     node = next(n for n in flow["nodes"] if n["id"] == "thanks")
     assert node["data"]["remove_keyboard"] is True
+
+
+@pytest.mark.asyncio
+async def test_apply_template_surfaces_required_envs(monkeypatch):
+    """apply_template natijasida backend'dan kelgan required_envs ToolResult
+    message + data'ga chiqishi; RELEASE_BOT_TOKEN tashlab yuborilishi."""
+    from agent.tools.flow import templates as tpl_mod
+
+    fake_tpl = {
+        "id": 7,
+        "slug": "shop",
+        "name": "Shop bot",
+        "flow": {
+            "nodes": [{"id": "t1", "type": "CommandTriggerNode", "data": {"command": "/start"}}],
+            "edges": [],
+        },
+        "required_envs": [
+            {"key": "ADMIN_CHAT_ID", "description": "Admin chat id"},
+            {"key": "PAYMENT_TOKEN", "description": ""},
+            {"key": "RELEASE_BOT_TOKEN", "description": "bot token"},
+        ],
+    }
+
+    class _FakeBackend:
+        async def get_internal_template(self, identifier):
+            return fake_tpl
+
+    monkeypatch.setattr(tpl_mod, "get_backend_client", lambda: _FakeBackend())
+
+    tools = _tools()
+    ctx = ToolContext(run_id="r", project_id="42", user_id="u")
+    res = await tools["flow.apply_template"].run({"template_id": 7}, ctx)
+
+    assert not res.is_error, res.content
+    keys = [e["key"] for e in res.data["required_envs"]]
+    assert keys == ["ADMIN_CHAT_ID", "PAYMENT_TOKEN"]  # RELEASE_BOT_TOKEN dropped
+    assert "ADMIN_CHAT_ID" in res.content
+    assert "PAYMENT_TOKEN" in res.content
+    assert "RELEASE_BOT_TOKEN" not in res.content
+    assert "MAJBURIY env" in res.content
+
+
+@pytest.mark.asyncio
+async def test_apply_template_without_required_envs_omits_field(monkeypatch):
+    """required_envs yo'q template — data'da kalit umuman bo'lmasligi va
+    message'da env eslatmasi chiqmasligi (regressiyani oldini olish)."""
+    from agent.tools.flow import templates as tpl_mod
+
+    class _FakeBackend:
+        async def get_internal_template(self, identifier):
+            return {
+                "id": 1,
+                "slug": "basic",
+                "name": "Basic",
+                "flow": {
+                    "nodes": [{"id": "t1", "type": "CommandTriggerNode", "data": {"command": "/start"}}],
+                    "edges": [],
+                },
+            }
+
+    monkeypatch.setattr(tpl_mod, "get_backend_client", lambda: _FakeBackend())
+
+    tools = _tools()
+    ctx = ToolContext(run_id="r", project_id="42", user_id="u")
+    res = await tools["flow.apply_template"].run({"slug": "basic"}, ctx)
+
+    assert not res.is_error, res.content
+    assert "required_envs" not in (res.data or {})
+    assert "MAJBURIY env" not in res.content
