@@ -82,6 +82,35 @@ class ExternalWebhookTriggerData(_StrictData):
     provider: str = Field(description="External webhook provider identifier.")
 
 
+_PAYLOAD_FILTER = Literal["any", "equals", "starts_with", "contains"]
+
+
+class PreCheckoutTriggerData(_StrictData):
+    filter: _PAYLOAD_FILTER = Field(default="any",
+        description="Invoice payload filter mode.")
+    value: str | None = Field(default=None,
+        description="Payload filter value (unused when filter='any').")
+    autoAnswer: bool = Field(default=True,
+        description="Auto answerPreCheckoutQuery(ok=true). Telegram cancels the "
+        "payment if unanswered within 10s — keep True unless answering manually.")
+    global_: bool = Field(default=True, alias="global",
+        description="Always-global trigger.")
+
+
+class SuccessfulPaymentTriggerData(_StrictData):
+    filter: _PAYLOAD_FILTER = Field(default="any",
+        description="Invoice payload filter mode.")
+    value: str | None = Field(default=None,
+        description="Payload filter value (unused when filter='any').")
+    global_: bool = Field(default=True, alias="global",
+        description="Always-global trigger.")
+
+
+class ChatJoinRequestTriggerData(_StrictData):
+    global_: bool = Field(default=True, alias="global",
+        description="Always-global trigger; fires on any chat join request.")
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # SEND (16)
 # ═════════════════════════════════════════════════════════════════════════════
@@ -196,6 +225,28 @@ class SendDiceData(_SendBase):
 class SendMediaGroupData(_SendBase):
     media: list[dict[str, Any]] = Field(
         description="Array of {type, media, caption?}. 2-10 items.")
+
+
+class InvoicePrice(_StrictData):
+    label: str = Field(description="Price line label, e.g. 'Asosiy narx'.")
+    amount: int = Field(description="Amount in smallest currency unit (XTR = stars count).")
+
+
+class SendInvoiceData(_StrictData):
+    title: str = Field(description="Product title. {{var}} supported.")
+    description: str = Field(description="Product description.")
+    payload: str = Field(
+        description="Internal invoice id — match it in PreCheckout/SuccessfulPayment triggers.")
+    providerToken: str | None = Field(default=None,
+        description="Payment provider token. Empty/None = Telegram Stars (XTR).")
+    currency: str = Field(default="XTR",
+        description="ISO currency or 'XTR' for Telegram Stars.")
+    prices: list[InvoicePrice] = Field(description="At least one price line.")
+    photoUrl: str | None = Field(default=None, description="Optional product photo URL.")
+    needName: bool = Field(default=False)
+    needPhone: bool = Field(default=False)
+    needEmail: bool = Field(default=False)
+    needShippingAddress: bool = Field(default=False)
 
 
 class EditOrSendMessageData(_SendBase):
@@ -620,6 +671,9 @@ NODE_DATA_MODELS: dict[str, type[_StrictData]] = {
     "ReplyButtonTriggerNode": ReplyButtonTriggerData,
     "CronTriggerNode": CronTriggerData,
     "ExternalWebhookTriggerNode": ExternalWebhookTriggerData,
+    "PreCheckoutTriggerNode": PreCheckoutTriggerData,
+    "SuccessfulPaymentTriggerNode": SuccessfulPaymentTriggerData,
+    "ChatJoinRequestTriggerNode": ChatJoinRequestTriggerData,
     # send
     "SendTextMessageNode": SendTextMessageData,
     "SendPhotoNode": SendPhotoData,
@@ -636,6 +690,7 @@ NODE_DATA_MODELS: dict[str, type[_StrictData]] = {
     "SendPollNode": SendPollData,
     "SendDiceNode": SendDiceData,
     "SendMediaGroupNode": SendMediaGroupData,
+    "SendInvoiceNode": SendInvoiceData,
     "EditOrSendMessageNode": EditOrSendMessageData,
     # edit
     "EditMessageNode": EditMessageData,
