@@ -467,6 +467,22 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         description="Inline cron — periodic task in middle of flow",
         required_data=["cronExpression"],
     ),
+    "PaymentNode": NodeTypeSpec(
+        type="PaymentNode",
+        category="integration",
+        description=(
+            "Botspace orqali to'lov (Click; kelajakda payme/uzum). Node order yaratadi va "
+            "mijozga 'To'lash' tugmasini yuboradi — egasi to'lov tizimi bilan o'zi integratsiya "
+            "QILMAYDI. To'lov tasdiqlansa 'paid', aks holda 'failed' tarmoq davom etadi. "
+            "amount: son yoki {{var}}. To'lovdan keyin context: payment_order_id, payment_amount, "
+            "payment_net, payment_status, payment_comment, payment_provider. "
+            "Eslatma: bu Telegram Stars EMAS — lokal kartalar (Click). Telegram Stars uchun "
+            "alohida invoice (SendInvoiceNode) mexanizmi ishlatiladi."
+        ),
+        required_data=["amount"],
+        optional_data=["paymentType", "comment", "buttonText"],
+        source_handles=["paid", "failed"],
+    ),
     # ── Interaction ────────────────────────────────────────────────────
     "ChatActionNode": NodeTypeSpec(
         type="ChatActionNode",
