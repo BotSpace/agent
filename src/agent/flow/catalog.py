@@ -113,7 +113,7 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         category="send",
         description=(
             "Text xabar yuborish. keyboard.active: 'inline'/'reply'/'none'. "
-            "keyboard.inline: [[{text,type:'callback'/'url',value}]]. "
+            "keyboard.inline: [[{text,type:'callback'/'url'/'web_app',value}]] (web_app value=https URL). "
             "keyboard.reply: [[{id:'btn-xxx',text,type:'reply'/'request_contact'/'request_location'}]]. "
             "recipients: {sendToSender:bool, additionalIds:[chatId]}. "
             "{{state.key}} — saqlangan qiymat, {{first_name}} — user ismi. "
