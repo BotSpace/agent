@@ -60,6 +60,24 @@ def _normalize_collection_name(data: dict[str, Any]) -> bool:
     return True
 
 
+def _normalize_required_envs(tpl: dict[str, Any]) -> list[dict[str, str]]:
+    """Extract `required_envs` from a template into a clean
+    `[{"key", "description"}, ...]` list. Skips RELEASE_BOT_TOKEN (handled by
+    its own release flow) and entries without a key. Never raises."""
+    raw = tpl.get("required_envs")
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, str]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get("key") or "").strip()
+        if not key or key == "RELEASE_BOT_TOKEN":
+            continue
+        out.append({"key": key, "description": str(item.get("description") or "").strip()})
+    return out
+
+
 def normalize_legacy_flow(flow: dict[str, Any]) -> int:
     """Normalize a raw template flow dict in place. Returns the number of nodes
     whose data was changed."""
@@ -152,10 +170,17 @@ async def flow_search_template(input: FlowSearchTemplateInput, ctx: ToolContext)
         meta = h.get("metadata") or {}
         sim = h.get("similarity", 0.0)
         verdict = "GOOD" if sim >= SIMILARITY_GOOD else "weak"
+        env_keys = [str(k) for k in (meta.get("required_envs") or []) if k]
+        env_note = ""
+        if env_keys:
+            shown = ",".join(env_keys[:4])
+            if len(env_keys) > 4:
+                shown += f",+{len(env_keys) - 4}"
+            env_note = f" env: {shown}"
         summary_lines.append(
             f"  • id={meta.get('template_id')} slug={meta.get('slug')} "
             f"sim={sim:.2f} ({verdict}) — {meta.get('name')} "
-            f"[{meta.get('n_nodes', 0)} nodes, {meta.get('n_edges', 0)} edges]"
+            f"[{meta.get('n_nodes', 0)} nodes, {meta.get('n_edges', 0)} edges]{env_note}"
         )
     best = hits[0]
     best_sim = best.get("similarity", 0.0)
@@ -179,6 +204,7 @@ async def flow_search_template(input: FlowSearchTemplateInput, ctx: ToolContext)
                     "n_nodes": (h.get("metadata") or {}).get("n_nodes"),
                     "n_edges": (h.get("metadata") or {}).get("n_edges"),
                     "categories": (h.get("metadata") or {}).get("categories"),
+                    "required_envs": (h.get("metadata") or {}).get("required_envs"),
                 }
                 for h in hits
             ]
@@ -238,18 +264,35 @@ async def flow_apply_template(input: FlowApplyTemplateInput, ctx: ToolContext) -
         if normalized
         else ""
     )
+
+    required_envs = _normalize_required_envs(tpl)
+    env_note = ""
+    if required_envs:
+        listing = ", ".join(
+            f"{e['key']} ({e['description']})" if e["description"] else e["key"]
+            for e in required_envs
+        )
+        env_note = (
+            f" Bu template quyidagi MAJBURIY env'larni talab qiladi: {listing} — "
+            "foydalanuvchidan qiymatlarini SO'RA va env.set bilan o'rnat; "
+            "o'rnatilmaguncha bot to'liq ishlamaydi."
+        )
+
+    data: dict[str, Any] = {
+        "template_id": tpl.get("id"),
+        "slug": tpl.get("slug"),
+        "name": tpl.get("name"),
+        "n_nodes": len(nodes),
+        "n_edges": len(edges),
+        "normalized_nodes": normalized,
+    }
+    if required_envs:
+        data["required_envs"] = required_envs
     return ToolResult.ok(
         f"Applied template `{tpl.get('name')}` (id={tpl.get('id')}): "
         f"{len(nodes)} nodes + {len(edges)} edges loaded.{norm_note} "
-        f"Edit with flow.add_*, flow.connect, flow.patch as needed.",
-        data={
-            "template_id": tpl.get("id"),
-            "slug": tpl.get("slug"),
-            "name": tpl.get("name"),
-            "n_nodes": len(nodes),
-            "n_edges": len(edges),
-            "normalized_nodes": normalized,
-        },
+        f"Edit with flow.add_*, flow.connect, flow.patch as needed.{env_note}",
+        data=data,
         state_updates={
             "working_flow": working,
             "flow_dirty": True,

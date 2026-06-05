@@ -112,6 +112,15 @@ async def ingest(*, rebuild: bool = False) -> dict[str, int]:
         # so the embedding refreshes instead of accumulating duplicates.
         if not rebuild:
             await _delete_one(int(tid))
+        # Only the env KEYS go into metadata (not descriptions) to keep the
+        # vector row small; descriptions are fetched on apply_template. Skip
+        # RELEASE_BOT_TOKEN — it has its own release flow, not a user env.
+        env_keys = [
+            str(e.get("key")).strip()
+            for e in (tpl.get("required_envs") or [])
+            if isinstance(e, dict) and str(e.get("key") or "").strip()
+            and str(e.get("key")).strip() != "RELEASE_BOT_TOKEN"
+        ]
         metadata = {
             "template_id": int(tid),
             "slug": tpl.get("slug"),
@@ -120,6 +129,8 @@ async def ingest(*, rebuild: bool = False) -> dict[str, int]:
             "n_nodes": len((tpl.get("flow") or {}).get("nodes") or []),
             "n_edges": len((tpl.get("flow") or {}).get("edges") or []),
         }
+        if env_keys:
+            metadata["required_envs"] = env_keys
         await retriever.remember(
             project_id=TEMPLATE_PROJECT_ID,
             user_id=None,
