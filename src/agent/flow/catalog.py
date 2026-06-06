@@ -135,7 +135,8 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         description=(
             "Guruh/kanalga qo'shilish so'rovi trigger. Maydonsiz, doim global. "
             "Context: join_request_chat_id, join_request_user_id, first_name. "
-            "Approve/decline: CustomCode approve_chat_join_request/decline_chat_join_request."
+            "Tasdiqlash/rad etish: ApproveChatJoinRequestNode/DeclineChatJoinRequestNode "
+            "(chatId/userId bo'sh qoldirilsa context'dan oladi)."
         ),
         is_trigger=True,
     ),
@@ -466,6 +467,30 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         category="integration",
         description="Inline cron — periodic task in middle of flow",
         required_data=["cronExpression"],
+    ),
+    "ApproveChatJoinRequestNode": NodeTypeSpec(
+        type="ApproveChatJoinRequestNode",
+        category="integration",
+        description=(
+            "Guruh/kanalga qo'shilish so'rovini TASDIQLASH. Oddiy action, bitta chiqish. "
+            "chatId/userId bo'sh bo'lsa ChatJoinRequestTriggerNode context'idan olinadi "
+            "(join_request_chat_id/join_request_user_id). Odatda: ChatJoinRequestTriggerNode → "
+            "(IfCondition) → ApproveChatJoinRequestNode."
+        ),
+        required_data=[],
+        optional_data=["chatId", "userId"],
+    ),
+    "DeclineChatJoinRequestNode": NodeTypeSpec(
+        type="DeclineChatJoinRequestNode",
+        category="integration",
+        description=(
+            "Guruh/kanalga qo'shilish so'rovini RAD ETISH. Oddiy action, bitta chiqish. "
+            "chatId/userId bo'sh bo'lsa ChatJoinRequestTriggerNode context'idan olinadi "
+            "(join_request_chat_id/join_request_user_id). Odatda: ChatJoinRequestTriggerNode → "
+            "(IfCondition) → DeclineChatJoinRequestNode."
+        ),
+        required_data=[],
+        optional_data=["chatId", "userId"],
     ),
     "PaymentNode": NodeTypeSpec(
         type="PaymentNode",

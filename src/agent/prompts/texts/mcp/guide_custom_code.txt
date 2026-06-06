@@ -66,7 +66,10 @@ reply ikkalasida) — `value` URL string yoki `{url:"..."}`:
   guruh — `ban_chat_member`, `unban_chat_member`, `restrict_chat_member`,
   `promote_chat_member`, `get_chat`, `get_chat_member`, `get_chat_member_count`,
   `set_chat_title`, `set_chat_description`, `create_chat_invite_link`,
-  `approve_chat_join_request`, `decline_chat_join_request`; to'lov —
+  `approve_chat_join_request`, `decline_chat_join_request`
+  (ESLATMA: qo'shilish so'rovini tasdiqlash/rad etish uchun endi alohida
+  ApproveChatJoinRequestNode/DeclineChatJoinRequestNode node'lari bor — CustomCode
+  o'rniga ularni ishlat; chatId/userId bo'sh qoldirilsa trigger context'idan oladi); to'lov —
   `send_invoice`, `answer_pre_checkout_query`, `answer_shipping_query`,
   `refund_star_payment`; boshqa — `set_message_reaction`, `create_forum_topic`,
   `close_forum_topic`.

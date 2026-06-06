@@ -487,6 +487,40 @@ class CronData(_StrictData):
     cronExpression: str
 
 
+class ApproveChatJoinRequestData(_StrictData):
+    """Guruh/kanalga qo'shilish so'rovini tasdiqlash.
+
+    chatId/userId bo'sh bo'lsa, ChatJoinRequestTriggerNode bergan context'dan
+    olinadi (join_request_chat_id / join_request_user_id).
+    """
+
+    chatId: str | int | None = Field(
+        default=None,
+        description="Chat id yoki {{var}}. Bo'sh bo'lsa context: join_request_chat_id.",
+    )
+    userId: str | int | None = Field(
+        default=None,
+        description="User id yoki {{var}}. Bo'sh bo'lsa context: join_request_user_id.",
+    )
+
+
+class DeclineChatJoinRequestData(_StrictData):
+    """Guruh/kanalga qo'shilish so'rovini rad etish.
+
+    chatId/userId bo'sh bo'lsa, ChatJoinRequestTriggerNode bergan context'dan
+    olinadi (join_request_chat_id / join_request_user_id).
+    """
+
+    chatId: str | int | None = Field(
+        default=None,
+        description="Chat id yoki {{var}}. Bo'sh bo'lsa context: join_request_chat_id.",
+    )
+    userId: str | int | None = Field(
+        default=None,
+        description="User id yoki {{var}}. Bo'sh bo'lsa context: join_request_user_id.",
+    )
+
+
 class PaymentNodeData(_StrictData):
     """Botspace orqali to'lov (Click). Egasi to'lov tizimi bilan o'zi integratsiya qilmaydi.
 
@@ -749,6 +783,8 @@ NODE_DATA_MODELS: dict[str, type[_StrictData]] = {
     "CheckMembershipNode": CheckMembershipData,
     "DownloadNode": DownloadData,
     "CronNode": CronData,
+    "ApproveChatJoinRequestNode": ApproveChatJoinRequestData,
+    "DeclineChatJoinRequestNode": DeclineChatJoinRequestData,
     "PaymentNode": PaymentNodeData,
     # interaction
     "ChatActionNode": ChatActionData,
