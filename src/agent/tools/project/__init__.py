@@ -35,23 +35,30 @@ class ProjectListInput(BaseModel):
     search: str | None = Field(default=None, description="Filter by name")
     page: int | None = Field(
         default=None,
-        description="Page number (10 per page). Results are paginated; omit for page 1, "
+        description="Page number. Results are paginated; omit for page 1, "
         "then increment to fetch the rest when total_pages > 1.",
+    )
+    page_size: int | None = Field(
+        default=None,
+        description="Items per page (default 10). Increase (e.g. 100) to fetch more at once.",
     )
 
 
 @tool(
     name="project.list",
     description=(
-        "List bot projects belonging to the current user. Paginated (10 per page) — "
-        "the result reports total_items/total_pages; pass `page` to get more."
+        "List bot projects belonging to the current user. Paginated (10/page by default) — "
+        "the result reports total_items/total_pages; pass `page`/`page_size` to get more."
     ),
     input_model=ProjectListInput,
 )
 async def project_list(input: ProjectListInput, ctx: ToolContext) -> ToolResult:
     try:
         items = await _backend(ctx).list_projects(
-            search=input.search, page=input.page, auth_claims=ctx.state.get("auth_claims")
+            search=input.search,
+            page=input.page,
+            page_size=input.page_size,
+            auth_claims=ctx.state.get("auth_claims"),
         )
     except BackendError as e:
         return ToolResult.error(format_backend_error(None, e))

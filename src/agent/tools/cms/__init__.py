@@ -106,15 +106,19 @@ class ListCollectionsInput(BaseModel):
     project_id: str | int | None = None
     page: int | None = Field(
         default=None,
-        description="Page number (10 per page). Paginated; omit for page 1, increment if total_pages > 1.",
+        description="Page number. Paginated; omit for page 1, increment if total_pages > 1.",
+    )
+    page_size: int | None = Field(
+        default=None,
+        description="Items per page (default 10). Increase (e.g. 100) to fetch more at once.",
     )
 
 
 @tool(
     name="cms.list_collections",
     description=(
-        "List cms collections (schemas) for the current project. Paginated (10 per page) — "
-        "the result reports total_items/total_pages; pass `page` for more."
+        "List cms collections (schemas) for the current project. Paginated (10/page by default) — "
+        "the result reports total_items/total_pages; pass `page`/`page_size` for more."
     ),
     input_model=ListCollectionsInput,
 )
@@ -124,7 +128,7 @@ async def list_collections(input: ListCollectionsInput, ctx: ToolContext) -> Too
         return ToolResult.error("No project_id.")
     try:
         items = await _backend(ctx).cms_list_collections(
-            pid, page=input.page, auth_claims=ctx.state.get("auth_claims")
+            pid, page=input.page, page_size=input.page_size, auth_claims=ctx.state.get("auth_claims")
         )
     except BackendError as e:
         return _error(e)

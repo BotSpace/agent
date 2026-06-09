@@ -574,13 +574,20 @@ class BackendClient:
 
     # ── projects ───────────────────────────────────────────────────────
     async def list_projects(
-        self, *, search: str | None = None, page: int | None = None, auth_claims: dict | None = None
+        self,
+        *,
+        search: str | None = None,
+        page: int | None = None,
+        page_size: int | None = None,
+        auth_claims: dict | None = None,
     ) -> "PagedList":
         params: dict[str, Any] = {}
         if search:
             params["search"] = search
         if page:
             params["page"] = page
+        if page_size:
+            params["page_size"] = page_size
         d = await self._request("GET", "/api/project/", params=params or None, **_auth_kw(auth_claims))
         return _unwrap_list(d)
 
@@ -603,11 +610,18 @@ class BackendClient:
 
     # ── env vars ───────────────────────────────────────────────────────
     async def list_env(
-        self, project_id: str | int, *, page: int | None = None, auth_claims: dict | None = None
+        self,
+        project_id: str | int,
+        *,
+        page: int | None = None,
+        page_size: int | None = None,
+        auth_claims: dict | None = None,
     ) -> "PagedList":
         params: dict[str, Any] = {"project": project_id}
         if page:
             params["page"] = page
+        if page_size:
+            params["page_size"] = page_size
         d = await self._request("GET", "/api/enviroment/", params=params, **_auth_kw(auth_claims))
         return _unwrap_list(d)
 
@@ -620,11 +634,18 @@ class BackendClient:
 
     # ── releases (deploy) ──────────────────────────────────────────────
     async def list_releases(
-        self, project_id: str | int, *, page: int | None = None, auth_claims: dict | None = None
+        self,
+        project_id: str | int,
+        *,
+        page: int | None = None,
+        page_size: int | None = None,
+        auth_claims: dict | None = None,
     ) -> "PagedList":
         params: dict[str, Any] = {"project": project_id}
         if page:
             params["page"] = page
+        if page_size:
+            params["page_size"] = page_size
         d = await self._request("GET", "/api/relase/", params=params, **_auth_kw(auth_claims))
         return _unwrap_list(d)
 
@@ -707,13 +728,20 @@ class BackendClient:
 
     # ── files ──────────────────────────────────────────────────────────
     async def list_files(
-        self, project_id: str | int | None = None, *, page: int | None = None, auth_claims: dict | None = None
+        self,
+        project_id: str | int | None = None,
+        *,
+        page: int | None = None,
+        page_size: int | None = None,
+        auth_claims: dict | None = None,
     ) -> "PagedList":
         params: dict[str, Any] = {}
         if project_id is not None:
             params["project"] = project_id
         if page:
             params["page"] = page
+        if page_size:
+            params["page_size"] = page_size
         d = await self._request("GET", "/api/file/", params=params or None, **_auth_kw(auth_claims))
         return _unwrap_list(d)
 
@@ -722,11 +750,18 @@ class BackendClient:
 
     # ── collections (metadata) ─────────────────────────────────────────
     async def list_collections(
-        self, project_id: str | int, *, page: int | None = None, auth_claims: dict | None = None
+        self,
+        project_id: str | int,
+        *,
+        page: int | None = None,
+        page_size: int | None = None,
+        auth_claims: dict | None = None,
     ) -> "PagedList":
         params: dict[str, Any] = {"project": project_id}
         if page:
             params["page"] = page
+        if page_size:
+            params["page_size"] = page_size
         d = await self._request("GET", "/api/collection/", params=params, **_auth_kw(auth_claims))
         return _unwrap_list(d)
 
@@ -738,11 +773,20 @@ class BackendClient:
 
     # ── chat (CRM users + history) ─────────────────────────────────────
     async def list_chat_users(
-        self, project_id: str | int, *, page: int | None = None, auth_claims: dict | None = None
+        self,
+        project_id: str | int,
+        *,
+        page: int | None = None,
+        page_size: int | None = None,
+        auth_claims: dict | None = None,
     ) -> "PagedList":
-        params = {"page": page} if page else None
+        params: dict[str, Any] = {}
+        if page:
+            params["page"] = page
+        if page_size:
+            params["page_size"] = page_size
         d = await self._request(
-            "GET", f"/api/chat/users/{project_id}/", params=params, **_auth_kw(auth_claims)
+            "GET", f"/api/chat/users/{project_id}/", params=params or None, **_auth_kw(auth_claims)
         )
         return _unwrap_list(d)
 
@@ -760,13 +804,20 @@ class BackendClient:
 
     # ── messages (broadcast) ───────────────────────────────────────────
     async def list_messages(
-        self, project_id: str | int | None = None, *, page: int | None = None, auth_claims: dict | None = None
+        self,
+        project_id: str | int | None = None,
+        *,
+        page: int | None = None,
+        page_size: int | None = None,
+        auth_claims: dict | None = None,
     ) -> "PagedList":
         params: dict[str, Any] = {}
         if project_id is not None:
             params["project"] = project_id
         if page:
             params["page"] = page
+        if page_size:
+            params["page_size"] = page_size
         d = await self._request("GET", "/api/message/", params=params or None, **_auth_kw(auth_claims))
         return _unwrap_list(d)
 
@@ -824,11 +875,23 @@ class BackendClient:
         return f"/api/cms{path}"
 
     async def cms_list_collections(
-        self, project_id: str | int, *, page: int | None = None, auth_claims: dict | None = None
+        self,
+        project_id: str | int,
+        *,
+        page: int | None = None,
+        page_size: int | None = None,
+        auth_claims: dict | None = None,
     ) -> "PagedList":
-        params = {"page": page} if page else None
+        params: dict[str, Any] = {}
+        if page:
+            params["page"] = page
+        if page_size:
+            params["page_size"] = page_size
         d = await self._request(
-            "GET", self._cms(f"/projects/{project_id}/collections/"), params=params, **_auth_kw(auth_claims)
+            "GET",
+            self._cms(f"/projects/{project_id}/collections/"),
+            params=params or None,
+            **_auth_kw(auth_claims),
         )
         return _unwrap_list(d)
 
