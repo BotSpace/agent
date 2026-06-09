@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from ...integrations.backend import BackendClient, BackendError, get_backend_client, format_backend_error
+from ...integrations.backend import (
+    BackendClient,
+    BackendError,
+    format_backend_error,
+    get_backend_client,
+    pagination_summary,
+)
 from ..base import Tool, ToolContext, ToolResult, tool
 
 
@@ -26,11 +32,18 @@ def _project_id(ctx: ToolContext, override: str | int | None = None) -> str | in
 
 class EnvListInput(BaseModel):
     project_id: str | int | None = Field(default=None, description="Project id (defaults to current)")
+    page: int | None = Field(
+        default=None,
+        description="Page number (10 per page). Paginated; omit for page 1, increment if total_pages > 1.",
+    )
 
 
 @tool(
     name="env.list",
-    description="List environment variables for the current (or given) project.",
+    description=(
+        "List environment variables for the current (or given) project. Paginated (10 per page) — "
+        "the result reports total_items/total_pages; pass `page` for more."
+    ),
     input_model=EnvListInput,
 )
 async def env_list(input: EnvListInput, ctx: ToolContext) -> ToolResult:
@@ -38,16 +51,23 @@ async def env_list(input: EnvListInput, ctx: ToolContext) -> ToolResult:
     if pid is None:
         return ToolResult.error("No project_id in context or input.")
     try:
-        items = await _backend(ctx).list_env(pid, auth_claims=ctx.state.get("auth_claims"))
+        items = await _backend(ctx).list_env(pid, page=input.page, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
         return ToolResult.error(format_backend_error(None, e))
     safe = [{"id": i.get("id"), "key": i.get("key")} for i in items]
-    lines = [f"{len(safe)} env var(s):"]
+    total = getattr(items, "total_items", len(safe))
+    note = pagination_summary(items)
+    lines = [f"Showing {len(safe)} of {total} env var(s):{note}"]
     for s in safe:
         lines.append(f"  id={s['id']}  key={s['key']}")
     return ToolResult.ok(
-        "\n".join(lines) if safe else "0 env var(s).",
-        data={"env": safe},
+        "\n".join(lines) if safe else f"0 of {total} env var(s).{note}",
+        data={
+            "env": safe,
+            "total_items": total,
+            "total_pages": getattr(items, "total_pages", 1),
+            "current_page": getattr(items, "current_page", 1),
+        },
     )
 
 

@@ -6,7 +6,13 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from ...integrations.backend import BackendClient, BackendError, get_backend_client, format_backend_error
+from ...integrations.backend import (
+    BackendClient,
+    BackendError,
+    format_backend_error,
+    get_backend_client,
+    pagination_summary,
+)
 from ..base import Tool, ToolContext, ToolResult, tool
 
 
@@ -123,20 +129,29 @@ async def broadcast_send(input: BroadcastSendInput, ctx: ToolContext) -> ToolRes
 class BroadcastStatusInput(BaseModel):
     project_id: str | int | None = None
     limit: int = Field(default=10, ge=1, le=50)
+    page: int | None = Field(
+        default=None,
+        description="Page number (10 per page). Paginated; omit for page 1, increment if total_pages > 1.",
+    )
 
 
 @tool(
     name="broadcast.status",
-    description="List recent broadcasts and their delivery status.",
+    description=(
+        "List recent broadcasts and their delivery status. Paginated (10 per page) — "
+        "the result reports total_items/total_pages; pass `page` for more."
+    ),
     input_model=BroadcastStatusInput,
 )
 async def broadcast_status(input: BroadcastStatusInput, ctx: ToolContext) -> ToolResult:
     pid = _project_id(ctx, input.project_id)
     try:
-        items = await _backend(ctx).list_messages(pid, auth_claims=ctx.state.get("auth_claims"))
+        items = await _backend(ctx).list_messages(pid, page=input.page, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
         return ToolResult.error(format_backend_error(None, e))
-    items = items[: input.limit]
+    list_total = getattr(items, "total_items", len(items))
+    note = pagination_summary(items)
+    shown = list(items)[: input.limit]
     payload = [
         {
             "id": m.get("id"),
@@ -145,16 +160,24 @@ async def broadcast_status(input: BroadcastStatusInput, ctx: ToolContext) -> Too
             "done": m.get("done"),
             "fail": m.get("fail"),
         }
-        for m in items
+        for m in shown
     ]
-    lines = [f"{len(payload)} broadcast(s):"]
+    lines = [f"Showing {len(payload)} of {list_total} broadcast(s):{note}"]
     for b in payload:
         done = b.get("done", 0)
         total = b.get("total", 0)
         fail = b.get("fail", 0)
         pct = f"{round(done / total * 100)}%" if total else "?"
         lines.append(f"  id={b['id']}  status={b.get('status')}  sent={done}/{total}({pct})  fail={fail}")
-    return ToolResult.ok("\n".join(lines) if payload else "0 broadcast(s).", data={"broadcasts": payload})
+    return ToolResult.ok(
+        "\n".join(lines) if payload else f"0 of {list_total} broadcast(s).{note}",
+        data={
+            "broadcasts": payload,
+            "total_items": list_total,
+            "total_pages": getattr(items, "total_pages", 1),
+            "current_page": getattr(items, "current_page", 1),
+        },
+    )
 
 
 def build_broadcast_tools() -> list[Tool]:
