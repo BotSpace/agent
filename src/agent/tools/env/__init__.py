@@ -34,15 +34,19 @@ class EnvListInput(BaseModel):
     project_id: str | int | None = Field(default=None, description="Project id (defaults to current)")
     page: int | None = Field(
         default=None,
-        description="Page number (10 per page). Paginated; omit for page 1, increment if total_pages > 1.",
+        description="Page number. Paginated; omit for page 1, increment if total_pages > 1.",
+    )
+    page_size: int | None = Field(
+        default=None,
+        description="Items per page (default 10). Increase (e.g. 100) to fetch more at once.",
     )
 
 
 @tool(
     name="env.list",
     description=(
-        "List environment variables for the current (or given) project. Paginated (10 per page) — "
-        "the result reports total_items/total_pages; pass `page` for more."
+        "List environment variables for the current (or given) project. Paginated (10/page by default) — "
+        "the result reports total_items/total_pages; pass `page`/`page_size` for more."
     ),
     input_model=EnvListInput,
 )
@@ -51,7 +55,9 @@ async def env_list(input: EnvListInput, ctx: ToolContext) -> ToolResult:
     if pid is None:
         return ToolResult.error("No project_id in context or input.")
     try:
-        items = await _backend(ctx).list_env(pid, page=input.page, auth_claims=ctx.state.get("auth_claims"))
+        items = await _backend(ctx).list_env(
+            pid, page=input.page, page_size=input.page_size, auth_claims=ctx.state.get("auth_claims")
+        )
     except BackendError as e:
         return ToolResult.error(format_backend_error(None, e))
     safe = [{"id": i.get("id"), "key": i.get("key")} for i in items]

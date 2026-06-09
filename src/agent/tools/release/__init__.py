@@ -99,15 +99,19 @@ class ReleaseListInput(BaseModel):
     limit: int = Field(default=10, ge=1, le=50)
     page: int | None = Field(
         default=None,
-        description="Page number (10 per page). Paginated; omit for page 1, increment if total_pages > 1.",
+        description="Page number. Paginated; omit for page 1, increment if total_pages > 1.",
+    )
+    page_size: int | None = Field(
+        default=None,
+        description="Items per page (default 10). Increase (e.g. 100) to fetch more at once.",
     )
 
 
 @tool(
     name="release.list",
     description=(
-        "List recent releases (deploys) for the current project. Paginated (10 per page) — "
-        "the result reports total_items/total_pages; pass `page` for more."
+        "List recent releases (deploys) for the current project. Paginated (10/page by default) — "
+        "the result reports total_items/total_pages; pass `page`/`page_size` for more."
     ),
     input_model=ReleaseListInput,
 )
@@ -116,7 +120,9 @@ async def release_list(input: ReleaseListInput, ctx: ToolContext) -> ToolResult:
     if pid is None:
         return ToolResult.error("No project_id available.")
     try:
-        items = await _backend(ctx).list_releases(pid, page=input.page, auth_claims=ctx.state.get("auth_claims"))
+        items = await _backend(ctx).list_releases(
+            pid, page=input.page, page_size=input.page_size, auth_claims=ctx.state.get("auth_claims")
+        )
     except BackendError as e:
         return ToolResult.error(_wrap_backend_err("Releaselarni olish", e))
     total = getattr(items, "total_items", len(items))

@@ -38,7 +38,11 @@ class ChatListUsersInput(BaseModel):
     limit: int = Field(default=50, ge=1, le=500)
     page: int | None = Field(
         default=None,
-        description="Page number (10 per page). Paginated; omit for page 1, increment if total_pages > 1.",
+        description="Page number. Paginated; omit for page 1, increment if total_pages > 1.",
+    )
+    page_size: int | None = Field(
+        default=None,
+        description="Items per page (default 10). Increase (e.g. 100) to fetch more at once.",
     )
 
 
@@ -46,7 +50,8 @@ class ChatListUsersInput(BaseModel):
     name="chat.list_users",
     description=(
         "List Telegram users who interacted with the bot (with message stats). "
-        "Paginated (10 per page) — the result reports total_items/total_pages; pass `page` for more."
+        "Paginated (10/page by default) — the result reports total_items/total_pages; "
+        "pass `page`/`page_size` for more."
     ),
     input_model=ChatListUsersInput,
 )
@@ -56,7 +61,7 @@ async def chat_list_users(input: ChatListUsersInput, ctx: ToolContext) -> ToolRe
         return ToolResult.error("No project_id.")
     try:
         users = await _backend(ctx).list_chat_users(
-            pid, page=input.page, auth_claims=ctx.state.get("auth_claims")
+            pid, page=input.page, page_size=input.page_size, auth_claims=ctx.state.get("auth_claims")
         )
     except BackendError as e:
         return ToolResult.error(format_backend_error(None, e))
