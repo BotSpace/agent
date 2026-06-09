@@ -6,7 +6,13 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from ...integrations.backend import BackendClient, BackendError, format_backend_error, get_backend_client
+from ...integrations.backend import (
+    BackendClient,
+    BackendError,
+    format_backend_error,
+    get_backend_client,
+    pagination_summary,
+)
 from ..base import Tool, ToolContext, ToolResult, tool
 
 
@@ -27,23 +33,39 @@ def _bearer(ctx: ToolContext) -> str | None:
 
 class ProjectListInput(BaseModel):
     search: str | None = Field(default=None, description="Filter by name")
+    page: int | None = Field(
+        default=None,
+        description="Page number (10 per page). Results are paginated; omit for page 1, "
+        "then increment to fetch the rest when total_pages > 1.",
+    )
 
 
 @tool(
     name="project.list",
-    description="List all bot projects belonging to the current user.",
+    description=(
+        "List bot projects belonging to the current user. Paginated (10 per page) — "
+        "the result reports total_items/total_pages; pass `page` to get more."
+    ),
     input_model=ProjectListInput,
 )
 async def project_list(input: ProjectListInput, ctx: ToolContext) -> ToolResult:
     try:
-        items = await _backend(ctx).list_projects(search=input.search, auth_claims=ctx.state.get("auth_claims"))
+        items = await _backend(ctx).list_projects(
+            search=input.search, page=input.page, auth_claims=ctx.state.get("auth_claims")
+        )
     except BackendError as e:
         return ToolResult.error(format_backend_error(None, e))
     summary = [{"id": i.get("id"), "name": i.get("name"), "status": i.get("status")} for i in items]
     names = ", ".join(f"{s['name']} (id={s['id']})" for s in summary) or "(none)"
+    total = getattr(items, "total_items", len(items))
     return ToolResult.ok(
-        f"Found {len(items)} project(s): {names}",
-        data={"projects": summary},
+        f"Showing {len(items)} of {total} project(s): {names}{pagination_summary(items)}",
+        data={
+            "projects": summary,
+            "total_items": total,
+            "total_pages": getattr(items, "total_pages", 1),
+            "current_page": getattr(items, "current_page", 1),
+        },
     )
 
 

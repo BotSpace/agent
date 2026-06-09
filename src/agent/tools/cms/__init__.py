@@ -11,7 +11,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from ...integrations.backend import BackendClient, BackendError, get_backend_client
+from ...integrations.backend import BackendClient, BackendError, get_backend_client, pagination_summary
 from ..base import Tool, ToolContext, ToolResult, tool
 
 
@@ -104,11 +104,18 @@ class FieldSpec(BaseModel):
 
 class ListCollectionsInput(BaseModel):
     project_id: str | int | None = None
+    page: int | None = Field(
+        default=None,
+        description="Page number (10 per page). Paginated; omit for page 1, increment if total_pages > 1.",
+    )
 
 
 @tool(
     name="cms.list_collections",
-    description="List cms collections (schemas) for the current project.",
+    description=(
+        "List cms collections (schemas) for the current project. Paginated (10 per page) — "
+        "the result reports total_items/total_pages; pass `page` for more."
+    ),
     input_model=ListCollectionsInput,
 )
 async def list_collections(input: ListCollectionsInput, ctx: ToolContext) -> ToolResult:
@@ -116,7 +123,9 @@ async def list_collections(input: ListCollectionsInput, ctx: ToolContext) -> Too
     if pid is None:
         return ToolResult.error("No project_id.")
     try:
-        items = await _backend(ctx).cms_list_collections(pid, auth_claims=ctx.state.get("auth_claims"))
+        items = await _backend(ctx).cms_list_collections(
+            pid, page=input.page, auth_claims=ctx.state.get("auth_claims")
+        )
     except BackendError as e:
         return _error(e)
     payload = [
@@ -130,9 +139,15 @@ async def list_collections(input: ListCollectionsInput, ctx: ToolContext) -> Too
         for c in items
     ]
     names = ", ".join(str(c.get("name")) for c in payload if c.get("name")) or "(none)"
+    total = getattr(items, "total_items", len(payload))
     return ToolResult.ok(
-        f"{len(payload)} collection(s): {names}",
-        data={"collections": payload},
+        f"Showing {len(payload)} of {total} collection(s): {names}{pagination_summary(items)}",
+        data={
+            "collections": payload,
+            "total_items": total,
+            "total_pages": getattr(items, "total_pages", 1),
+            "current_page": getattr(items, "current_page", 1),
+        },
     )
 
 

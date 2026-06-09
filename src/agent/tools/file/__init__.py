@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from ...integrations.backend import BackendClient, BackendError, get_backend_client, format_backend_error
+from ...integrations.backend import (
+    BackendClient,
+    BackendError,
+    format_backend_error,
+    get_backend_client,
+    pagination_summary,
+)
 from ..base import Tool, ToolContext, ToolResult, tool
 
 
@@ -23,29 +29,46 @@ def _bearer(ctx: ToolContext) -> str | None:
 class FileListInput(BaseModel):
     project_id: str | int | None = None
     limit: int = Field(default=50, ge=1, le=200)
+    page: int | None = Field(
+        default=None,
+        description="Page number (10 per page). Paginated; omit for page 1, increment if total_pages > 1.",
+    )
 
 
 @tool(
     name="file.list",
-    description="List files belonging to a project (or all user files when project omitted).",
+    description=(
+        "List files belonging to a project (or all user files when project omitted). "
+        "Paginated (10 per page) — the result reports total_items/total_pages; pass `page` for more."
+    ),
     input_model=FileListInput,
 )
 async def file_list(input: FileListInput, ctx: ToolContext) -> ToolResult:
     pid = input.project_id or ctx.state.get("project_id")
     try:
-        items = await _backend(ctx).list_files(pid, auth_claims=ctx.state.get("auth_claims"))
+        items = await _backend(ctx).list_files(pid, page=input.page, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
         return ToolResult.error(format_backend_error(None, e))
-    items = items[: input.limit]
+    total = getattr(items, "total_items", len(items))
+    note = pagination_summary(items)
+    shown = list(items)[: input.limit]
     payload = [
         {"id": f.get("id"), "name": f.get("name"), "url": f.get("url"), "size": f.get("size")}
-        for f in items
+        for f in shown
     ]
-    lines = [f"{len(payload)} file(s):"]
+    lines = [f"Showing {len(payload)} of {total} file(s):{note}"]
     for f in payload:
         size_kb = f"{round(f['size'] / 1024, 1)} KB" if f.get("size") else "?"
         lines.append(f"  id={f['id']}  name={f['name']}  size={size_kb}  url={f.get('url', '')}")
-    return ToolResult.ok("\n".join(lines) if payload else "0 file(s).", data={"files": payload})
+    return ToolResult.ok(
+        "\n".join(lines) if payload else f"0 of {total} file(s).{note}",
+        data={
+            "files": payload,
+            "total_items": total,
+            "total_pages": getattr(items, "total_pages", 1),
+            "current_page": getattr(items, "current_page", 1),
+        },
+    )
 
 
 class FileDeleteInput(BaseModel):

@@ -7,7 +7,13 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from ...integrations.backend import BackendClient, BackendError, format_backend_error, get_backend_client
+from ...integrations.backend import (
+    BackendClient,
+    BackendError,
+    format_backend_error,
+    get_backend_client,
+    pagination_summary,
+)
 from ..base import Tool, ToolContext, ToolResult, tool
 
 
@@ -30,11 +36,18 @@ def _project_id(ctx: ToolContext, override: str | int | None) -> str | int | Non
 class ChatListUsersInput(BaseModel):
     project_id: str | int | None = None
     limit: int = Field(default=50, ge=1, le=500)
+    page: int | None = Field(
+        default=None,
+        description="Page number (10 per page). Paginated; omit for page 1, increment if total_pages > 1.",
+    )
 
 
 @tool(
     name="chat.list_users",
-    description="List Telegram users who interacted with the bot (with message stats).",
+    description=(
+        "List Telegram users who interacted with the bot (with message stats). "
+        "Paginated (10 per page) — the result reports total_items/total_pages; pass `page` for more."
+    ),
     input_model=ChatListUsersInput,
 )
 async def chat_list_users(input: ChatListUsersInput, ctx: ToolContext) -> ToolResult:
@@ -42,11 +55,23 @@ async def chat_list_users(input: ChatListUsersInput, ctx: ToolContext) -> ToolRe
     if pid is None:
         return ToolResult.error("No project_id.")
     try:
-        users = await _backend(ctx).list_chat_users(pid, auth_claims=ctx.state.get("auth_claims"))
+        users = await _backend(ctx).list_chat_users(
+            pid, page=input.page, auth_claims=ctx.state.get("auth_claims")
+        )
     except BackendError as e:
         return ToolResult.error(format_backend_error(None, e))
-    users = users[: input.limit]
-    return ToolResult.ok(f"{len(users)} user(s).", data={"users": users})
+    total = getattr(users, "total_items", len(users))
+    note = pagination_summary(users)
+    shown = list(users)[: input.limit]
+    return ToolResult.ok(
+        f"Showing {len(shown)} of {total} user(s).{note}",
+        data={
+            "users": shown,
+            "total_items": total,
+            "total_pages": getattr(users, "total_pages", 1),
+            "current_page": getattr(users, "current_page", 1),
+        },
+    )
 
 
 class ChatUserHistoryInput(BaseModel):

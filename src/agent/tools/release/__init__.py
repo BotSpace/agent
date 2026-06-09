@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from ...integrations.backend import BackendClient, BackendError, get_backend_client
+from ...integrations.backend import BackendClient, BackendError, get_backend_client, pagination_summary
 from ..base import Tool, ToolContext, ToolResult, tool
 
 _HINTS_BY_CODE = {
@@ -97,11 +97,18 @@ def _project_id(ctx: ToolContext, override: str | int | None) -> str | int | Non
 class ReleaseListInput(BaseModel):
     project_id: str | int | None = None
     limit: int = Field(default=10, ge=1, le=50)
+    page: int | None = Field(
+        default=None,
+        description="Page number (10 per page). Paginated; omit for page 1, increment if total_pages > 1.",
+    )
 
 
 @tool(
     name="release.list",
-    description="List recent releases (deploys) for the current project.",
+    description=(
+        "List recent releases (deploys) for the current project. Paginated (10 per page) — "
+        "the result reports total_items/total_pages; pass `page` for more."
+    ),
     input_model=ReleaseListInput,
 )
 async def release_list(input: ReleaseListInput, ctx: ToolContext) -> ToolResult:
@@ -109,10 +116,12 @@ async def release_list(input: ReleaseListInput, ctx: ToolContext) -> ToolResult:
     if pid is None:
         return ToolResult.error("No project_id available.")
     try:
-        items = await _backend(ctx).list_releases(pid, auth_claims=ctx.state.get("auth_claims"))
+        items = await _backend(ctx).list_releases(pid, page=input.page, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
         return ToolResult.error(_wrap_backend_err("Releaselarni olish", e))
-    items = items[: input.limit]
+    total = getattr(items, "total_items", len(items))
+    note = pagination_summary(items)
+    shown = list(items)[: input.limit]
     payload = [
         {
             "id": r.get("id"),
@@ -120,17 +129,22 @@ async def release_list(input: ReleaseListInput, ctx: ToolContext) -> ToolResult:
             "status": r.get("status"),
             "created_at": r.get("created_at"),
         }
-        for r in items
+        for r in shown
     ]
     summary = ", ".join(
         f"id={r['id']} v{r['version']}({r['status']})"
         for r in payload if r.get("id")
     ) or "(none)"
     return ToolResult.ok(
-        f"{len(payload)} release(s): {summary}. "
+        f"Showing {len(payload)} of {total} release(s): {summary}.{note} "
         f"Note: use the `id` field (NOT the version number) as release_id "
         f"for release.status / release.logs.",
-        data={"releases": payload},
+        data={
+            "releases": payload,
+            "total_items": total,
+            "total_pages": getattr(items, "total_pages", 1),
+            "current_page": getattr(items, "current_page", 1),
+        },
     )
 
 
