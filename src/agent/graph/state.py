@@ -54,3 +54,10 @@ class AgentState(TypedDict, total=False):
     # ── token accounting ────────────────────────────────────────────────
     total_input_tokens: int
     total_output_tokens: int
+
+    # ── tool-call budget ────────────────────────────────────────────────
+    tool_calls_used: int
+    """Run davomida bajarilgan tool chaqiruvlari soni. cfg.max_tool_calls ga
+    yetganda graph yangi tool bajarmaydi — modelga yakuniy javob berishni
+    aytadi. recursion_limit (500) faqat oxirgi to'siq; bu byudjet xarajat va
+    cheksiz sikllarni ancha oldin to'xtatadi."""

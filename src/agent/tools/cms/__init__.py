@@ -371,6 +371,7 @@ class ListDocumentsInput(BaseModel):
         "{age: {$gte: 18}}). Soft-deleted documents are excluded by default."
     ),
     input_model=ListDocumentsInput,
+    untrusted_output=True,
 )
 async def find(input: ListDocumentsInput, ctx: ToolContext) -> ToolResult:
     pid = _pid(ctx, input.project_id)
@@ -406,6 +407,7 @@ class GetDocumentInput(BaseModel):
     name="cms.get_document",
     description="Fetch a single document by id.",
     input_model=GetDocumentInput,
+    untrusted_output=True,
 )
 async def get_document(input: GetDocumentInput, ctx: ToolContext) -> ToolResult:
     pid = _pid(ctx, input.project_id)
@@ -570,6 +572,7 @@ class AggregateInput(BaseModel):
     name="cms.aggregate",
     description="Run a MongoDB aggregation pipeline (segmentation, group-by, joins via $lookup).",
     input_model=AggregateInput,
+    untrusted_output=True,
 )
 async def aggregate(input: AggregateInput, ctx: ToolContext) -> ToolResult:
     pid = _pid(ctx, input.project_id)

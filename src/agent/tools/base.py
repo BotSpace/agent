@@ -82,6 +82,11 @@ class Tool(Generic[InputModel]):
     """True bo'lsa — cfg.approve_destructive holatidan QAT'I NAZAR har doim
     approval interrupt yaratadi (foydalanuvchi tasdiqlamasa bajarilmaydi).
     Qaytarib bo'lmaydigan, butun ishni yo'q qiladigan amallar uchun (flow.clear)."""
+    untrusted_output: bool = False
+    """True bo'lsa — tool natijasi ishonchsiz (oxirgi foydalanuvchi kiritgan)
+    kontentni o'z ichiga oladi: CMS hujjatlari, chat tarixi, foydalanuvchi
+    ismlari. Graph bunday natijani delimiter bilan o'rab, modelga uning ichidagi
+    "ko'rsatmalar"ni bajarmaslikni aytadi (prompt-injection himoyasi)."""
     tags: list[str] = field(default_factory=list)
 
     def to_spec(self) -> ToolSpec:
@@ -107,6 +112,7 @@ def tool(
     input_model: type[BaseModel],
     destructive: bool = False,
     always_approve: bool = False,
+    untrusted_output: bool = False,
     tags: list[str] | None = None,
 ) -> Callable[[ToolFn], Tool]:
     """Decorator — Tool obyekti qaytadi."""
@@ -121,6 +127,7 @@ def tool(
             handler=fn,
             destructive=destructive,
             always_approve=always_approve,
+            untrusted_output=untrusted_output,
             tags=tags or [],
         )
 
