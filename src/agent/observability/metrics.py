@@ -56,6 +56,21 @@ LLM_REQUEST_DURATION = Histogram(
     buckets=(0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 60.0, 120.0),
 )
 
+# ── run-level metrics ───────────────────────────────────────────────────────
+# "AI'dan foydalanish" ni vaqt bo'yicha ko'rsatadi: rate(agent_runs_total)
+# qaysi soatlarda ko'p ishlatilishini beradi.
+AGENT_RUNS = Counter(
+    "agent_runs_total",
+    "Agent run'lari yakunlangani bo'yicha.",
+    labelnames=("outcome",),  # outcome: completed | failed
+)
+
+AGENT_RUN_DURATION = Histogram(
+    "agent_run_duration_seconds",
+    "Bitta agent run'ining to'liq davomiyligi (wall-clock).",
+    buckets=(0.5, 1.0, 2.5, 5.0, 10.0, 20.0, 30.0, 60.0, 120.0, 300.0, 600.0),
+)
+
 
 def _estimate_tokens(text: str) -> int:
     """Cheap chars-per-token estimate. Not exact, but fine for a
