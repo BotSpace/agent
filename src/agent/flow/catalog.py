@@ -492,6 +492,29 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         required_data=[],
         optional_data=["chatId", "userId"],
     ),
+    "CreateInviteLinkNode": NodeTypeSpec(
+        type="CreateInviteLinkNode",
+        category="integration",
+        description=(
+            "Kanal/guruh (xususiy kanal ham) uchun join (invite) HAVOLA yaratadi — "
+            "Telegram createChatInviteLink. Bot o'sha kanalda admin va 'invite via link' "
+            "huquqiga ega bo'lishi shart. Yaratilgan havola context'ga `resultVar` "
+            "(default `invite_link`) bilan yoziladi — keyin SendTextMessageNode'da "
+            "{{invite_link}} sifatida yuboriladi. Oddiy action, bitta chiqish. "
+            "Tipik foydalanish: to'lov o'tgach shaxsiy bir martalik (memberLimit=1) havola "
+            "berish: PaymentNode → CreateInviteLinkNode → SendTextMessageNode({{invite_link}})."
+        ),
+        required_data=[],
+        # chatId bo'sh bo'lsa joriy chat ishlatiladi (guruhda — o'sha guruh).
+        optional_data=[
+            "chatId",
+            "name",
+            "memberLimit",
+            "expireDate",
+            "createsJoinRequest",
+            "resultVar",
+        ],
+    ),
     "PaymentNode": NodeTypeSpec(
         type="PaymentNode",
         category="integration",

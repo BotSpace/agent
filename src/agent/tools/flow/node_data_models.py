@@ -521,6 +521,40 @@ class DeclineChatJoinRequestData(_StrictData):
     )
 
 
+class CreateInviteLinkData(_StrictData):
+    """Kanal/guruh uchun join (invite) havola yaratish (createChatInviteLink).
+
+    Bot maqsadli kanalda admin va "invite via link" huquqiga ega bo'lishi shart.
+    Yaratilgan havola context'ga `resultVar` (default `invite_link`) bilan
+    yoziladi; xato bo'lsa `invite_link_error`.
+    """
+
+    chatId: str | int | None = Field(
+        default=None,
+        description="Kanal/guruh id yoki {{var}}. Bo'sh bo'lsa joriy chat ishlatiladi.",
+    )
+    name: str | None = Field(
+        default=None,
+        description="Havola nomi (faqat admin ko'radi). Ixtiyoriy. {{var}} mumkin.",
+    )
+    memberLimit: int | str | None = Field(
+        default=None,
+        description="Havoladan necha kishi foydalana oladi (1..99999). Shaxsiy havola uchun 1.",
+    )
+    expireDate: int | str | None = Field(
+        default=None,
+        description="Amal qilish muddati — unix sekund. Ixtiyoriy.",
+    )
+    createsJoinRequest: bool | None = Field(
+        default=None,
+        description="True bo'lsa a'zolik admin tasdig'ini talab qiladi.",
+    )
+    resultVar: str | None = Field(
+        default=None,
+        description="Havola saqlanadigan context o'zgaruvchisi. Default: invite_link.",
+    )
+
+
 class PaymentNodeData(_StrictData):
     """Botspace orqali to'lov (Click). Egasi to'lov tizimi bilan o'zi integratsiya qilmaydi.
 
@@ -785,6 +819,7 @@ NODE_DATA_MODELS: dict[str, type[_StrictData]] = {
     "CronNode": CronData,
     "ApproveChatJoinRequestNode": ApproveChatJoinRequestData,
     "DeclineChatJoinRequestNode": DeclineChatJoinRequestData,
+    "CreateInviteLinkNode": CreateInviteLinkData,
     "PaymentNode": PaymentNodeData,
     # interaction
     "ChatActionNode": ChatActionData,
