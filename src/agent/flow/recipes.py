@@ -219,6 +219,183 @@ _SHOP_ORDER_FLOW: dict[str, Any] = {
 }
 
 
+# ── Recipe 4: Support — user message → admin (no collections) ────────────────
+_SUPPORT_FLOW: dict[str, Any] = {
+    "nodes": [
+        {"id": "start", "type": "CommandTriggerNode", "data": {"command": "/start", "global": True}, "position": _pos(0, 0)},
+        {
+            "id": "welcome",
+            "type": "SendTextMessageNode",
+            "data": {"messageText": "Savolingiz yoki murojaatingizni yozing — operatorlarimizga yetkazamiz. 📨"},
+            "position": _pos(320, 0),
+        },
+        {
+            "id": "user-msg",
+            "type": "MessageTriggerNode",
+            "data": {"type": "text", "global": True, "filter": "any", "state": {"key": "support_msg", "type": "text"}},
+            "position": _pos(0, 200),
+        },
+        {
+            "id": "notify-admin",
+            "type": "SendToAdminNode",
+            "data": {"messageText": "📩 Yangi murojaat\n👤 {{first_name}} (id: {{user_id}})\n\n{{state.support_msg}}"},
+            "position": _pos(320, 200),
+        },
+        {
+            "id": "ack",
+            "type": "SendTextMessageNode",
+            "data": {"messageText": "✅ Xabaringiz qabul qilindi. Tez orada javob beramiz."},
+            "position": _pos(640, 200),
+        },
+    ],
+    "edges": [
+        {"id": "e1", "source": "start", "target": "welcome"},
+        {"id": "e2", "source": "user-msg", "target": "notify-admin"},
+        {"id": "e3", "source": "notify-admin", "target": "ack"},
+    ],
+}
+
+
+# ── Recipe 5: Subscribe-gate — force channel subscription ────────────────────
+_SUBSCRIBE_GATE_FLOW: dict[str, Any] = {
+    "nodes": [
+        {"id": "start", "type": "CommandTriggerNode", "data": {"command": "/start", "global": True}, "position": _pos(0, 0)},
+        {
+            "id": "check",
+            "type": "CheckMembershipNode",
+            "data": {"channels": [{"value": "@your_channel"}]},
+            "position": _pos(320, 0),
+        },
+        {
+            "id": "welcome",
+            "type": "EditOrSendMessageNode",
+            "data": {"messageText": "✅ Xush kelibsiz, {{first_name}}!\n\nBotdan to'liq foydalanishingiz mumkin.", "parseMode": "HTML"},
+            "position": _pos(640, -120),
+        },
+        {
+            "id": "ask-sub",
+            "type": "EditOrSendMessageNode",
+            "data": {
+                "messageText": "📢 Botdan foydalanish uchun avval kanalimizga obuna bo'ling:",
+                "parseMode": "HTML",
+                "keyboard_kind": "inline",
+                "rows": [
+                    {"columns": [{"text": "📢 Kanalga obuna bo'lish", "type": "url", "value": "https://t.me/your_channel"}]},
+                    {"columns": [{"text": "✅ Tekshirish", "type": "callback", "value": "check-sub"}]},
+                ],
+            },
+            "position": _pos(640, 120),
+        },
+        {
+            "id": "check-cb",
+            "type": "CallbackQueryTriggerNode",
+            "data": {"filter": "equals", "context": {"value": "check-sub"}, "global": True},
+            "position": _pos(320, 240),
+        },
+    ],
+    "edges": [
+        {"id": "e1", "source": "start", "target": "check"},
+        {"id": "e2", "source": "check", "target": "welcome", "sourceHandle": "is-member"},
+        {"id": "e3", "source": "check", "target": "ask-sub", "sourceHandle": "not-member"},
+        {"id": "e4", "source": "check-cb", "target": "check"},
+    ],
+}
+
+
+# ── Recipe 6: Paid invite — payment → private channel invite link ────────────
+_PAID_INVITE_FLOW: dict[str, Any] = {
+    "nodes": [
+        {"id": "start", "type": "CommandTriggerNode", "data": {"command": "/start", "global": True}, "position": _pos(0, 0)},
+        {
+            "id": "intro",
+            "type": "EditOrSendMessageNode",
+            "data": {"messageText": "💎 <b>Premium kanal</b>\n\nKirish uchun to'lovni amalga oshiring:", "parseMode": "HTML"},
+            "position": _pos(320, 0),
+        },
+        {
+            "id": "pay",
+            "type": "PaymentNode",
+            "data": {"paymentType": "click", "amount": 50000, "buttonText": "💳 To'lash"},
+            "position": _pos(640, 0),
+        },
+        {
+            "id": "invite",
+            "type": "CreateInviteLinkNode",
+            "data": {"chatId": "-1001234567890", "name": "Premium", "memberLimit": 1},
+            "position": _pos(960, -120),
+        },
+        {
+            "id": "send-link",
+            "type": "SendTextMessageNode",
+            "data": {"messageText": "✅ To'lov qabul qilindi! Premium kanalga shaxsiy havolangiz:\n\n{{invite_link}}\n\n⚠️ Havola faqat siz uchun va 1 marta ishlaydi."},
+            "position": _pos(1280, -120),
+        },
+        {
+            "id": "fail-msg",
+            "type": "SendTextMessageNode",
+            "data": {"messageText": "❌ To'lov amalga oshmadi. Qaytadan urinib ko'rish uchun: /start"},
+            "position": _pos(960, 120),
+        },
+    ],
+    "edges": [
+        {"id": "e1", "source": "start", "target": "intro"},
+        {"id": "e2", "source": "intro", "target": "pay"},
+        {"id": "e3", "source": "pay", "target": "invite", "sourceHandle": "paid"},
+        {"id": "e4", "source": "invite", "target": "send-link"},
+        {"id": "e5", "source": "pay", "target": "fail-msg", "sourceHandle": "failed"},
+    ],
+}
+
+
+# ── Recipe 7: Feedback — star rating → save ──────────────────────────────────
+_FEEDBACK_SAVE_JS = (
+    "const r = (callback_query && callback_query.data || '').replace('rate:', ''); "
+    "const ok = db_insert('feedback', { rating: parseInt(r, 10), telegram_id: chat_id, "
+    "created_at: current_timestamp() }); "
+    "send_message(ok && ok.success ? '🙏 Rahmat! Bahoyingiz (' + r + '⭐) qabul qilindi.' "
+    ": '❌ Xatolik yuz berdi.');"
+)
+_FEEDBACK_FLOW: dict[str, Any] = {
+    "nodes": [
+        {"id": "start", "type": "CommandTriggerNode", "data": {"command": "/start", "global": True}, "position": _pos(0, 0)},
+        {
+            "id": "ask-rating",
+            "type": "EditOrSendMessageNode",
+            "data": {
+                "messageText": "Xizmatimizni baholang:",
+                "keyboard_kind": "inline",
+                "rows": [
+                    {
+                        "columns": [
+                            {"text": "⭐1", "type": "callback", "value": "rate:1"},
+                            {"text": "⭐2", "type": "callback", "value": "rate:2"},
+                            {"text": "⭐3", "type": "callback", "value": "rate:3"},
+                            {"text": "⭐4", "type": "callback", "value": "rate:4"},
+                            {"text": "⭐5", "type": "callback", "value": "rate:5"},
+                        ]
+                    }
+                ],
+            },
+            "position": _pos(320, 0),
+        },
+        {
+            "id": "save-rating",
+            "type": "CustomCodeNode",
+            "data": {"jsCode": _FEEDBACK_SAVE_JS, "outputs": []},
+            "position": _pos(640, 0),
+        },
+    ],
+    "edges": [
+        {"id": "e1", "source": "start", "target": "ask-rating"},
+        {"id": "e2", "source": "ask-rating", "target": "save-rating", "sourceHandle": "target-handler-ask-rating-⭐1"},
+        {"id": "e3", "source": "ask-rating", "target": "save-rating", "sourceHandle": "target-handler-ask-rating-⭐2"},
+        {"id": "e4", "source": "ask-rating", "target": "save-rating", "sourceHandle": "target-handler-ask-rating-⭐3"},
+        {"id": "e5", "source": "ask-rating", "target": "save-rating", "sourceHandle": "target-handler-ask-rating-⭐4"},
+        {"id": "e6", "source": "ask-rating", "target": "save-rating", "sourceHandle": "target-handler-ask-rating-⭐5"},
+    ],
+}
+
+
 # ── Registry ─────────────────────────────────────────────────────────────────
 RECIPES: list[dict[str, Any]] = [
     {
@@ -250,6 +427,42 @@ RECIPES: list[dict[str, Any]] = [
         ],
         "adapt": "`products` va `orders` collection'larini yarating va products'ga ma'lumot kiriting. CustomCode'dagi maydon nomlari collection bilan mos bo'lsin.",
         "flow": _SHOP_ORDER_FLOW,
+    },
+    {
+        "id": "support",
+        "name": "Qo'llab-quvvatlash (support) bot",
+        "use_cases": "Foydalanuvchi xabarini operatorga/admin guruhga yetkazadi va tasdiq qaytaradi.",
+        "difficulty": "beginner",
+        "needs_collections": [],
+        "adapt": "Admin chat/guruhni loyiha sozlamalarida belgilang. Xabar matnini va tasdiq matnini moslang.",
+        "flow": _SUPPORT_FLOW,
+    },
+    {
+        "id": "subscribe-gate",
+        "name": "Kanalga obuna majburlash",
+        "use_cases": "Botdan foydalanishdan oldin foydalanuvchini kanalga obuna bo'lishga majburlaydi (a'zolikni tekshiradi).",
+        "difficulty": "intermediate",
+        "needs_collections": [],
+        "adapt": "`@your_channel` va https://t.me/your_channel ni o'z kanalingizga almashtiring. Bot kanalda admin bo'lishi shart. is-member tarmog'iga asosiy kontentni ulang.",
+        "flow": _SUBSCRIBE_GATE_FLOW,
+    },
+    {
+        "id": "paid-invite",
+        "name": "To'lov → maxfiy kanalga shaxsiy havola",
+        "use_cases": "To'lov o'tgach foydalanuvchiga premium/maxfiy kanalga 1 martalik shaxsiy invite havola yuboradi.",
+        "difficulty": "intermediate",
+        "needs_collections": [],
+        "adapt": "amount (summa) va chatId (-100... premium kanal id) ni o'zingiznikiga moslang. Bot premium kanalda admin va 'invite via link' huquqiga ega bo'lishi shart.",
+        "flow": _PAID_INVITE_FLOW,
+    },
+    {
+        "id": "feedback",
+        "name": "Baholash / feedback bot",
+        "use_cases": "Foydalanuvchidan 1–5 yulduz baho oladi va bazaga saqlaydi.",
+        "difficulty": "beginner",
+        "needs_collections": ["feedback (rating, telegram_id, created_at)"],
+        "adapt": "`feedback` collection'ini yarating. Savol matnini moslang; izoh ham kerak bo'lsa rating'dan keyin SendText + MessageTrigger(text) qo'shing.",
+        "flow": _FEEDBACK_FLOW,
     },
 ]
 
