@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,7 @@ from ..config import get_settings
 from ..graph import GraphConfig, build_graph, initial_state
 from ..integrations.dynamic_config import build_effective_client, effective_model_roles
 from ..memory import close_async_checkpointer, create_async_checkpointer
+from ..observability.metrics import AGENT_RUN_DURATION, AGENT_RUNS
 from ..tools import build_main_registry
 from .store import RunStore
 
@@ -93,6 +95,8 @@ async def run_agent(
     await store.set_status(request_id, "running")
     await emit("run_started", {"thread_id": rec.thread_id, "provider": effective_prov})
 
+    run_started_at = time.monotonic()
+    run_outcome = "completed"
     checkpointer = None
     try:
         registry = build_main_registry()
@@ -208,12 +212,14 @@ async def run_agent(
             logger.warning("Failed to report token usage to backend", exc_info=True)
     except asyncio.CancelledError:
         # User-initiated cancellation via /cancel endpoint.
+        run_outcome = "cancelled"
         print(f"[agent_worker] RUN CANCELLED ({request_id})", flush=True)
         await emit("run_failed", {"error": "Cancelled by user", "cancelled": True})
         await store.fail(request_id, "Cancelled by user")
         # Re-raise to honour the cancellation contract.
         raise
     except Exception as exc:
+        run_outcome = "failed"
         import traceback
 
         tb = traceback.format_exc()
@@ -222,6 +228,12 @@ async def run_agent(
         await emit("run_failed", {"error": msg, "traceback": tb})
         await store.fail(request_id, msg)
     finally:
+        # Run-level Prometheus metrikalari — outcome bo'yicha hisob + davomiylik.
+        try:
+            AGENT_RUNS.labels(run_outcome).inc()
+            AGENT_RUN_DURATION.observe(time.monotonic() - run_started_at)
+        except Exception:  # noqa: BLE001
+            logger.debug("agent run metric record failed", exc_info=True)
         store.unregister_task(request_id)
         if checkpointer is not None:
             try:
