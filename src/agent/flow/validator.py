@@ -587,6 +587,11 @@ def _collect_state_keys(flow: FlowDocument) -> set[str]:
             v = data.get(f)
             if isinstance(v, str) and v:
                 keys.add(v)
+        # CreateInviteLinkNode writes the generated link to data.resultVar
+        # (default `invite_link`) — so {{invite_link}} downstream is valid.
+        if n.type == "CreateInviteLinkNode":
+            rv = data.get("resultVar")
+            keys.add(rv if isinstance(rv, str) and rv else "invite_link")
         # CollectionNode fieldMappings values are state keys; CollectionData too.
         fm = data.get("fieldMappings")
         if isinstance(fm, dict):
