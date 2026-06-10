@@ -381,7 +381,12 @@ def pagination_summary(items: Any) -> str:
         return ""
     cur = getattr(items, "current_page", 1) or 1
     total = getattr(items, "total_items", len(items))
-    more = f" call again with page={cur + 1} for the rest." if cur < pages else ""
+    size = getattr(items, "page_size", 0) or 0
+    # Include page_size so the LLM repeats the SAME size on the next call —
+    # otherwise it may switch (e.g. page_size=100) and request a now-out-of-range
+    # page. Keeping page_size constant keeps total_pages valid.
+    keep = f" with page_size={size}" if size else ""
+    more = f" call again with page={cur + 1}{keep} for the rest." if cur < pages else ""
     return f" (page {cur}/{pages}, {total} total —{more})"
 
 
@@ -558,6 +563,31 @@ class BackendClient:
                     json=json,
                     headers=self._headers(bearer=new_access),
                 )
+        # Out-of-range pagination is NOT an error. DRF returns 404
+        # {"detail": "Invalid page."} when the requested page is past the end
+        # (e.g. page=2 with a page_size that fits everything on page 1). For a
+        # paginated LIST request that just means "no more rows" — return an
+        # empty paginated envelope so callers get an empty PagedList instead of
+        # a hard failure. Genuine 404s (missing object → detail "Not found.")
+        # still raise below.
+        if resp.status_code == 404 and params and params.get("page"):
+            try:
+                body = resp.json()
+                detail = str(body.get("detail", "")).lower() if isinstance(body, dict) else ""
+            except Exception:
+                detail = ""
+            if "invalid page" in detail:
+                try:
+                    requested_page = int(params.get("page"))
+                except (TypeError, ValueError):
+                    requested_page = 1
+                return {
+                    "results": [],
+                    "total_items": 0,
+                    "total_pages": requested_page,
+                    "current_page": requested_page,
+                    "page_size": 0,
+                }
         if resp.status_code >= 400:
             try:
                 details = resp.json()
