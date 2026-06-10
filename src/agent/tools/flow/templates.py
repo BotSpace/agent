@@ -301,5 +301,106 @@ async def flow_apply_template(input: FlowApplyTemplateInput, ctx: ToolContext) -
     )
 
 
+class FlowListRecipesInput(BaseModel):
+    pass
+
+
+@tool(
+    name="flow.list_recipes",
+    description=(
+        "List the bundled starter recipes — complete, pre-validated flows for "
+        "the most common bot types (info/menu, lead-capture form, shop/order). "
+        "ALWAYS works offline (no backend/vector store). Use this when building a "
+        "NEW bot from scratch and flow.search_template found no good match: pick "
+        "the closest recipe and call flow.apply_recipe, then adapt texts."
+    ),
+    input_model=FlowListRecipesInput,
+)
+async def flow_list_recipes(_: FlowListRecipesInput, ctx: ToolContext) -> ToolResult:
+    from ...flow.recipes import RECIPES
+
+    lines = []
+    for r in RECIPES:
+        flow = r["flow"]
+        needs = r.get("needs_collections") or []
+        needs_note = f" — collection: {', '.join(needs)}" if needs else ""
+        lines.append(
+            f"  • id={r['id']} ({r['difficulty']}) — {r['name']}: {r['use_cases']} "
+            f"[{len(flow['nodes'])} nodes]{needs_note}"
+        )
+    return ToolResult.ok(
+        "Bundled starter recipes (apply with flow.apply_recipe(recipe_id=...)):\n"
+        + "\n".join(lines),
+        data={
+            "recipes": [
+                {
+                    "id": r["id"],
+                    "name": r["name"],
+                    "use_cases": r["use_cases"],
+                    "difficulty": r["difficulty"],
+                    "needs_collections": r.get("needs_collections") or [],
+                    "n_nodes": len(r["flow"]["nodes"]),
+                }
+                for r in RECIPES
+            ]
+        },
+    )
+
+
+class FlowApplyRecipeInput(BaseModel):
+    recipe_id: str = Field(description="Recipe id from flow.list_recipes (e.g. 'info-menu').")
+
+
+@tool(
+    name="flow.apply_recipe",
+    description=(
+        "Load a bundled starter recipe's flow (nodes + edges) into working_flow "
+        "as a complete, valid baseline. Overwrites working_flow — call only on an "
+        "empty/cleared flow. After applying: adapt the texts/buttons with "
+        "flow.patch/flow.add_*, create any needed collections, then flow.validate "
+        "→ flow.save → flow.simulate."
+    ),
+    input_model=FlowApplyRecipeInput,
+)
+async def flow_apply_recipe(input: FlowApplyRecipeInput, ctx: ToolContext) -> ToolResult:
+    from ...flow.recipes import get_recipe
+
+    recipe = get_recipe(input.recipe_id)
+    if recipe is None:
+        from ...flow.recipes import RECIPES
+
+        ids = ", ".join(r["id"] for r in RECIPES)
+        return ToolResult.error(f"Recipe `{input.recipe_id}` not found. Available: {ids}")
+
+    flow = recipe["flow"]
+    working = {"nodes": list(flow["nodes"]), "edges": list(flow["edges"])}
+    needs = recipe.get("needs_collections") or []
+    needs_note = (
+        " Avval shu collection'larni yarating (yo'q bo'lsa cms-manager'ga delegate qiling): "
+        + "; ".join(needs)
+        + "."
+        if needs
+        else ""
+    )
+    return ToolResult.ok(
+        f"Applied recipe `{recipe['name']}` ({len(working['nodes'])} nodes + "
+        f"{len(working['edges'])} edges) — to'liq, validatsiyadan o'tgan flow yuklandi. "
+        f"Moslashtirish: {recipe['adapt']}{needs_note} "
+        "Keyin: matnlarni o'zgartiring → flow.validate → flow.save → flow.simulate.",
+        data={
+            "recipe_id": recipe["id"],
+            "name": recipe["name"],
+            "n_nodes": len(working["nodes"]),
+            "n_edges": len(working["edges"]),
+            "needs_collections": needs,
+        },
+        state_updates={
+            "working_flow": working,
+            "flow_dirty": True,
+            "last_validation": None,
+        },
+    )
+
+
 def build_flow_template_tools() -> list[Tool]:
-    return [flow_search_template, flow_apply_template]
+    return [flow_search_template, flow_apply_template, flow_list_recipes, flow_apply_recipe]
