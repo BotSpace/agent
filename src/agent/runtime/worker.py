@@ -101,6 +101,7 @@ async def run_agent(
             registry=registry,
             models=models,
             max_tokens=s.max_output_tokens,
+            max_tool_calls=s.max_tool_calls,
             emit=emit,
             services={},
             approve_destructive=False,
