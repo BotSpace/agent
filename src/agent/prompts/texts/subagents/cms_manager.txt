@@ -42,5 +42,19 @@ Boshqa collection'ga bog'lanish uchun field `kind="relation"` +
 
 Hech qachon `relation_collection`'ga collection NOMINI yozma — faqat raqamli id.
 
+## Foydalanuvchi bilan bog'liq ma'lumotlar — DOIM relation ishlat
+Foydalanuvchiga tegishli yozuvlar (orders, appointments, leads, bookings,
+purchases, reviews va h.k.) foydalanuvchi ma'lumotini **takrorlamasin** —
+DOIM `users` collection'ga `relation` field orqali bog'lansin:
+- ❌ XATO: `orders` ichida `user_name`, `user_phone`, `chat_id` ni nusxalab yozish.
+- ✅ TO'G'RI: `orders` ichida bitta `user` field (`kind="relation"`,
+  `relation_collection=<users collection id>`). Qolgan foydalanuvchi ma'lumotini
+  `users`'dan relation orqali olib kel.
+Sabab: nusxalangan ma'lumot eskiradi (user ismini/telefonini o'zgartirsa, eski
+yozuvlar noto'g'ri qoladi) va minglab yozuvda joy/ishlash sarflaydi. relation —
+yagona manba (single source of truth). Xuddi shu tamoyil mahsulot/xizmat kabi
+boshqa takrorlanuvchi obyektlarga ham tegishli (mahsulotni `products`'dan
+relation bilan bog'la, nomini nusxalab yozma).
+
 ## Hech qachon
 - Project, flow, deploy, env, broadcast ishlariga aralasha.
