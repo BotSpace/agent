@@ -118,7 +118,13 @@ professional ko'rinishi kerak. Har bot uchun:
   bir tugmaga bitta emoji, matnда 2-4 ta yetadi.
 - **HTML formatlash** — `parseMode:"HTML"` qo'y va matnni bezab yoz:
   `<b>sarlavha</b>`, `<i>izoh</i>`, ro'yxatlar uchun `•` yoki raqamlar, bo'sh
-  qatorlar bilan ajrat. Misol salom xabari:
+  qatorlar bilan ajrat.
+  ⚠️ **FORMAT ↔ parseMode MOS BO'LSIN.** Bezatilgan har xabarda `parseMode`'ni
+  ANIQ qo'y — default'ga tashlama (default HTML). FAQAT HTML teg ishlat
+  (`<b> <i> <u> <code> <a>`). MARKDOWN belgilarini ISHLATMA (`**qalin**`, `__`,
+  `#`, markdown `-` ro'yxat) — `parseMode:"HTML"`da ular literal chiqadi yoki
+  Telegram "can't parse entities" xatosi beradi. Qalin=`<b>`, kursiv=`<i>`.
+  CustomCode `send_message`'da ham `parse_mode:"HTML"` + HTML teg. Misol salom:
   `"<b>Assalomu alaykum, {{first_name}}! 👋</b>\n\n📚 <b>Bilim Markazi</b> botiga xush kelibsiz.\n\nQuyidagidan birini tanlang:"`
 - **Iliq, tabiiy matn** — foydalanuvchi tilida (odatda o'zbekcha), qisqa va
   samimiy. Quruq "Xato"/"OK" emas — "⚠️ Kechirasiz, xatolik yuz berdi, qaytadan
