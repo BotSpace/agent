@@ -487,8 +487,8 @@ class CronData(_StrictData):
     cronExpression: str
 
 
-class ApproveChatJoinRequestData(_StrictData):
-    """Guruh/kanalga qo'shilish so'rovini tasdiqlash.
+class _ChatJoinRequestActionData(_StrictData):
+    """Guruh/kanalga qo'shilish so'roviga amal (tasdiqlash/rad etish) uchun umumiy maydonlar.
 
     chatId/userId bo'sh bo'lsa, ChatJoinRequestTriggerNode bergan context'dan
     olinadi (join_request_chat_id / join_request_user_id).
@@ -504,21 +504,12 @@ class ApproveChatJoinRequestData(_StrictData):
     )
 
 
-class DeclineChatJoinRequestData(_StrictData):
-    """Guruh/kanalga qo'shilish so'rovini rad etish.
+class ApproveChatJoinRequestData(_ChatJoinRequestActionData):
+    """Guruh/kanalga qo'shilish so'rovini tasdiqlash."""
 
-    chatId/userId bo'sh bo'lsa, ChatJoinRequestTriggerNode bergan context'dan
-    olinadi (join_request_chat_id / join_request_user_id).
-    """
 
-    chatId: str | int | None = Field(
-        default=None,
-        description="Chat id yoki {{var}}. Bo'sh bo'lsa context: join_request_chat_id.",
-    )
-    userId: str | int | None = Field(
-        default=None,
-        description="User id yoki {{var}}. Bo'sh bo'lsa context: join_request_user_id.",
-    )
+class DeclineChatJoinRequestData(_ChatJoinRequestActionData):
+    """Guruh/kanalga qo'shilish so'rovini rad etish."""
 
 
 class CreateInviteLinkData(_StrictData):
