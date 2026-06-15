@@ -618,7 +618,9 @@ class AIAgentData(_StrictData):
     temperature: float | None = Field(default=None, description="Optional per-agent temperature override.")
     maxTokens: int | None = Field(default=None, description="Optional per-agent response cap.")
     returnMode: Literal["text", "json"] = Field(default="text", description="'text' returns plain string; 'json' also stores parsed JSON under outputKey_json.")
-    historyKey: str = Field(default="", description="Optional context key holding prior messages[] to seed the conversation.")
+    historyKey: str = Field(default="", description="Optional context key holding prior messages[] to seed the conversation. Manual mode: builder assembles the [{role,content}] array. For a chat/conversational agent prefer autoHistory=true instead — the engine then manages history for you.")
+    autoHistory: bool = Field(default=False, description="Engine-managed PER-CHAT conversation memory (keyed by node + chat_id, so every user keeps a SEPARATE history — never shared/global). When true the engine auto-saves/loads the dialog — NO manual historyKey array needed. SET THIS TRUE for any chatbot / conversational / sales-assistant agent; otherwise the bot is amnesiac (forgets every previous message).")
+    maxHistory: int | None = Field(default=None, description="Max stored conversation messages for autoHistory (older ones dropped). Default 40 (~20 turns) when omitted. Lower to save tokens.")
     errorOutputKey: str = Field(default="agent_error", description="Context key for error string on failure. Branch on this with IfConditionNode.")
 
 
@@ -641,7 +643,7 @@ class AIOpenAIProviderData(_AIProviderBase):
 
 
 class AIOllamaProviderData(_AIProviderBase):
-    """Ollama provider. provider='ollama', baseURL='https://ollama.com/v1' (cloud). Always ask user for model name."""
+    """Ollama provider. provider='ollama', baseURL='https://ollama.com/v1' (cloud). Default model 'gpt-oss:120b' when model left empty."""
 
     provider: Literal["ollama"] = "ollama"
     baseURL: str = Field(default="https://ollama.com/v1", description="Ollama endpoint. Cloud: https://ollama.com/v1")

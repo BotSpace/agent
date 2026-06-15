@@ -569,13 +569,16 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "Xato: errorOutputKey (standart: agent_error). "
             "Bog'lash: flow.connect(source=<provider_id>, source_handle='source-default', "
             "target=<agent_id>, target_handle='acc:ai_model'). "
-            "Tavsiya: OpenAI yoki Ollama provider'i bilan boshlang."
+            "Tavsiya: OpenAI yoki Ollama provider'i bilan boshlang. "
+            "SUHBAT XOTIRASI: chatbot / suhbatdosh / savdo-agent uchun autoHistory=true "
+            "qo'y — engine har chat uchun dialogni avtomatik eslaydi. Aks holda bot "
+            "amneziyali bo'ladi (har xabarda oldingi gapni unutadi)."
         ),
         required_data=[],
         optional_data=[
             "systemPrompt", "userInputSource", "userInputText", "outputKey",
             "maxIterations", "temperature", "maxTokens", "returnMode",
-            "historyKey", "errorOutputKey",
+            "historyKey", "autoHistory", "maxHistory", "errorOutputKey",
         ],
         source_handles=["source-default"],
         target_handles=["target-default"],
@@ -602,7 +605,9 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         category="ai",
         description=(
             "Ollama provider sub-node. AIAgentNode'ning acc:ai_model portiga ulanadi. "
-            "provider='ollama', default model='llama3.1', baseURL='http://localhost:11434'. "
+            "provider='ollama', baseURL='https://ollama.com/v1' (bulut — platforma bulutda "
+            "ishlaydi, localhost ISHLAMAYDI; apiKey kerak). default model='gpt-oss:120b' "
+            "(bo'sh qoldirsang shu ishlatiladi). "
             "Edge: source=<this_id>, sourceHandle='source-default', "
             "target=<agent_id>, targetHandle='acc:ai_model'."
         ),

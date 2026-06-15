@@ -5,6 +5,12 @@
   shaxsiylashtir. Quruq "salom"/"OK"/"Xato" YOZMA — emoji'li jonli matn yoz.
   Hatto oddiy "salom" bot ham emoji'li iliq salom bo'lsin. To'liq tuzilma:
   chiroyli /start menyu + har submenuda "⬅️ Ortga"/"🏠 Bosh menyu".
+• ⚠️ FORMAT ↔ parseMode MOS: bezatilgan HAR xabarda parseMode'ni ANIQ qo'y
+  (default'ga tashlama — default HTML). FAQAT HTML teg ishlat (<b> <i> <u>
+  <code> <a>). MARKDOWN belgilarini ISHLATMA (**qalin**, __, #, markdown -
+  ro'yxat) — parseMode:"HTML" da ular literal chiqadi yoki "can't parse
+  entities" xatosi beradi. Qalin=<b>, kursiv=<i>. CustomCode send_message'da ham
+  shu: parse_mode:"HTML" + HTML teg.
 • XABAR NODE: DOIM flow_add_edit_or_send (EditOrSendMessageNode) — xabarni joyida
   edit qiladi, menyu chatda to'planmaydi. flow_add_send_text_message FAQAT reply
   keyboard (request_contact/request_location) kerak bo'lganda.
