@@ -519,9 +519,10 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         type="PaymentNode",
         category="integration",
         description=(
-            "Botspace orqali to'lov (Click; kelajakda payme/uzum). Node order yaratadi va "
-            "mijozga 'To'lash' tugmasini yuboradi — egasi to'lov tizimi bilan o'zi integratsiya "
-            "QILMAYDI. To'lov tasdiqlansa 'paid', aks holda 'failed' tarmoq davom etadi. "
+            "Botspace orqali to'lov. paymentType: 'click' (Click pay-link tugmasi) yoki "
+            "'paycue' (Humo-karta — mijozga aniq summani kartaga o'tkazish ko'rsatmasi "
+            "yuboriladi, tugma bo'lmaydi, avtomatik tasdiqlanadi). Egasi to'lov tizimi "
+            "bilan o'zi integratsiya QILMAYDI. To'lov tasdiqlansa 'paid', aks holda 'failed'. "
             "amount: son yoki {{var}}. To'lovdan keyin context: payment_order_id, payment_amount, "
             "payment_net, payment_status, payment_comment, payment_provider. "
             "Eslatma: bu Telegram Stars EMAS — lokal kartalar (Click). Telegram Stars uchun "
