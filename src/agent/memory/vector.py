@@ -47,8 +47,7 @@ CREATE INDEX IF NOT EXISTS agent_memory_kind_idx ON agent_memory (kind);
 """
 
 
-def _normalize_psycopg_url(url: str) -> str:
-    return url.replace("postgresql+psycopg://", "postgresql://", 1)
+from ..config import normalize_pg_url as _normalize_psycopg_url
 
 
 class VectorStore:

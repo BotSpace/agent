@@ -15,8 +15,7 @@ from typing import Any
 from ..config import get_settings
 
 
-def _normalize(url: str) -> str:
-    return url.replace("postgresql+psycopg://", "postgresql://", 1)
+from ..config import normalize_pg_url as _normalize
 
 
 async def create_async_checkpointer(database_url: str | None = None) -> Any | None:
@@ -45,36 +44,3 @@ async def close_async_checkpointer(checkpointer: Any | None) -> None:
     manager = getattr(checkpointer, "_manager", None)
     if manager is not None and hasattr(manager, "__aexit__"):
         await manager.__aexit__(None, None, None)
-
-
-# ── legacy sync wrappers (kept for any non-async caller) ────────────────
-
-
-def create_checkpointer(database_url: str | None = None) -> Any | None:
-    """Sync wrapper — only used outside the worker."""
-    url = database_url or get_settings().database_url
-    if not url or not url.startswith(("postgresql://", "postgresql+psycopg://")):
-        return None
-    try:
-        from langgraph.checkpoint.postgres import PostgresSaver
-    except ImportError as exc:
-        raise RuntimeError(
-            "PostgresSaver requires `langgraph-checkpoint-postgres`."
-        ) from exc
-    normalized = _normalize(url)
-    manager = PostgresSaver.from_conn_string(normalized)
-    cp = manager.__enter__() if hasattr(manager, "__enter__") else manager
-    try:
-        setattr(cp, "_manager", manager)
-    except Exception:
-        pass
-    setup = getattr(cp, "setup", None)
-    if callable(setup):
-        setup()
-    return cp
-
-
-def close_checkpointer(checkpointer: Any | None) -> None:
-    manager = getattr(checkpointer, "_manager", None)
-    if manager is not None and hasattr(manager, "__exit__"):
-        manager.__exit__(None, None, None)
