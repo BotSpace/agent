@@ -102,8 +102,7 @@ CREATE TABLE IF NOT EXISTS agent_messages (
 """
 
 
-def _normalize(url: str) -> str:
-    return url.replace("postgresql+psycopg://", "postgresql://", 1)
+from ..config import normalize_pg_url as _normalize
 
 
 @dataclass

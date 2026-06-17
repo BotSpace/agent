@@ -140,3 +140,8 @@ class Settings(BaseSettings):
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings()  # type: ignore[call-arg]
+
+
+def normalize_pg_url(url: str) -> str:
+    """Strip the SQLAlchemy psycopg driver suffix so psycopg/langgraph accept the DSN."""
+    return url.replace("postgresql+psycopg://", "postgresql://", 1)

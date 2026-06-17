@@ -1,8 +1,6 @@
 from .checkpoint import (
     close_async_checkpointer,
-    close_checkpointer,
     create_async_checkpointer,
-    create_checkpointer,
 )
 from .embedder import Embedder, get_embedder
 from .retriever import MemoryRetriever, get_retriever
@@ -13,9 +11,7 @@ __all__ = [
     "MemoryRetriever",
     "VectorStore",
     "close_async_checkpointer",
-    "close_checkpointer",
     "create_async_checkpointer",
-    "create_checkpointer",
     "get_embedder",
     "get_retriever",
     "get_vector_store",

@@ -44,8 +44,7 @@ CREATE TABLE IF NOT EXISTS mcp_flow_drafts (
 """
 
 
-def _normalize(url: str) -> str:
-    return url.replace("postgresql+psycopg://", "postgresql://", 1)
+from ..config import normalize_pg_url as _normalize
 
 
 class DraftStore:
