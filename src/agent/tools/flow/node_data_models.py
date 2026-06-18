@@ -86,8 +86,14 @@ _PAYLOAD_FILTER = Literal["any", "equals", "starts_with", "contains"]
 
 
 class PreCheckoutTriggerData(_StrictData):
+    """Telegram-native pre_checkout_query trigger — ONLY paired with SendInvoiceNode.
+
+    Chain: SendInvoice -> PreCheckout (autoAnswer) -> SuccessfulPayment. NOT for
+    PaymentNode (Click/Paycue is a separate system with paid/failed branches).
+    """
+
     filter: _PAYLOAD_FILTER = Field(default="any",
-        description="Invoice payload filter mode.")
+        description="Invoice payload filter mode (match SendInvoice `payload`).")
     value: str | None = Field(default=None,
         description="Payload filter value (unused when filter='any').")
     autoAnswer: bool = Field(default=True,
@@ -98,8 +104,15 @@ class PreCheckoutTriggerData(_StrictData):
 
 
 class SuccessfulPaymentTriggerData(_StrictData):
+    """Telegram-native successful_payment trigger — ONLY paired with SendInvoiceNode.
+
+    Fires when the Telegram payment actually goes through; deliver goods/access here.
+    Chain: SendInvoice -> PreCheckout (autoAnswer) -> SuccessfulPayment (HERE). NOT for
+    PaymentNode (Click/Paycue returns result via paid/failed branches, no trigger).
+    """
+
     filter: _PAYLOAD_FILTER = Field(default="any",
-        description="Invoice payload filter mode.")
+        description="Invoice payload filter mode (match SendInvoice `payload`).")
     value: str | None = Field(default=None,
         description="Payload filter value (unused when filter='any').")
     global_: bool = Field(default=True, alias="global",
@@ -1123,6 +1136,14 @@ class AIPaymentLinkToolData(_StrictData):
     runtime args (engine builds parametersSchema): amount (REQUIRED), description.
     The `paymentType` data field is fixed at build time and is NOT chosen by the
     LLM. CROSS-STREAM CONTRACT with engine (AIPaymentLinkToolNode) — keep keys exact.
+
+    FIRE-AND-FORGET: returns only the payment LINK — there is NO payment confirmation
+    (no callback / paid event). The bot never learns whether it was paid and cannot
+    react. Use ONLY for the 'just show a payment link' case. If the bot must react to a
+    successful payment (deliver goods/service, grant access, confirm an order), do NOT
+    use this tool — use PaymentNode (Click/Paycue, paid/failed branches; the bot waits
+    and branches) OR a Telegram invoice (SendInvoiceNode -> PreCheckoutTriggerNode
+    [autoAnswer] -> SuccessfulPaymentTriggerNode).
 
     BUILD RULE (like PaymentNode): ASK the user which provider before adding —
     'click' or 'paycue' ONLY. Do NOT invent 'payme'. A merchant/credential may be

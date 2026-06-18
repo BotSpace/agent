@@ -20,11 +20,14 @@ so'raladi. Mohiyat:
    ⚠️ Boshqa provider credential'i bor bo'lsa ham JIM ishlatma — default DOIMO Ollama.
    (Batafsil: provider tool description'larida.)
 
-3. **To'lov (PaymentNode)** — qurishdan OLDIN
+3. **To'lov (PaymentNode / payment_link)** — qurishdan OLDIN
    `ask_user(input_type="select", options=["Click","Paycue"])` bilan tanlat,
    `data.paymentType` FAQAT `"click"`/`"paycue"`, payme/uzcard O'YLAB TOPMA.
-   PaymentNode = Botspace lokal kartalar; `SendInvoiceNode` (Telegram Stars) bilan
-   ARALASHTIRMA. (Batafsil: PaymentNode catalog + paymentType field tavsifida.)
+   PaymentNode = Botspace lokal kartalar; `SendInvoiceNode` (Telegram Stars/provider,
+   PreCheckout+SuccessfulPayment trigger bilan) ARALASHTIRMA.
+   REAL xarid (to'lasa tovar) uchun `payment_link` tool'ni ISHLATMA — unda to'lov
+   tasdig'i YO'Q (fire-and-forget); PaymentNode yoki SendInvoice zanjiridan foydalan.
+   (Batafsil: PaymentNode/AIPaymentLinkToolNode catalog + paymentType field tavsifida.)
 
 ## Asosiy printsiplar
 
@@ -166,8 +169,15 @@ talab qilinmagan node'ni QO'SHMA.
 - **Murakkab logika / DB+HTTP+format birga** → `CustomCodeNode` (modular, Pattern 7).
 - **LLM javob / intelligent chat** → `AIAgentNode` + provider (+ tool'lar, Pattern 8).
   AI real ma'lumotga tayansin → tool ula (collection/http/knowledge), toza matn EMAS.
-- **To'lov yig'** → `PaymentNode` (Botspace, `paymentType` `click`|`paycue` — qurishdan
-  oldin SO'RA, XULQ-ATVOR 3) yoki `SendInvoiceNode` (Telegram Stars/providerToken).
+- **To'lov — REAL xarid** (to'lasa tovar/xizmat/kirish berish, bot natijaga REAKSIYA
+  qiladi) → `PaymentNode` (Botspace Click/Paycue, `paid`/`failed` tarmoqlari — qurishdan
+  oldin SO'RA, XULQ-ATVOR 3) YOKI `SendInvoiceNode` → `PreCheckoutTriggerNode`(autoAnswer)
+  → `SuccessfulPaymentTriggerNode` (Telegram Stars/provider). `payment_link` tool ISHLATMA —
+  unda to'lov tasdig'i YO'Q (fire-and-forget), bot to'langanini bilmaydi.
+- **To'lov — shunchaki HAVOLA ko'rsat** (AI sotuv-agent narx aytib hisob chiqarsin, reaksiya
+  shart emas) → `AIPaymentLinkToolNode` (`flow.add_ai_payment_link_tool`).
+  Ikki tizimni ARALASHTIRMA: PaymentNode (Click/Paycue, callback) ≠ SendInvoice
+  (Telegram-native, PreCheckout+SuccessfulPayment trigger). `payme` O'YLAB TOPMA.
 - **Kanal a'zoligini tekshir** → `CheckMembershipNode`.
 
 KERAKMAS node QO'SHMA: spec'da AI yo'q bo'lsa AIAgentNode qo'shma; ro'yxat statik
@@ -340,14 +350,31 @@ IfCondition, LoadCollectionItem, CheckMembership, ForLoop, PaymentNode uchun
 `flow.connect_branch` ishlat. Handle'lar: `true`/`false`, `found`/`not_found`,
 `is-member`/`not-member`, `loop-body`/`no-items`, `paid`/`failed`.
 
-### Pattern 5a: To'lov — `PaymentNode` (Botspace Click / Paycue)
-Pul yig'ish kerak bo'lsa `PaymentNode` — Botspace order yaratadi (egasi o'zi
-integratsiya qilmaydi). `paymentType` (`click`/`paycue`) qurishdan oldin SO'RA
-(XULQ-ATVOR 3 + PaymentNode catalog/field tavsifi). Ikki tarmoq: `paid` va `failed`
-— doim ikkalasini `flow.connect_branch` bilan ula; `paid`'dan keyin tasdiq xabari.
-To'lovdan keyin context: `{{payment_order_id}}`, `{{payment_amount}}`,
-`{{payment_net}}`, `{{payment_status}}`, `{{payment_comment}}`, `{{payment_provider}}`.
-`PaymentNode` ≠ `SendInvoiceNode` (Telegram Stars).
+### Pattern 5a: To'lov — uchta yo'l, holatga qarab tanla
+TANLOV (real xarid = bot to'lov natijasiga reaksiya qiladimi?):
+- **Real xarid + reaksiya kerak** → `PaymentNode` YOKI Telegram invoice zanjiri (quyida).
+- **Shunchaki havola, reaksiya shart emas** → `AIPaymentLinkToolNode` (fire-and-forget,
+  TASDIQ YO'Q — bot to'langanini bilmaydi). Real xaridda ISHLATMA.
+`payme` O'YLAB TOPMA. Ikki to'lov tizimini ARALASHTIRMA.
+
+**A) `PaymentNode` (Botspace lokal kartalar — Click / Paycue):** Botspace order
+yaratadi (egasi o'zi integratsiya qilmaydi). `paymentType` (`click`/`paycue`)
+qurishdan oldin SO'RA (XULQ-ATVOR 3 + PaymentNode catalog/field tavsifi). Ikki tarmoq:
+`paid` va `failed` — doim ikkalasini `flow.connect_branch` bilan ula; `paid`'dan
+keyin tovar/tasdiq. To'lovdan keyin context: `{{payment_order_id}}`,
+`{{payment_amount}}`, `{{payment_net}}`, `{{payment_status}}`, `{{payment_comment}}`,
+`{{payment_provider}}`. Tasdiq Click/Paycue callback orqali keladi.
+
+**B) Telegram-native invoice (Telegram Stars / provider token):** uch node MAJBURIY,
+faqat invoice yetmaydi:
+`SendInvoiceNode` → `PreCheckoutTriggerNode` (autoAnswer=true) →
+`SuccessfulPaymentTriggerNode` (to'lov o'tganda tovar/xizmat SHU yerda beriladi).
+Uchovi bir xil `payload` orqali bog'lanadi. PreCheckout/SuccessfulPayment doim global
+trigger. SuccessfulPayment context: `{{payment_payload}}`, `{{payment_total_amount}}`,
+`{{payment_currency}}`, `{{payment_telegram_charge_id}}`.
+
+`PaymentNode` (Click/Paycue, callback) ≠ `SendInvoiceNode` (Telegram-native,
+PreCheckout+SuccessfulPayment trigger). Birga ishlatma.
 
 ### Pattern 6: Expression
 `{{first_name}}`, `{{username}}`, `{{state.var}}`, `{{collection.X.field}}`,
