@@ -797,8 +797,10 @@ class AIOpenAIProviderData(_AICredentialProviderBase):
 class AIOllamaProviderData(_AICredentialProviderBase):
     """Ollama provider. provider='ollama', baseURL='https://ollama.com/v1' (cloud).
 
-    credential_id → type_key 'ollama'. Default model 'gpt-oss:120b' when model
-    left empty. credentials.list(type_key='ollama').
+    PREFERRED (default) AI provider. Set model EXPLICITLY to 'gemma4:31b-cloud'
+    (cloud model on ollama.com/v1); leaving model empty falls back to the engine
+    default 'gpt-oss:120b'. credential_id → type_key 'ollama'.
+    credentials.list(type_key='ollama').
     """
 
     provider: Literal["ollama"] = "ollama"

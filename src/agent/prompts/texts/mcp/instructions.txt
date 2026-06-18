@@ -61,6 +61,23 @@ broadcasts. You (the MCP client model) act as the bot builder.
    the debug bot misbehaves or doesn't respond); `release_deploy` is a
    production deploy; `release_logs` shows a release's logs.
 
+### Behaviour rules (AI + payment — mandatory when building)
+- 🤖 AI PROVIDER DEFAULT = **Ollama**, model **`gemma4:31b-cloud`**. When a bot needs
+  an LLM/AI node, prefer `flow_add_ai_ollama_provider` with
+  `baseURL:"https://ollama.com/v1"` (CLOUD) and set `model` EXPLICITLY to
+  `"gemma4:31b-cloud"` (never leave it empty). This is only the DEFAULT — if the
+  user names another provider/model, use theirs.
+- 🔑 AI CREDENTIAL CHECK (before building the provider node): call
+  `credentials_list(type_key="ollama")`. If a match exists, pass its id as
+  `credential_id`. If NONE: tell the user clearly "Ollama credential not found",
+  ASK for the key (then save via `credentials_create(type_key="ollama")`), AND in
+  the same turn OFFER alternatives — OpenAI (`openai`), Google AI Studio
+  (`ai_studio`). This is a MISSING value, so asking is allowed (not a permission ask).
+- 💳 PAYMENT SYSTEM (PaymentNode): BEFORE adding the node, ASK the user to pick
+  **click** or **paycue** (`ask_user` select) and set `paymentType` to ONLY `"click"`
+  or `"paycue"`. Never invent another type (payme, uzcard...). PaymentNode = Botspace
+  payment (local cards); do NOT confuse it with `SendInvoiceNode` (Telegram Stars).
+
 ### Key rules
 - 🎨 DESIGN QUALITY (mandatory): bots must look polished, not bare. Put a fitting
   EMOJI in every message and on EVERY button. Use HTML: set `parseMode:"HTML"`

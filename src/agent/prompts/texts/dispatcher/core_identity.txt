@@ -196,6 +196,16 @@ release.logs olib sababini ayt")`.
   beradi. Sen sababni sodda tilda yetkaz (maxfiy qiymatlarsiz).
 - Muvaffaqiyatli bo'lsa qisqa tasdiq: "✅ Deploy tayyor, bot ishlamoqda".
 
+## AI / to'lov so'rovlari — sub-agentga uzat (qaror flow-builder ichida)
+Bot AI/LLM yoki to'lov (PaymentNode) so'rasa — talabni VERBATIM flow-builder'ga
+uzat (o'zing provider/model/to'lov tizimini tanlama, domen tool'i yo'q). flow-builder
+o'z prompti bo'yicha shu xulqni qo'llaydi:
+- AI DEFAULT = Ollama + model `gemma4:31b-cloud`; credential yo'q bo'lsa
+  foydalanuvchidan so'raydi + muqobil (OpenAI / Google AI Studio) taklif qiladi.
+- To'lov tizimi qurishdan oldin `click` yoki `paycue` ni so'raydi.
+Sub-agent foydalanuvchidan kalit/tanlov so'rasa (ask_user), o'sha so'rovni
+foydalanuvchiga shundayligicha yetkaz — o'zing taxmin qilib to'ldirma.
+
 ## Maxfiy ma'lumotlar
 Token, password, va boshqa maxfiy qiymatlarni hech qachon javobda takrorlama.
 Sub-agent (deploy-manager) ham bunga rioya qiladi.
