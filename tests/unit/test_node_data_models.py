@@ -116,6 +116,10 @@ def test_collection_tool_data_defaults_and_keys():
 
 def test_collection_tool_data_operations_allow_list():
     Model = NODE_DATA_MODELS["AICollectionToolNode"]
+    # Engine (AICollectionToolNode / mongoQueryTool) reads searchFields as
+    # [{"field": str, "description"?: str}]. Legacy {"name","type"} keys are
+    # NOT understood by the engine, so the model normalises name→field and drops
+    # the unknown `type` key. This keeps agentv3 / engine in lockstep (#4).
     inst = Model.model_validate(
         {
             "collection": "orders",
@@ -125,7 +129,25 @@ def test_collection_tool_data_operations_allow_list():
     )
     dumped = inst.model_dump()
     assert dumped["operations"] == ["read"]
-    assert dumped["searchFields"] == [{"name": "email", "type": "string"}]
+    assert dumped["searchFields"] == [{"field": "email"}]
+
+
+def test_collection_tool_data_search_fields_engine_shape():
+    """searchFields accepts the engine shape, a string array, and name-alias —
+    all normalised to [{"field", "description"?}] (#4)."""
+    Model = NODE_DATA_MODELS["AICollectionToolNode"]
+
+    # Canonical engine shape passes through unchanged.
+    canon = Model.model_validate(
+        {"collection": "c", "searchFields": [{"field": "status", "description": "order status"}]}
+    ).model_dump()
+    assert canon["searchFields"] == [{"field": "status", "description": "order status"}]
+
+    # Plain string array → coerced to {field}.
+    arr = Model.model_validate(
+        {"collection": "c", "searchFields": ["chat_id", "kind"]}
+    ).model_dump()
+    assert arr["searchFields"] == [{"field": "chat_id"}, {"field": "kind"}]
 
 
 def test_collection_tool_data_forbids_extra_fields():

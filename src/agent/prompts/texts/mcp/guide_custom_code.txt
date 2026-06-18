@@ -99,9 +99,28 @@ reply ikkalasida) — `value` URL string yoki `{url:"..."}`:
 - `http_request({url, method, headers?, body?})`, `http_get/http_post/http_put/http_delete`
 
 ## Stdlib
-`date_format, date_parse, date_add, date_diff, hash_md5, hash_sha256, hmac_sha256,
-base64_encode, base64_decode, url_encode, random, random_int, random_choice,
-current_timestamp`
+`date_today, date_now, date_format, date_parse, date_add, date_diff, hash_md5,
+hash_sha256, hmac_sha256, base64_encode, base64_decode, url_encode, random,
+random_int, random_choice, current_timestamp`
+
+✅ **Bugungi sana/vaqt — `date_today()` / `date_now()` (TAVSIYA, eng oson):**
+- `date_today()` → `"YYYY-MM-DD"` (UTC), masalan `"2026-06-18"`. Argumentsiz.
+- `date_now()` → `"YYYY-MM-DD HH:mm:ss"` (UTC), masalan `"2026-06-18 14:30:00"`.
+  Argumentsiz. `occurred_at`/log/o'qiladigan timestamp matni uchun shuni ishlat.
+Bular format token yozishni talab qilmaydi — xatosi kam, BIRINCHI tanlov.
+Misol: `db_insert('logs', {occurred_at: date_now(), msg: 'ok'})`.
+
+⚠️ **`date_format(ts, fmt)` — MUQOBIL (formatni o'zing boshqarganda).** TOKEN
+formati, Go layout EMAS. Faqat shu tokenlar almashtiriladi: `YYYY MM DD HH mm ss`.
+Misollar:
+- Bugungi sana: `date_format(current_timestamp(), 'YYYY-MM-DD')` → `2026-06-18` (≡ `date_today()`)
+- Sana + vaqt: `date_format(current_timestamp(), 'YYYY-MM-DD HH:mm:ss')` (≡ `date_now()`)
+Go layout (`'2006-01-02'`, `'15:04:05'`) BERMA — u tan olinmaydi va literal
+`2006-01-02` matni qaytadi. `date_parse` esa `'YYYY-MM-DD'` yoki
+`'YYYY-MM-DD HH:mm:ss'` (yoki RFC3339) ni Unix vaqtga o'giradi.
+`created_at`/`occurred_at` maydonlariga RAQAMLI Unix vaqt kerak bo'lsa
+`current_timestamp()` saqla; o'qiladigan sana MATNI kerak bo'lsa
+`date_today()` / `date_now()` (yoki `date_format`) bilan formatla.
 
 ---
 

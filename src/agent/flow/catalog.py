@@ -437,10 +437,12 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "JavaScript kod ishga tushirish (Goja VM). Kod data.jsCode da saqlanadi "
             "(engine va UI shu kalitni o'qiydi). MongoDB/HTTP async API mavjud. "
             "data.outputs=[{name}] e'lon qilinsa, exit('name') bilan `output-{name}` "
-            "source handle orqali tarmoqlanadi."
+            "source handle orqali tarmoqlanadi. data.terminal=true — node leaf "
+            "(o'zi javob yuborib oqimni tugatadi), keyingi edge yo'qligi normal "
+            "(validator 'dead-end' ogohlantirishini o'chiradi)."
         ),
         required_data=["jsCode"],
-        optional_data=["outputs"],
+        optional_data=["outputs", "terminal"],
     ),
     "SendToAdminNode": NodeTypeSpec(
         type="SendToAdminNode",
@@ -597,18 +599,33 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "tool sub-node'lar (acc:ai_tool portiga) ulanadi. systemPrompt + userInputSource → "
             "LLM tool-calling loop → natija outputKey context o'zgaruvchisiga yoziladi "
             "(standart: agent_output). Keyingi nodelar {{agent_output}} orqali foydalanadi. "
-            "Xato: errorOutputKey (standart: agent_error). "
             "Bog'lash: flow.connect(source=<provider_id>, source_handle='source-default', "
             "target=<agent_id>, target_handle='acc:ai_model'). "
             "Tavsiya: OpenAI yoki Ollama provider'i bilan boshlang. "
             "SUHBAT XOTIRASI: chatbot / suhbatdosh / savdo-agent uchun autoHistory=true "
             "qo'y — engine har chat uchun dialogni avtomatik eslaydi. Aks holda bot "
-            "amneziyali bo'ladi (har xabarda oldingi gapni unutadi)."
+            "amneziyali bo'ladi (har xabarda oldingi gapni unutadi). "
+            "TOOL ISHLAT: agent shunchaki matn yozmasin — real ma'lumot/harakat kerak "
+            "bo'lsa acc:ai_tool'ga tool ula (collection CRUD, http, custom_code, knowledge "
+            "RAG). Masalan 'narxni ayt' → AICollectionToolNode (real katalog), 'buyurtma "
+            "yarat' → collection create yoki custom_code. Tool'siz agent uydirma javob "
+            "berishi mumkin. "
+            "STRUCTURED JSON: agent JSON qaytarishi kerak bo'lsa systemPrompt'da 'JSON "
+            "qaytar' DEMA (ishonchsiz) — `structuredOutput:true` + `jsonSchema` (schema "
+            "string) qo'y. Engine model'ni provider darajasida shu schema'ga majburlaydi "
+            "va parse qilingan obyektni outputKey'ga yozadi ({{agent_output.field}}). "
+            "Faqat schema'siz erkin matn kerak bo'lsa returnMode='json' (best-effort parse). "
+            "XATO SEMANTIKASI (engine): SUCCESS bo'lsa errorOutputKey TOZALANADI (oldingi "
+            "xato qoldig'i qolmaydi); provider XATO bersa outputKey bo'sh, errorOutputKey "
+            "saqlanadi va flow KEYINGI node'ga DAVOM etadi (graceful) — shuning uchun "
+            "errorOutputKey ustidan IfConditionNode bilan branch qilib xato holatini "
+            "alohida ko'rsatish mumkin."
         ),
         required_data=[],
         optional_data=[
             "systemPrompt", "userInputSource", "userInputText", "outputKey",
             "maxIterations", "temperature", "maxTokens", "returnMode",
+            "structuredOutput", "jsonSchema",
             "historyKey", "autoHistory", "maxHistory", "errorOutputKey",
         ],
         source_handles=["source-default"],
@@ -713,7 +730,12 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "Collection CRUD tool sub-node. AIAgentNode'ning acc:ai_tool portiga ulanadi. "
             "tool='collection'. Bot collection ustida to'liq CRUD: create/read/update/delete. "
             "operations — ruxsat etilgan amallar allow-list'i (masalan faqat ['read']). "
-            "searchFields — LLM filtrlay oladigan maydonlar (ixtiyoriy). "
+            "searchFields — LLM filtrlay oladigan maydonlar (ixtiyoriy). FORMAT: OBYEKT "
+            "MASSIVI, har element {\"field\": \"<maydon nomi>\", \"description\": \"<izoh>\"} "
+            "(faqat `field` majburiy). Masalan "
+            "[{\"field\": \"chat_id\", \"description\": \"foydalanuvchi id\"}, {\"field\": \"kind\"}]. "
+            "ODDIY STRING MASSIVI EMAS ([\"chat_id\",\"kind\"] xato — har element dict bo'lishi "
+            "kerak), kalitlar `name`/`type` EMAS — `field`/`description`. "
             "Edge: source=<this_id>, sourceHandle='source-default', "
             "target=<agent_id>, targetHandle='acc:ai_tool'."
         ),

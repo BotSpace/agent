@@ -57,3 +57,13 @@ Ishlaydigan stsenariyni `flow_test_save(name, steps)` bilan saqlang — har
   oladi; simulyatsiyadagi yozuvlar REAL bazaga TA'SIR QILMAYDI (izolyatsiya).
 - AI node'lar (LLM chaqiruvlar) va to'lovlar simulyatsiyada real ishlamaydi.
 - schedule_message/SchedulerNode advance_time bilan otilmaydi.
+- **Synthetic `_id`'lar:** simulyatorda yaratilgan/seed qilingan hujjatlarning
+  `_id`'si SUN'IY placeholder bo'ladi (masalan `doc0000002`) — bu REAL Mongo
+  ObjectId (24-belgili hex, masalan `665f1a2b3c4d5e6f70819293`) EMAS. Shuning uchun:
+  - `expect`'da aniq `_id` qiymatiga TAYANMA (`contains:"doc0000002"` yozma) —
+    u har run'da har xil va realdan farq qiladi. Mazmunli maydon (nom, narx,
+    status) bo'yicha tekshir.
+  - Flow `_id`'ni callback_data'ga yoki keyingi qadamga uzatishini sinayotgan
+    bo'lsang — sun'iy id ham 24-hex bo'lmasligi mumkin, shu sabab `db_find_one`
+    real ObjectId-konvertatsiyasiga BOG'LIQ test simulyatorda boshqacha ketishi
+    mumkin. Bunday holatni prod debug bot orqali ham tasdiqla.

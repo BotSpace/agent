@@ -24,6 +24,55 @@ zanjiri. Yangi misol qo'shganda quyidagi OLTIN QOIDALARga amal qil:
      ushlash uchun `CallbackQueryTriggerNode(global:false)` + CustomCode'dan
      unga `flow.connect` edge. Edge'siz trigger ISHLAMAYDI.
 
+  5. Har misol QURISHDAN OLDIN talabni intent → spec'ga aylantiradi (0-QADAM).
+     Quyidagi 2 namuna talab → intent talqini → spec → tool call zanjirini
+     ko'rsatadi. Spec'da YO'Q narsani qo'shma.
+
+
+════════════════════════════════════════════════════════════════════════════
+INTENT NAMUNA A — "studiya uchun bot, narxlarni ko'rsatsin va telefon olsin"
+════════════════════════════════════════════════════════════════════════════
+TALAB (asl): "foto studiya uchun bot qil, xizmatlar va narxlarni ko'rsatsin,
+keyin mijoz telefonini qoldirsin"
+
+INTENT TALQINI: statik info-menyu (xizmatlar/narxlar) + lead-capture (telefon).
+Dinamik collection KERAK EMAS (narxlar statik, kam o'zgaradi). AI KERAK EMAS.
+
+SPEC:
+  1. Trigger: /start.
+  2. Asosiy oqim: /start → menyu (Xizmatlar/Narxlar 📞 + "Telefon qoldirish").
+  3. Saqlanadigan: telefon (lead-capture) → `leads` collection.
+  4. Dinamik collection: yo'q (narxlar statik matn).
+  5. Edge holatlar: "⬅️ Ortga"; telefon olingach reply keyboard'ni olib tashla.
+
+NODE TANLOV (decision tree): EditOrSendMessageNode (menyu/sahifalar),
+SendTextMessageNode+request_contact (telefon), MessageTrigger(state) (capture),
+flow.save_to_collection (leads). Trigger node faqat /start (+ "Ortga" global).
+→ plan.set([spec'ni 4-5 qadam qilib]) → keyin add_* / connect / validate / save.
+(To'liq tool zanjiri MISOL 1 + MISOL 2'ning lead-capture qismiga o'xshaydi.)
+
+
+════════════════════════════════════════════════════════════════════════════
+INTENT NAMUNA B — "mahsulot katalogi boti"
+════════════════════════════════════════════════════════════════════════════
+TALAB (asl): "do'konim uchun mahsulot katalogi bot, mijoz tanlab buyurtma bersin"
+
+INTENT TALQINI: DINAMIK katalog (mahsulotlar o'zgaradi) → collections-first.
+Buyurtma → lead/order capture. AI KERAK EMAS (toza CRUD).
+
+SPEC:
+  1. Trigger: /start.
+  2. Asosiy oqim: /start → mahsulotlar (db'dan dinamik) → detal → "Buyurtma" → ism+telefon.
+  3. Saqlanadigan: ism, telefon, tanlangan mahsulot → `orders` collection.
+  4. Dinamik collection: `products` (cms-manager'ga delegate + demo) HA.
+  5. Edge holatlar: bo'sh katalog xabari; "⬅️ Ortga".
+
+NODE TANLOV: avval cms-manager'ga `products` collection delegate. Keyin
+dinamik ro'yxat → CustomCode `db_find` + dinamik inline tugma (yoki
+`collectionData` keyboard) → CallbackQueryTrigger(global:false) → detal →
+ask_text/ask_contact → save-order CustomCode. → plan.set → qur.
+→ Bu AYNAN quyidagi MISOL 2'ning to'liq tool zanjiri. Pastga qara.
+
 
 ════════════════════════════════════════════════════════════════════════════
 MISOL 1 — Oddiy menyu bot (3 bo'lim, statik)
@@ -192,7 +241,9 @@ capture-name, capture-phone) NON-GLOBAL va oldingi node'ga edge bilan ulangan.
 MISOL 3 — AI yordamchi bot (LLM + RAG)
 ════════════════════════════════════════════════════════════════════════════
 Stsenariy: /start salom → har matn AIAgentNode'ga → Ollama + knowledge tool
-javob beradi. API key ask_user bilan olingan deb faraz qilinadi.
+javob beradi. Ollama provider credential'i `credentials.list(type_key="ollama")`
+bilan topilgan (yoki `credentials.create` bilan yaratilgan) deb faraz qilinadi —
+provider `credential_id` orqali bog'lanadi, qo'lda apiKey EMAS.
 
 ```python
 # Turn 1: trigger + agent + reply
@@ -224,9 +275,10 @@ flow.add_node(
 )
 
 # Turn 2: accessory node'lar (flow edge KERAK EMAS)
+# Provider credential_id orqali (credentials.list(type_key="ollama") dan id) — qo'lda apiKey EMAS.
 flow.add_ai_ollama_provider(
     id="provider",
-    data={"provider": "ollama", "model": "gemma2:9b", "baseURL": "https://ollama.com/v1", "apiKey": "<user-key>"}
+    data={"provider": "ollama", "model": "gpt-oss:120b", "baseURL": "https://ollama.com/v1", "credential_id": 12}
 )
 flow.add_ai_knowledge_tool(
     id="kb",

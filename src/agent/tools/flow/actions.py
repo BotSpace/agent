@@ -607,7 +607,12 @@ def build_flow_action_tools() -> list[Tool]:
                 "Add an AIAgentNode (LLM agent). After adding, attach a provider with "
                 "flow.connect_accessory(port='acc:ai_model') and optionally tools on "
                 "'acc:ai_tool'. The agent output is stored in outputKey (default: agent_output). "
-                "Use {{agent_output}} in downstream nodes."
+                "Use {{agent_output}} in downstream nodes. "
+                "For guaranteed JSON, set structuredOutput=true + jsonSchema (schema as a "
+                "string) — do NOT ask for JSON in systemPrompt. For real data/actions, attach "
+                "tools (collection/http/custom_code/knowledge) instead of relying on plain "
+                "text generation. On provider error errorOutputKey is set and the flow "
+                "continues (branch on it); on success errorOutputKey is cleared."
             ),
         ),
         _make_popular_node_tool(
@@ -663,7 +668,10 @@ def build_flow_action_tools() -> list[Tool]:
             description=(
                 "Add a Collection CRUD tool sub-node for an AIAgentNode (tool='collection'). "
                 "Full CRUD on a bot `collection`; restrict via the `operations` allow-list "
-                "(create/read/update/delete). Connect to acc:ai_tool."
+                "(create/read/update/delete). Connect to acc:ai_tool. "
+                "searchFields (optional) = ARRAY OF OBJECTS, each "
+                "{\"field\": \"<name>\", \"description\": \"<hint>\"} (`field` required) — "
+                "NOT a string array, keys are `field`/`description` (not name/type)."
             ),
         ),
         _make_popular_node_tool(

@@ -101,7 +101,11 @@ class Tool(Generic[InputModel]):
         try:
             args = self.input_model.model_validate(raw_args)
         except ValidationError as e:
-            return ToolResult.error(f"Invalid arguments for `{self.name}`:\n{e}")
+            hint = _format_hint_for_error(e)
+            msg = f"Invalid arguments for `{self.name}`:\n{e}"
+            if hint:
+                msg += "\n" + hint
+            return ToolResult.error(msg)
         return await self.handler(args, ctx)
 
 
@@ -132,6 +136,41 @@ def tool(
         )
 
     return decorator
+
+
+# Field-specific format hints, keyed by the leaf field name that appears in a
+# Pydantic error `loc`. When validation fails on one of these fields we append a
+# concrete, copy-pasteable example so the model can self-correct in one turn
+# instead of guessing the shape (e.g. searchFields wants dicts, not a string
+# array — issue #5).
+_FIELD_FORMAT_HINTS: dict[str, str] = {
+    "searchFields": (
+        "HINT: `searchFields` is an ARRAY OF OBJECTS, each "
+        "{\"field\": \"<name>\", \"description\": \"<optional hint>\"} — `field` "
+        "is required. Example: "
+        "[{\"field\": \"chat_id\", \"description\": \"user id\"}, {\"field\": \"kind\"}]. "
+        "A plain string array like [\"chat_id\", \"kind\"] or keys `name`/`type` "
+        "are NOT accepted."
+    ),
+    "jsonSchema": (
+        "HINT: `jsonSchema` is the JSON Schema serialized as a STRING (not an "
+        "object). Example: "
+        "'{\"type\":\"object\",\"properties\":{\"intent\":{\"type\":\"string\"}},"
+        "\"required\":[\"intent\"]}'. Only used when structuredOutput=true."
+    ),
+}
+
+
+def _format_hint_for_error(err: ValidationError) -> str:
+    """Return a concrete format hint for known fields touched by `err`, or ''."""
+    seen: set[str] = set()
+    hints: list[str] = []
+    for e in err.errors():
+        for part in e.get("loc", ()):  # type: ignore[union-attr]
+            if isinstance(part, str) and part in _FIELD_FORMAT_HINTS and part not in seen:
+                seen.add(part)
+                hints.append(_FIELD_FORMAT_HINTS[part])
+    return "\n".join(hints)
 
 
 def _pydantic_to_json_schema(model: type[BaseModel]) -> dict[str, Any]:
