@@ -73,6 +73,10 @@ broadcasts. You (the MCP client model) act as the bot builder.
   ASK for the key (then save via `credentials_create(type_key="ollama")`), AND in
   the same turn OFFER alternatives — OpenAI (`openai`), Google AI Studio
   (`ai_studio`). This is a MISSING value, so asking is allowed (not a permission ask).
+  ⚠️ Even if a credential for ANOTHER provider (Gemini/`ai_studio`, OpenAI) already
+  exists, do NOT silently use it — the default is ALWAYS Ollama. Never add a
+  Gemini/OpenAI provider node on your own; switch only if the user explicitly
+  picks that alternative or named another provider in their original request.
 - 💳 PAYMENT SYSTEM (PaymentNode): BEFORE adding the node, ASK the user to pick
   **click** or **paycue** (`ask_user` select) and set `paymentType` to ONLY `"click"`
   or `"paycue"`. Never invent another type (payme, uzcard...). PaymentNode = Botspace
