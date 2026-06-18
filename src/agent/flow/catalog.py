@@ -609,10 +609,19 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "qo'y — engine har chat uchun dialogni avtomatik eslaydi. Aks holda bot "
             "amneziyali bo'ladi (har xabarda oldingi gapni unutadi). "
             "TOOL ISHLAT: agent shunchaki matn yozmasin — real ma'lumot/harakat kerak "
-            "bo'lsa acc:ai_tool'ga tool ula (collection CRUD, http, custom_code, knowledge "
-            "RAG). Masalan 'narxni ayt' → AICollectionToolNode (real katalog), 'buyurtma "
-            "yarat' → collection create yoki custom_code. Tool'siz agent uydirma javob "
-            "berishi mumkin. "
+            "bo'lsa acc:ai_tool'ga tool ula. Tool'siz agent uydirma javob berishi mumkin. "
+            "TOOL TANLASH YO'RIQNOMASI: "
+            "• dinamik DB ma'lumoti (katalog, buyurtma, foydalanuvchi) o'qish/yozish → "
+            "AICollectionToolNode (read uchun operations=['read']); "
+            "• tashqi REST API chaqirish → AIHTTPToolNode (natija status-aware: model "
+            "4xx/5xx xatoni ko'radi); "
+            "• murakkab mantiq/hisob-kitob yoki bir nechta amal birga → "
+            "AICustomCodeToolNode (kuchli — Mongo yoz, Telegram yubor, http; ehtiyot bo'l); "
+            "• hujjat/bilim bazasi bo'yicha semantic (RAG) qidiruv → AIKnowledgeToolNode, "
+            "LEKIN faqat tashqi Qdrant URL + embedding kaliti aniq mavjud bo'lsa (built-in "
+            "vector DB YO'Q; aks holda tool jimgina tushib qoladi — o'rniga collection/http "
+            "ishlat). Masalan 'narxni ayt' → AICollectionToolNode (real katalog), 'buyurtma "
+            "yarat' → collection create yoki custom_code. "
             "STRUCTURED JSON: agent JSON qaytarishi kerak bo'lsa systemPrompt'da 'JSON "
             "qaytar' DEMA (ishonchsiz) — `structuredOutput:true` + `jsonSchema` (schema "
             "string) qo'y. Engine model'ni provider darajasida shu schema'ga majburlaydi "
@@ -718,6 +727,13 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         description=(
             "HTTP request tool sub-node. AIAgentNode'ning acc:ai_tool portiga ulanadi. "
             "tool='http_request'. LLM urlTemplate/bodyTemplate'ni tool args bilan chaqiradi. "
+            "QACHON: tashqi REST API'ga so'rov yuborish kerak bo'lganda. "
+            "NATIJA STATUS-AWARE: model javobda HTTP status'ni ko'radi — non-2xx bo'lsa "
+            "natijada status va ok=false bo'ladi (masalan {\"status\":404,\"ok\":false,...}), "
+            "shuning uchun model 4xx/5xx xatoni muvaffaqiyatdan farqlay oladi. "
+            "SSRF: ichki/private manzillar (localhost, 10/172/192.168, .internal) standart "
+            "bloklanadi; ataylab ichki API kerak bo'lsa allowInternal=true yoki allowedHosts "
+            "ro'yxatini ber. "
             "Edge: source=<this_id>, sourceHandle='source-default', "
             "target=<agent_id>, targetHandle='acc:ai_tool'."
         ),
@@ -725,6 +741,7 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         optional_data=[
             "tool", "toolName", "description", "parametersSchema",
             "method", "urlTemplate", "headers", "bodyTemplate", "timeout",
+            "allowInternal", "allowedHosts",
         ],
         source_handles=["source-default"],
         target_handles=[],
@@ -761,6 +778,12 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         description=(
             "Custom JavaScript tool sub-node. AIAgentNode'ning acc:ai_tool portiga ulanadi. "
             "tool='custom_code'. Goja sandbox'da ishlaydi, args + flow context mavjud. "
+            "QACHON: murakkab mantiq/hisob yoki bir nechta amalni birga bajarish kerak "
+            "bo'lganda (oddiy DB o'qish → collection, oddiy API → http afzal). "
+            "DIQQAT: to'liq engine imkoniyatiga ega — Mongo yoz (insert/update/delete), "
+            "Telegram yubor, http chaqir. Faqat kerakli amal uchun ehtiyot bilan kod yoz, "
+            "ataylab bo'lmagan buzg'unchi DB amallaridan saqlan, cheksiz loop yozma "
+            "(30s timeout bor). "
             "Edge: source=<this_id>, sourceHandle='source-default', "
             "target=<agent_id>, targetHandle='acc:ai_tool'."
         ),
@@ -780,7 +803,15 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "tool='knowledge'. Bot collection'ini vector DB'ga (lazy) embed qiladi va agent "
             "semantic qidiruv orqali tegishli hujjatlarni olishi mumkin — agent uni "
             "oddiy matnli `query` bilan chaqiradi. "
-            "embeddingProvider: openai|ollama|gemini. "
+            "QACHON: faqat hujjat/bilim bazasi bo'yicha semantic (RAG) qidiruv kerak bo'lsa. "
+            "OG'IR INFRA — bu tool'ni FAQAT tashqi Qdrant URL va embedding provider/kaliti "
+            "aniq mavjud bo'lganda qo'sh. Built-in vector DB YO'Q: vectorDbUrl bo'sh bo'lsa "
+            "engine tool'ni qura olmaydi va JIMGINA tashlab ketadi (agent tool'siz qoladi). "
+            "Shubha bo'lsa AIKnowledgeToolNode QO'SHMA — o'rniga AICollectionToolNode (read) "
+            "yoki AIHTTPToolNode ishlat. "
+            "vectorDbUrl: MAJBURIY — tashqi Qdrant URL (masalan https://qdrant.example:6333). "
+            "embeddingProvider: openai|ollama|gemini (majburiy, ishlaydigan kalit bilan). "
+            "embeddingModel + embeddingApiKey: majburiy (bo'sh model/kalit → tool ishlamaydi). "
             "topK: qaytariladigan hujjatlar soni (standart 5). "
             "Edge: source=<this_id>, sourceHandle='source-default', "
             "target=<agent_id>, targetHandle='acc:ai_tool'."

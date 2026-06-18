@@ -657,8 +657,12 @@ def build_flow_action_tools() -> list[Tool]:
             type_name="AIHTTPToolNode",
             data_model=AIHTTPToolData,
             description=(
-                "Add an HTTP request tool sub-node for an AIAgentNode. "
-                "Connect to acc:ai_tool. The LLM calls this tool with its own args."
+                "Add an HTTP request tool sub-node for an AIAgentNode (tool='http_request'). "
+                "Use for calling an external REST API. Connect to acc:ai_tool. The LLM calls "
+                "this tool with its own args. Result is status-aware: on non-2xx the model "
+                "sees the status and ok=false, so it can branch on 4xx/5xx. Internal/private "
+                "addresses are SSRF-blocked by default; set allowInternal=true or allowedHosts "
+                "only to deliberately reach an internal service."
             ),
         ),
         _make_popular_node_tool(
@@ -679,8 +683,12 @@ def build_flow_action_tools() -> list[Tool]:
             type_name="AICustomCodeToolNode",
             data_model=AICustomCodeToolData,
             description=(
-                "Add a custom JavaScript tool sub-node for an AIAgentNode. "
-                "Connect to acc:ai_tool. jsCode return value becomes the tool result."
+                "Add a custom JavaScript tool sub-node for an AIAgentNode (tool='custom_code'). "
+                "Use only for complex logic/computation or multi-step actions the "
+                "collection/http tools can't express. Connect to acc:ai_tool. jsCode return "
+                "value becomes the tool result. POWERFUL: full engine access (Mongo write, "
+                "Telegram send, http) — write only the needed operation, avoid unintended "
+                "destructive DB ops and infinite loops (30s timeout)."
             ),
         ),
         _make_popular_node_tool(
@@ -689,13 +697,18 @@ def build_flow_action_tools() -> list[Tool]:
             data_model=AIKnowledgeToolData,
             description=(
                 "Add a RAG knowledge retrieval tool sub-node for an AIAgentNode "
-                "(tool='knowledge'). Embeds the bot `collection` into a vector DB (lazy) "
-                "and lets the agent retrieve relevant docs via semantic search. "
-                "The agent calls it with a plain-text `query`. "
-                "Connect to acc:ai_tool after adding. "
-                "Required: collection. Optional: textFields, embeddingProvider "
-                "(openai|ollama|gemini), embeddingModel, embeddingApiKey, "
-                "embeddingBaseURL, vectorDbUrl, vectorDbApiKey, topK."
+                "(tool='knowledge'). Use ONLY for semantic (RAG) search over documents. "
+                "Embeds the bot `collection` into a vector DB (lazy) and lets the agent "
+                "retrieve relevant docs via semantic search; the agent calls it with a "
+                "plain-text `query`. Connect to acc:ai_tool after adding. "
+                "HEAVY INFRA — requires an EXTERNAL Qdrant URL plus an embedding "
+                "provider/key. There is NO built-in vector DB: if vectorDbUrl is empty the "
+                "engine fails to build the tool and silently skips it. Do NOT add this tool "
+                "unless you have a real Qdrant URL and embedding key; otherwise use the "
+                "collection (read) or http tool instead. "
+                "Required: collection, vectorDbUrl, embeddingProvider "
+                "(openai|ollama|gemini), embeddingModel, embeddingApiKey. "
+                "Optional: textFields, embeddingBaseURL, vectorDbApiKey, topK."
             ),
         ),
         # ── Core popular nodes ──────────────────────────────────────────

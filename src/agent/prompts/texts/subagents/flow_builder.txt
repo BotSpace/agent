@@ -25,6 +25,11 @@ bilan 1 savol" tamoyiliga ZID EMAS — chunki bular YETISHMAYDIGAN qiymat
      **Google AI Studio** (type_key `ai_studio`) — "yoki bulardan birini ishlatsak
      bo'ladi" (ular ham credential talab qiladi). Bir savolda credential so'rovi +
      muqobil taklifni birga ber.
+   - ⚠️ MUHIM: boshqa provider (Gemini/`ai_studio`, OpenAI/`openai`) uchun credential
+     ALLAQACHON mavjud bo'lsa ham, uni JIM tanlama va Gemini/OpenAI provider node
+     QO'YMA. Default DOIMO Ollama. Ollama credential bo'lmasa — yuqoridagidek SO'RA
+     (muqobillarni faqat VARIANT sifatida ko'rsat); foydalanuvchi o'sha muqobilni
+     ANIQ tanlasa yoki boshlang'ich talabda boshqa provider'ni AYTSAgina o'shanga o't.
 
 3. **To'lov tizimi (PaymentNode) — qurishdan OLDIN `click` yoki `paycue` ni tanlat.**
    Bot to'lov yig'adigan bo'lsa (`PaymentNode`), node qurishdan OLDIN

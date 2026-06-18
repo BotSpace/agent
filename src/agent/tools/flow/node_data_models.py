@@ -840,7 +840,20 @@ class _AIToolBase(_StrictData):
 
 
 class AIHTTPToolData(_AIToolBase):
-    """HTTP request tool. tool='http_request'. urlTemplate/bodyTemplate templated with tool args."""
+    """HTTP request tool. tool='http_request'. urlTemplate/bodyTemplate templated with tool args.
+
+    RESULT IS STATUS-AWARE: the model sees the HTTP status in the tool result, so it
+    can tell success from failure. On a non-2xx response the result includes the status
+    and an ok=false flag (e.g. {"status": 404, "ok": false, "body": ...}); on 2xx it
+    returns the body. Tell the model (via `description`) how to react to 4xx/5xx instead
+    of treating every reply as success.
+
+    SSRF GUARD: requests to internal/private addresses (localhost, 127.0.0.0/8,
+    10/172.16/192.168, link-local, .internal, etc.) are BLOCKED by default. To reach an
+    internal/private API on purpose, set allowInternal=true or list the exact hosts in
+    allowedHosts (anything not listed is still SSRF-checked). Only opt in when the
+    builder deliberately targets an internal service.
+    """
 
     tool: Literal["http_request"] = "http_request"
     method: str = Field(default="GET", description="HTTP method. '{{from_args}}' lets the LLM choose.")
@@ -848,6 +861,21 @@ class AIHTTPToolData(_AIToolBase):
     headers: dict[str, str] = Field(default_factory=dict, description="Static request headers.")
     bodyTemplate: str = Field(default="", description="Request body template.")
     timeout: int = Field(default=30, ge=1, description="Request timeout in seconds.")
+    allowInternal: bool = Field(
+        default=False,
+        description=(
+            "Opt-in: allow requests to internal/private addresses (off by default; SSRF "
+            "guard blocks them). Set true ONLY when intentionally calling an internal API."
+        ),
+    )
+    allowedHosts: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Opt-in allow-list of hosts permitted to bypass the SSRF guard (e.g. "
+            "['internal-api.svc']). Hosts not listed are still SSRF-checked. Use instead "
+            "of allowInternal to whitelist specific internal hosts only."
+        ),
+    )
 
 
 class AICollectionToolData(_AIToolBase):
@@ -921,12 +949,25 @@ class AICollectionToolData(_AIToolBase):
 
 
 class AICustomCodeToolData(_AIToolBase):
-    """Custom JavaScript tool. tool='custom_code'. Goja sandbox; args + flow context available."""
+    """Custom JavaScript tool. tool='custom_code'. Goja sandbox; args + flow context available.
+
+    POWERFUL — this tool has the FULL engine surface inside JS: MongoDB writes
+    (insert/update/upsert/delete), Telegram sends (send_message/send_photo/...), and
+    http_request. Treat it as a privileged action, not a scratchpad: write the minimum
+    code for exactly the operation you need, never destructive DB ops you didn't intend,
+    and avoid unbounded loops/recursion (there is a 30s execution timeout — a runaway
+    loop just makes the tool call fail). Prefer the narrower collection/http tools when
+    they suffice; reach for custom_code only for logic/computation they can't express.
+    """
 
     tool: Literal["custom_code"] = "custom_code"
     jsCode: str = Field(
         default="// return value becomes the tool result",
-        description="JavaScript. return value (or exit(value)) is the tool result. args and flow context available.",
+        description=(
+            "JavaScript. return value (or exit(value)) is the tool result. args and flow "
+            "context available. Has full engine access (Mongo write, Telegram send, http) — "
+            "write only the needed operation; avoid infinite loops (30s timeout)."
+        ),
     )
 
 
@@ -936,6 +977,13 @@ class AIKnowledgeToolData(_StrictData):
     Embeds the bot collection into a vector DB (lazy, on first call) and lets the
     agent retrieve semantically relevant documents by passing a plain-text `query`.
     CROSS-STREAM CONTRACT with constructor + engine (AIKnowledgeToolNode) — keep keys exact.
+
+    HEAVY INFRA — do NOT add this tool unless an EXTERNAL vector DB (Qdrant) and an
+    embedding provider/key are actually available and you have explicitly confirmed
+    their values. There is NO built-in vector DB: if `vectorDbUrl` is empty the engine
+    fails to build the tool and SILENTLY SKIPS it (the agent then has no tool and may
+    hallucinate). When in doubt, prefer AICollectionToolNode (read) or AIHTTPToolNode
+    for retrieval instead of this RAG tool.
     """
 
     tool: Literal["knowledge"] = "knowledge"
@@ -947,16 +995,39 @@ class AIKnowledgeToolData(_StrictData):
     )
     embeddingProvider: str = Field(
         default="openai",
-        description="Embedding provider: openai | ollama | gemini.",
+        description=(
+            "Embedding provider (REQUIRED): openai | ollama | gemini. Must match a "
+            "provider you have a working key/endpoint for — the engine fails to build "
+            "the tool if it cannot embed."
+        ),
     )
     embeddingModel: str = Field(
         default="text-embedding-3-small",
-        description="Embedding model id for the chosen provider.",
+        description=(
+            "Embedding model id for the chosen provider (REQUIRED, must be non-empty — "
+            "engine rejects an empty model)."
+        ),
     )
-    embeddingApiKey: str = Field(default="", description="API key for the embedding provider. May be {{env.KEY}}.")
+    embeddingApiKey: str = Field(
+        default="",
+        description=(
+            "API key for the embedding provider. May be {{env.KEY}}. REQUIRED for "
+            "openai/gemini (and any keyed Ollama endpoint) — without a valid key "
+            "embedding fails at first call and the tool returns errors."
+        ),
+    )
     embeddingBaseURL: str = Field(default="", description="Override endpoint URL for the embedding provider.")
-    vectorDbUrl: str = Field(default="", description="Vector DB connection URL (e.g. qdrant/weaviate). Empty = built-in.")
-    vectorDbApiKey: str = Field(default="", description="API key for the external vector DB.")
+    vectorDbUrl: str = Field(
+        default="",
+        description=(
+            "REQUIRED — external vector DB (Qdrant) connection URL. There is NO built-in "
+            "vector DB: leave this empty and the engine FAILS to build the tool and "
+            "silently skips it. Always set a real reachable Qdrant URL "
+            "(e.g. https://qdrant.example.com:6333). Do NOT add the knowledge tool at all "
+            "unless you have this URL."
+        ),
+    )
+    vectorDbApiKey: str = Field(default="", description="API key for the external vector DB (Qdrant), if it requires auth.")
     topK: int = Field(default=5, ge=1, description="Number of top documents to return per query.")
 
 
