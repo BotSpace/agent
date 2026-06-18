@@ -627,7 +627,11 @@ def build_flow_action_tools() -> list[Tool]:
             description=(
                 "Add an OpenAI provider sub-node. Then connect: "
                 "flow.connect_accessory(accessory_id=<this>, agent_id=<agent>, port='acc:ai_model'). "
-                "Default model: gpt-4o-mini."
+                "Default model: gpt-4o-mini. "
+                "⚠️ DEFAULT provider = Ollama, NOT OpenAI. Use this ONLY if the user "
+                "explicitly picks/names OpenAI — never switch to it on your own even if an "
+                "'openai' credential already exists. Requires credential_id (type_key "
+                "'openai'): credentials.list(type_key='openai'); if none, ask the user."
             ),
         ),
         _make_popular_node_tool(
@@ -635,8 +639,15 @@ def build_flow_action_tools() -> list[Tool]:
             type_name="AIOllamaProviderNode",
             data_model=AIOllamaProviderData,
             description=(
-                "Add an Ollama provider sub-node (local LLM). Connect to acc:ai_model. "
-                "Default model: llama3.1, baseURL: http://localhost:11434."
+                "Add an Ollama provider sub-node. THIS IS THE DEFAULT AI provider — use it "
+                "whenever a bot needs an LLM unless the user explicitly named another. "
+                "model is REQUIRED = 'gemma4:31b-cloud' (set it explicitly, never blank; "
+                "blank → engine falls back to an old model). baseURL = 'https://ollama.com/v1' "
+                "(CLOUD; the platform runs in the cloud, local 11434 does NOT work). "
+                "Connect to acc:ai_model. Requires credential_id (type_key 'ollama'): "
+                "credentials.list(type_key='ollama'); if none, tell the user 'Ollama "
+                "credential not found', ask for the key + credentials.create, and in the same "
+                "turn OFFER alternatives (OpenAI / Google AI Studio)."
             ),
         ),
         _make_popular_node_tool(
@@ -645,7 +656,11 @@ def build_flow_action_tools() -> list[Tool]:
             data_model=AIGeminiProviderData,
             description=(
                 "Add a Google Gemini provider sub-node. Connect to acc:ai_model. "
-                "Default model: gemini-1.5-flash."
+                "Default model: gemini-1.5-flash. "
+                "⚠️ DEFAULT provider = Ollama, NOT Gemini. Use this ONLY if the user "
+                "explicitly picks/names Gemini — never switch to it on your own even if an "
+                "'ai_studio' credential already exists. Requires credential_id (type_key "
+                "'ai_studio' — Google AI Studio): credentials.list(type_key='ai_studio')."
             ),
         ),
         _make_popular_node_tool(
@@ -783,11 +798,15 @@ def build_flow_action_tools() -> list[Tool]:
             type_name="EditOrSendMessageNode",
             data_model=EditOrSendMessageData,
             description=(
-                "PREFERRED message node: edits the previous bot message when possible, "
-                "sends a new one otherwise — menus/pages don't pile up in the chat. "
-                "messageText ({{var}} ok), inline keyboard via keyboard_kind+rows. "
+                "PREFERRED message node (default for ALL bot messages): edits the previous "
+                "bot message when possible, sends a new one otherwise — menus/pages don't "
+                "pile up in the chat. messageText ({{var}} ok), inline keyboard via "
+                "keyboard_kind+rows. "
                 "Use flow.add_send_text_message ONLY for reply keyboards "
-                "(request_contact/request_location)."
+                "(request_contact/request_location). "
+                "DESIGN: put a fitting emoji in every message + on every button, set "
+                "parseMode='HTML' and format with <b>…</b>/blank lines; warm copy in the "
+                "user's language, personalize with {{first_name}}. No dry 'salom'/'OK'."
             ),
         ),
         _make_popular_node_tool(
@@ -798,7 +817,9 @@ def build_flow_action_tools() -> list[Tool]:
                 "Send a NEW text message. Use ONLY when a reply keyboard is needed "
                 "(request_contact/request_location) or a separate message is explicitly "
                 "required — otherwise PREFER flow.add_edit_or_send (edits in place, "
-                "keeps the chat clean)."
+                "keeps the chat clean). "
+                "DESIGN: emoji in every message + on every button, parseMode='HTML' with "
+                "<b>…</b>/blank lines, warm copy, {{first_name}}. No dry 'salom'/'OK'."
             ),
         ),
         _make_popular_node_tool(
