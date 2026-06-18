@@ -8,9 +8,10 @@ bo'lgani uchun autonomy'ning "ko'pi bilan 1 savol" tamoyiliga ZID EMAS — darro
 so'raladi. Mohiyat:
 
 1. **AI provider DEFAULT = Ollama + model `gemma4:31b-cloud`** (cloud,
-   `flow.add_ai_ollama_provider`, `baseURL:"https://ollama.com/v1"`). `model`'ni
-   ANIQ `"gemma4:31b-cloud"` qil (bo'sh qoldirma). Faqat DEFAULT — foydalanuvchi
-   boshqa provider/model aytsa O'SHANI ishlat.
+   `flow.add_ai_ollama_provider`). `model`'ni ANIQ `"gemma4:31b-cloud"` qil
+   (bo'sh qoldirma). `baseURL`/`base_url` SET QILMA — endpoint CREDENTIAL'dan
+   keladi (engine o'qiydi; bo'sh bo'lsa provider-default). Faqat DEFAULT —
+   foydalanuvchi boshqa provider/model aytsa O'SHANI ishlat.
 
 2. **AI credential** — provider qurishdan OLDIN `credentials.list(type_key="ollama")`.
    Bor bo'lsa id'ni `data.credential_id`'ga ber. Yo'q bo'lsa: "Ollama credential
@@ -563,8 +564,8 @@ qilish mumkin (8.6).
 ### 8.2 Provider node — AYNAN BITTA, `acc:ai_model` portiga
 Har bir AI Agent uchun **AYNAN BITTA provider** node `acc:ai_model` portiga ulangan
 bo'lishi SHART (ko'p provider = validator xatosi). Provider tool'lari:
-`flow.add_ai_ollama_provider` (DEFAULT — `https://ollama.com/v1`,
-`gemma4:31b-cloud`), `flow.add_ai_openai_provider`, `flow.add_ai_gemini_provider`,
+`flow.add_ai_ollama_provider` (DEFAULT — `gemma4:31b-cloud`; base_url
+credential'dan, SET QILMA), `flow.add_ai_openai_provider`, `flow.add_ai_gemini_provider`,
 `flow.add_ai_anthropic_provider`. Har birining credential/model/default qoidasi
 O'SHA tool description'ida — qaytarmaymiz. Umumiy: openai/ollama/gemini
 `credential_id` ishlatadi (qo'lda `apiKey` EMAS); anthropic'da credential type YO'Q,
@@ -600,7 +601,7 @@ kalit beradi) → yangi id. Shu id'ni provider `data.credential_id`'ga ber.
 Turn 1 — node'larni qo'sh:
 ```
 flow.add_ai_agent(id="agent", data={systemPrompt:"...", outputKey:"agent_output"}, after=<prev_node>)
-flow.add_ai_ollama_provider(id="ai-prov", data={provider:"ollama", model:"gemma4:31b-cloud", baseURL:"https://ollama.com/v1", credential_id:<ollama-cred-id>})
+flow.add_ai_ollama_provider(id="ai-prov", data={provider:"ollama", model:"gemma4:31b-cloud", credential_id:<ollama-cred-id>})  # base_url credential'dan — SET QILMA
 flow.add_send_text_message(id="reply", data={messageText:"{{agent_output}}"}, after="agent")
 ```
 Turn 2 — provider'ni agent'ga ula:
@@ -782,7 +783,7 @@ flow.add_ai_ollama_provider(
     data={
         "provider": "ollama",
         "model": "gemma4:31b-cloud",  # DEFAULT model (XULQ-ATVOR qoidasi 1)
-        "baseURL": "https://ollama.com/v1",
+        # baseURL SET QILMA — base_url credential'dan keladi
         "credential_id": 12  # credentials.list(type_key="ollama") dan
     }
 )
