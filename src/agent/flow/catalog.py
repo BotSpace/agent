@@ -111,11 +111,16 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         type="PreCheckoutTriggerNode",
         category="trigger",
         description=(
-            "To'lov tasdiqlash (pre_checkout_query) trigger. filter: any/equals/"
-            "starts_with/contains (invoice payload bo'yicha), value: filter qiymati. "
+            "Telegram-native to'lov tasdiqlash (pre_checkout_query) trigger — FAQAT "
+            "SendInvoiceNode bilan ishlatiladi (Telegram Stars/provider). Zanjir: "
+            "SendInvoice → PreCheckout(autoAnswer) → SuccessfulPayment. "
+            "filter: any/equals/starts_with/contains (invoice payload bo'yicha — "
+            "SendInvoice'dagi `payload` bilan mos kelishi kerak), value: filter qiymati. "
             "autoAnswer (default true) — engine avtomatik ok=true javob beradi "
             "(10s ichida javob bo'lmasa to'lov yiqiladi). Doim global. Context: "
-            "pre_checkout_payload, pre_checkout_total_amount, pre_checkout_currency."
+            "pre_checkout_payload, pre_checkout_total_amount, pre_checkout_currency. "
+            "⚠️ PaymentNode (Click/Paycue) bilan ARALASHTIRMA — u alohida tizim "
+            "(paid/failed tarmoqlari), bu trigger'larga muhtoj EMAS."
         ),
         is_trigger=True,
     ),
@@ -123,9 +128,15 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         type="SuccessfulPaymentTriggerNode",
         category="trigger",
         description=(
-            "Muvaffaqiyatli to'lov trigger. filter/value — payload bo'yicha "
-            "(any/equals/starts_with/contains). Doim global. Context: payment_payload, "
-            "payment_total_amount, payment_currency, payment_telegram_charge_id."
+            "Telegram-native muvaffaqiyatli to'lov trigger — FAQAT SendInvoiceNode bilan "
+            "(Telegram Stars/provider). To'lov haqiqatan o'tganda ishga tushadi; bu yerda "
+            "tovar/xizmat beriladi (xabar, kanalga qo'shish, buyurtma tasdiqlash). "
+            "filter/value — payload bo'yicha (any/equals/starts_with/contains), "
+            "SendInvoice'dagi `payload` bilan mos. Doim global. Context: payment_payload, "
+            "payment_total_amount, payment_currency, payment_telegram_charge_id. "
+            "Zanjir: SendInvoice → PreCheckout(autoAnswer) → SuccessfulPayment(SHU yerda). "
+            "⚠️ PaymentNode (Click/Paycue) bilan ARALASHTIRMA — u paid/failed tarmoqlari "
+            "orqali natija beradi, bu trigger'ni TALAB QILMAYDI."
         ),
         is_trigger=True,
     ),
@@ -265,12 +276,19 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         type="SendInvoiceNode",
         category="send",
         description=(
-            "Telegram to'lov invoice yuborish. title/description/payload majburiy "
-            "({{var}} qo'llanadi). providerToken bo'sh = Telegram Stars; currency "
-            "default 'XTR'. prices: [{label, amount}] (amount eng kichik birlik, "
-            "XTR=stars soni). Ixtiyoriy: photoUrl, needName/needPhone/needEmail/"
-            "needShippingAddress. To'lov oqimi: SendInvoice -> PreCheckoutTrigger "
-            "(autoAnswer) -> SuccessfulPaymentTrigger."
+            "Telegram-NATIVE to'lov invoice yuborish (Telegram Stars yoki BotFather "
+            "provider tokeni). title/description/payload majburiy ({{var}} qo'llanadi). "
+            "providerToken bo'sh = Telegram Stars; currency default 'XTR'. "
+            "prices: [{label, amount}] (amount eng kichik birlik, XTR=stars soni). "
+            "Ixtiyoriy: photoUrl, needName/needPhone/needEmail/needShippingAddress. "
+            "TO'LIQ OQIM (3 node majburiy, faqat invoice yetmaydi): "
+            "SendInvoiceNode → PreCheckoutTriggerNode (autoAnswer=true, payload bilan mos) "
+            "→ SuccessfulPaymentTriggerNode (to'lov o'tganda tovar/xizmat shu yerda beriladi). "
+            "Uchovi `payload` orqali bog'lanadi. "
+            "⚠️ Bu PaymentNode EMAS: PaymentNode = Botspace lokal kartalar (Click/Paycue, "
+            "paid/failed tarmoqlari, callback bilan); SendInvoice = Telegram-native "
+            "(Stars/provider, PreCheckout+SuccessfulPayment trigger bilan). Ikkisini "
+            "ARALASHTIRMA va birga ishlatma."
         ),
         required_data=["title", "description", "payload", "prices"],
         optional_data=["providerToken", "currency", "photoUrl"],
@@ -899,6 +917,16 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "ulanadi. tool='payment_link'. Agent uchib to'lov havolasi yaratadi (sotuv-agent "
             "narx aytib so'ng hisob chiqaradi). LLM runtime args: amount (MAJBURIY), "
             "description. paymentType qurish vaqtida belgilanadi, LLM tanlamaydi. "
+            "⚠️ FIRE-AND-FORGET: bu tool faqat to'lov HAVOLASINI qaytaradi — to'lov "
+            "TASDIG'I (callback/paid event) YO'Q. Agent havola berdi, tugadi; bot to'langan-"
+            "to'lanmaganini BILMAYDI va unga reaksiya QILA OLMAYDI. "
+            "QACHON ISHLAT: faqat 'shunchaki to'lov havolasini ko'rsat' holati uchun. "
+            "Agar to'lov muvaffaqiyatiga REAKSIYA kerak bo'lsa (to'lasa tovar/xizmat ber, "
+            "kanalga qo'sh, buyurtmani tasdiqla) — bu tool EMAS, balki: "
+            "(a) PaymentNode (Click/Paycue, paid/failed tarmoqlari — bot to'lovni KUTADI va "
+            "branch qiladi), YOKI (b) Telegram-native invoice: SendInvoiceNode → "
+            "PreCheckoutTriggerNode (autoAnswer) → SuccessfulPaymentTriggerNode (to'lov "
+            "o'tganda global trigger ishga tushadi). "
             "QURISH QOIDASI (PaymentNode kabi): qo'shishdan oldin foydalanuvchidan provayderni "
             "SO'RA — 'click' yoki 'paycue' FAQAT, 'payme' O'YLAB TOPMA. "
             "Edge: source=<this_id>, sourceHandle='source-default', "

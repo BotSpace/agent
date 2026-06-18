@@ -766,9 +766,16 @@ def build_flow_action_tools() -> list[Tool]:
                 "Add a dynamic payment-link tool sub-node for an AIAgentNode "
                 "(tool='payment_link'). Lets the agent create a payment link on the fly "
                 "(e.g. a sales agent that quotes a price then bills the user). The LLM calls "
-                "it with args amount (required) and description. REQUIRED data paymentType — "
-                "ASK the user first (like PaymentNode): 'click' or 'paycue' ONLY, never invent "
-                "'payme'. Connect to acc:ai_tool."
+                "it with args amount (required) and description. "
+                "FIRE-AND-FORGET: returns only the payment LINK — there is NO payment "
+                "confirmation (no callback/paid event); the bot never learns if it was paid "
+                "and cannot react. Use this ONLY for 'just show a payment link'. "
+                "If the bot must react to a successful payment (deliver goods/access on "
+                "payment), do NOT use this tool — use PaymentNode (Click/Paycue, paid/failed "
+                "branches) or a Telegram invoice (SendInvoiceNode → PreCheckoutTriggerNode → "
+                "SuccessfulPaymentTriggerNode). "
+                "REQUIRED data paymentType — ASK the user first (like PaymentNode): "
+                "'click' or 'paycue' ONLY, never invent 'payme'. Connect to acc:ai_tool."
             ),
         ),
         # ── Core popular nodes ──────────────────────────────────────────
