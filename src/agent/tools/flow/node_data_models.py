@@ -238,7 +238,14 @@ class SendInvoiceData(_StrictData):
     payload: str = Field(
         description="Internal invoice id — match it in PreCheckout/SuccessfulPayment triggers.")
     providerToken: str | None = Field(default=None,
-        description="Payment provider token. Empty/None = Telegram Stars (XTR).")
+        description=(
+            "Telegram payment provider token. Empty/None = Telegram Stars (XTR). "
+            "NEVER invent or assume a provider (e.g. Payme/Click/Stripe) — a non-empty token "
+            "only works if the BOT OWNER first connected that provider in @BotFather and gave "
+            "you the exact token. If you don't have a real token, leave it EMPTY (Stars). "
+            "For ready-to-use in-bot card payments, prefer PaymentNode (Botspace Click/Paycue) "
+            "instead of a Telegram invoice."
+        ))
     currency: str = Field(default="XTR",
         description="ISO currency or 'XTR' for Telegram Stars.")
     prices: list[InvoicePrice] = Field(description="At least one price line.")
