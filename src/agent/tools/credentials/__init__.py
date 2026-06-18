@@ -47,7 +47,7 @@ def _backend(ctx: ToolContext) -> BackendClient:
 _NODE_TYPE_KEYS = (
     "AIOpenAIProviderNode→openai, AIOllamaProviderNode→ollama, "
     "AIGeminiProviderNode→ai_studio, GoogleSheetsNode→google_sheets, "
-    "GoogleDriveNode→google_drive, AIWebSearchToolNode→tavily, "
+    "GoogleDriveNode→google_drive, "
     "AIGoogleSheetsToolNode→google_sheets, HTTPRequestNode→any"
 )
 
@@ -106,7 +106,7 @@ async def credentials_list(input: CredentialsListInput, ctx: ToolContext) -> Too
         filt = f" of type `{input.type_key}`" if input.type_key else ""
         return ToolResult.ok(
             f"No credentials{filt} found for this user. For NON-OAuth types "
-            "(telegram/openai/ai_studio/ollama/tavily) you can make one with credentials.create when "
+            "(telegram/openai/ai_studio/ollama) you can make one with credentials.create when "
             "the user gives you the secret. For OAuth types (google_*) the user must connect them "
             "in the dashboard. node→type_key: " + _NODE_TYPE_KEYS + ".",
             data={"credentials": [], "total_items": 0},
@@ -136,14 +136,14 @@ _OAUTH_TYPE_KEYS = {"google_email", "google_sheets", "google_drive"}
 # Data fields per non-oauth type, to guide the LLM on what `data` to pass.
 _TYPE_FIELDS = (
     "telegram→{bot_token}, openai→{api_key, base_url?}, "
-    "ai_studio→{api_key}, ollama→{base_url, api_key?}, tavily→{api_key}"
+    "ai_studio→{api_key}, ollama→{base_url, api_key?}"
 )
 
 
 class CredentialsCreateInput(BaseModel):
     type_key: str = Field(
         description=(
-            "Credential type. NON-OAuth only: telegram | openai | ai_studio | ollama | tavily. "
+            "Credential type. NON-OAuth only: telegram | openai | ai_studio | ollama. "
             "OAuth types (google_*) cannot be created here — the user connects them in the "
             "dashboard."
         )
@@ -160,7 +160,7 @@ class CredentialsCreateInput(BaseModel):
 @tool(
     name="credentials.create",
     description=(
-        "Create a NON-OAuth credential (telegram/openai/ai_studio/ollama/tavily) when the user gives "
+        "Create a NON-OAuth credential (telegram/openai/ai_studio/ollama) when the user gives "
         "you the secret (api key / bot token). Returns the new id to use as `data.credential_id`. "
         "Fields per type: " + _TYPE_FIELDS + ". OAuth types (google_*) are REJECTED — the user "
         "must connect those via the dashboard's 'Connect with Google'. Note: the secret passes "

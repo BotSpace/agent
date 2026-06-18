@@ -624,8 +624,6 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "yarat' → collection create yoki custom_code; "
             "• joriy sana/vaqt yoki sana hisobi (bron/jadval/eslatma) → AIDateTimeToolNode "
             "(credential YO'Q); "
-            "• internetdan yangi/joriy ma'lumot (yangilik, narx, o'zgaruvchan fakt) → "
-            "AIWebSearchToolNode (Tavily — type_key='tavily' credential MAJBURIY); "
             "• Google Sheet o'qish/yozish (lookup, log, buyurtma jurnali) → "
             "AIGoogleSheetsToolNode (type_key='google_sheets' OAuth credential, dashboard'da "
             "Connect with Google); "
@@ -853,27 +851,6 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         ),
         required_data=[],
         optional_data=["tool", "toolName", "tz", "format"],
-        source_handles=["source-default"],
-        target_handles=[],
-        is_accessory=True,
-    ),
-    "AIWebSearchToolNode": NodeTypeSpec(
-        type="AIWebSearchToolNode",
-        category="ai",
-        description=(
-            "Tavily web-search tool sub-node. AIAgentNode'ning acc:ai_tool portiga ulanadi. "
-            "tool='web_search'. QACHON: agentga internetdan YANGI/joriy ma'lumot kerak "
-            "bo'lganda (yangilik, narx, o'zgaruvchan fakt) — eskirgan model xotirasi o'rniga. "
-            "LLM uni `query` argi bilan chaqiradi. "
-            "CREDENTIAL MAJBURIY: credential_id — type_key 'tavily' "
-            "(credentials.list(type_key='tavily')). Yo'q bo'lsa: foydalanuvchidan Tavily API "
-            "kalitini so'rab credentials.create(type_key='tavily', data={api_key}) qil "
-            "(non-OAuth, ruxsat). Ixtiyoriy: maxResults (default 5). "
-            "Edge: source=<this_id>, sourceHandle='source-default', "
-            "target=<agent_id>, targetHandle='acc:ai_tool'."
-        ),
-        required_data=["credential_id"],
-        optional_data=["tool", "toolName", "maxResults"],
         source_handles=["source-default"],
         target_handles=[],
         is_accessory=True,
