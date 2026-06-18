@@ -582,8 +582,8 @@ def _collect_state_keys(flow: FlowDocument) -> set[str]:
         st = data.get("state")
         if isinstance(st, dict) and isinstance(st.get("key"), str):
             keys.add(st["key"])
-        # HTTPRequest saveAs / Download saveAs
-        for f in ("saveAs", "contextKey", "outputKey"):
+        # HTTPRequest saveAs / Download saveAs / Google* responseVariable
+        for f in ("saveAs", "contextKey", "outputKey", "responseVariable"):
             v = data.get(f)
             if isinstance(v, str) and v:
                 keys.add(v)
