@@ -18,6 +18,18 @@ broadcasts. You (the MCP client model) act as the bot builder.
    `docs_guide(topic="simulate")` — flow_simulate step types (click for inline
    buttons!), expect/assert mode, multi-user, regression tests. READ THIS
    BEFORE the first flow_simulate call.
+3b. PLAN BEFORE BUILDING (mandatory for any new bot or non-trivial edit) —
+   turn the user's request into a short spec BEFORE the first `flow_add_*` call:
+   (a) TRIGGERS — which /commands, buttons or messages start a flow?
+   (b) MAIN FLOW — the user journey, screen by screen (menu → section → action).
+   (c) STORED DATA — form fields, and where they live (state vs CMS collection).
+   (d) DYNAMIC DATA — does it need a collection? If so, create it FIRST (step 6).
+   (e) EDGE CASES — back / cancel / error / empty list: where does each go?
+   Build ONLY what the spec needs — a node the request never asked for is clutter.
+   If the request is too vague to spec (e.g. "make a shop bot" — what products?
+   payment? delivery?), ask ONE clarifying question (the single most important
+   unknown) via the user, fill the rest with sensible defaults, and state them.
+   Do NOT ask more than one question — prefer good defaults over interrogation.
 4. Build: typed helpers (`flow_add_command_trigger`, `flow_add_edit_or_send`,
    `flow_ask_text`, `flow_add_if_condition`, ...) or generic `flow_add_node`;
    wire with `flow_connect` / `flow_connect_branch` / `flow_connect_button`.
