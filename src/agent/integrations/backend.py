@@ -778,6 +778,30 @@ class BackendClient:
         )
         return _unwrap_list(d)
 
+    async def create_credential(
+        self, body: dict[str, Any], *, auth_claims: dict | None = None
+    ) -> dict[str, Any]:
+        """Owner-scoped credential create (POST /api/v1/credentials/).
+        body = {type_key, name, data:{...}}. oauth2 types come from the OAuth flow, not here.
+        """
+        d = await self._request("POST", "/api/v1/credentials/", json=body, **_auth_kw(auth_claims))
+        return _unwrap_item(d)
+
+    async def update_credential(
+        self, credential_id: str | int, body: dict[str, Any], *, auth_claims: dict | None = None
+    ) -> dict[str, Any]:
+        d = await self._request(
+            "PATCH", f"/api/v1/credentials/{credential_id}/", json=body, **_auth_kw(auth_claims)
+        )
+        return _unwrap_item(d)
+
+    async def delete_credential(
+        self, credential_id: str | int, *, auth_claims: dict | None = None
+    ) -> None:
+        await self._request(
+            "DELETE", f"/api/v1/credentials/{credential_id}/", **_auth_kw(auth_claims)
+        )
+
     # ── plans (billing) ───────────────────────────────────────────────
     async def list_plans(self, *, auth_claims: dict | None = None) -> list[dict[str, Any]]:
         d = await self._request("GET", "/api/plans/", **_auth_kw(auth_claims))
