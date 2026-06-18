@@ -66,12 +66,14 @@ def test_flow_builder_prompt_teaches_collections_first():
 
 
 def test_flow_builder_prompt_ai_provider_ollama_is_cloud():
-    """Pattern 8 rewrite: Ollama default baseURL must be the CLOUD endpoint
-    (https://ollama.com/v1) requiring an apiKey — NOT local 11434."""
+    """Ollama is the DEFAULT cloud provider. base_url now comes from the CREDENTIAL
+    (engine resolves it) — the agent must NOT set baseURL in the provider node, so the
+    prompt no longer hard-codes https://ollama.com/v1 as a node field."""
     prompt = REGISTRY["flow-builder"].system_prompt
     assert "flow.add_ai_ollama_provider" in prompt
-    assert "https://ollama.com/v1" in prompt
-    # The wrong local endpoint must not be presented as a baseURL/default.
+    # base_url moved to the credential — the agent must not set baseURL anymore.
+    assert "https://ollama.com/v1" not in prompt
+    # The wrong local endpoint must not be presented as a baseURL/default either.
     assert "localhost:11434" not in prompt
     assert "http://localhost" not in prompt
     # All four provider typed tools are documented.

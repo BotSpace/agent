@@ -659,13 +659,13 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "OpenAI provider sub-node. AIAgentNode'ning acc:ai_model portiga ulanadi. "
             "provider='openai', default model='gpt-4o-mini'. KALIT: manual apiKey "
             "EMAS — credential_id (type_key 'openai') bering "
-            "(credentials.list(type_key='openai')). Engine runtime'da api_key/base_url'ga "
-            "aylantiradi. "
+            "(credentials.list(type_key='openai')). Engine runtime'da credential'dan "
+            "api_key/base_url'ga aylantiradi (baseURL SET QILMA). "
             "Edge: source=<this_id>, sourceHandle='source-default', "
             "target=<agent_id>, targetHandle='acc:ai_model'."
         ),
         required_data=[],
-        optional_data=["provider", "credential_id", "apiKey", "model", "baseURL", "temperature", "maxTokens", "extraHeaders", "extraParams"],
+        optional_data=["provider", "credential_id", "apiKey", "model", "temperature", "maxTokens", "extraHeaders", "extraParams"],
         source_handles=["source-default"],
         target_handles=[],
         is_accessory=True,
@@ -676,18 +676,18 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         description=(
             "Ollama provider sub-node. AIAgentNode'ning acc:ai_model portiga ulanadi. "
             "AFZAL (DEFAULT) AI provider — bot LLM ishlatsa shuni tanla. "
-            "provider='ollama', baseURL='https://ollama.com/v1' (bulut — platforma bulutda "
-            "ishlaydi, localhost ISHLAMAYDI). AFZAL model='gemma4:31b-cloud' (cloud model, "
-            "ollama.com/v1'da mavjud) — model'ni ANIQ shunga sozla, bo'sh qoldirma "
-            "(bo'sh qolsa engine eski fallback 'gpt-oss:120b'ni oladi). KALIT: credential_id "
-            "(type_key 'ollama') bering (credentials.list(type_key='ollama')) — manual apiKey "
-            "EMAS. Credential yo'q bo'lsa: foydalanuvchidan kalit so'rab credentials.create "
-            "qiling YOKI muqobil providerni (openai / ai_studio) taklif qiling. "
+            "provider='ollama'. Endpoint (base_url) CREDENTIAL'dan keladi — baseURL SET QILMA "
+            "(bo'sh qoldir; engine credential'dan oladi, bo'sh bo'lsa provider-default). "
+            "AFZAL model='gemma4:31b-cloud' (cloud model) — model'ni ANIQ shunga sozla, bo'sh "
+            "qoldirma (bo'sh qolsa engine eski fallback 'gpt-oss:120b'ni oladi). KALIT: "
+            "credential_id (type_key 'ollama') bering (credentials.list(type_key='ollama')) — "
+            "manual apiKey EMAS. Credential yo'q bo'lsa: foydalanuvchidan kalit so'rab "
+            "credentials.create qiling YOKI muqobil providerni (openai / ai_studio) taklif qiling. "
             "Edge: source=<this_id>, sourceHandle='source-default', "
             "target=<agent_id>, targetHandle='acc:ai_model'."
         ),
         required_data=[],
-        optional_data=["provider", "credential_id", "apiKey", "model", "baseURL", "temperature", "maxTokens", "extraHeaders", "extraParams"],
+        optional_data=["provider", "credential_id", "apiKey", "model", "temperature", "maxTokens", "extraHeaders", "extraParams"],
         source_handles=["source-default"],
         target_handles=[],
         is_accessory=True,
@@ -700,11 +700,12 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "provider='gemini', default model='gemini-1.5-flash'. KALIT: credential_id "
             "(type_key 'ai_studio' — Google AI Studio) bering "
             "(credentials.list(type_key='ai_studio')) — manual apiKey EMAS. "
+            "base_url credential'dan keladi — baseURL SET QILMA. "
             "Edge: source=<this_id>, sourceHandle='source-default', "
             "target=<agent_id>, targetHandle='acc:ai_model'."
         ),
         required_data=[],
-        optional_data=["provider", "credential_id", "apiKey", "model", "baseURL", "temperature", "maxTokens", "extraHeaders", "extraParams"],
+        optional_data=["provider", "credential_id", "apiKey", "model", "temperature", "maxTokens", "extraHeaders", "extraParams"],
         source_handles=["source-default"],
         target_handles=[],
         is_accessory=True,
@@ -717,12 +718,12 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "provider='anthropic', default model='claude-3-5-haiku-latest'. "
             "ESLATMA: registry'da 'anthropic' credential type'i YO'Q — bu provider "
             "hanuz manual apiKey ishlatadi (ask_user bilan haqiqiy kalit ol). "
-            "credential_id qo'llab-quvvatlanmaydi. "
+            "credential_id qo'llab-quvvatlanmaydi. baseURL SET QILMA (default ishlatiladi). "
             "Edge: source=<this_id>, sourceHandle='source-default', "
             "target=<agent_id>, targetHandle='acc:ai_model'."
         ),
         required_data=[],
-        optional_data=["provider", "apiKey", "model", "baseURL", "temperature", "maxTokens", "extraHeaders", "extraParams"],
+        optional_data=["provider", "apiKey", "model", "temperature", "maxTokens", "extraHeaders", "extraParams"],
         source_handles=["source-default"],
         target_handles=[],
         is_accessory=True,

@@ -762,7 +762,14 @@ class _AIProviderBase(_StrictData):
 
     apiKey: str = Field(default="", description="API key. Never logged.")
     model: str = Field(default="", description="Model id. Leave empty to use node-type default.")
-    baseURL: str = Field(default="", description="Override endpoint URL. Leave empty for default.")
+    baseURL: str = Field(
+        default="",
+        description=(
+            "DO NOT SET. The endpoint comes from the CREDENTIAL (engine resolves it at "
+            "runtime; empty → provider default). Field kept only for legacy/local-Ollama "
+            "(localhost) flows — leave it EMPTY for every cloud provider."
+        ),
+    )
     temperature: float = Field(default=0.7, description="Sampling temperature.")
     maxTokens: int | None = Field(default=None, description="Max response tokens.")
     extraHeaders: dict[str, str] = Field(default_factory=dict, description="Optional raw header map.")
@@ -800,16 +807,16 @@ class AIOpenAIProviderData(_AICredentialProviderBase):
 
 
 class AIOllamaProviderData(_AICredentialProviderBase):
-    """Ollama provider. provider='ollama', baseURL='https://ollama.com/v1' (cloud).
+    """Ollama provider. provider='ollama'. Endpoint comes from the CREDENTIAL.
 
     PREFERRED (default) AI provider. Set model EXPLICITLY to 'gemma4:31b-cloud'
-    (cloud model on ollama.com/v1); leaving model empty falls back to the engine
-    default 'gpt-oss:120b'. credential_id → type_key 'ollama'.
+    (cloud model); leaving model empty falls back to the engine default
+    'gpt-oss:120b'. DO NOT set baseURL — the engine reads the endpoint from the
+    credential (type_key 'ollama', empty → provider default ollama.com/v1).
     credentials.list(type_key='ollama').
     """
 
     provider: Literal["ollama"] = "ollama"
-    baseURL: str = Field(default="https://ollama.com/v1", description="Ollama endpoint. Cloud: https://ollama.com/v1")
 
 
 class AIGeminiProviderData(_AICredentialProviderBase):
