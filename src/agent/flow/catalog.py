@@ -129,6 +129,20 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         ),
         is_trigger=True,
     ),
+    "PaymentStatusTriggerNode": NodeTypeSpec(
+        type="PaymentStatusTriggerNode",
+        category="trigger",
+        description=(
+            "Botspace Payment Link status trigger. AI payment_link tool order yaratganda "
+            "tool natijasida order_id qaytadi; backend to'lov callback yuborganda shu trigger "
+            "ishga tushadi. status: paid/failed/any, orderId/provider ixtiyoriy filter. "
+            "Context: payment_order_id, payment_status, payment_amount, payment_net, "
+            "payment_commission, payment_comment, payment_provider; aliaslar: order_id, "
+            "status, amount, provider."
+        ),
+        optional_data=["status", "orderId", "provider", "global"],
+        is_trigger=True,
+    ),
     "ChatJoinRequestTriggerNode": NodeTypeSpec(
         type="ChatJoinRequestTriggerNode",
         category="trigger",

@@ -29,7 +29,7 @@ class _StrictData(BaseModel):
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# TRIGGER (7)
+# TRIGGER
 # ═════════════════════════════════════════════════════════════════════════════
 
 
@@ -102,6 +102,17 @@ class SuccessfulPaymentTriggerData(_StrictData):
         description="Invoice payload filter mode.")
     value: str | None = Field(default=None,
         description="Payload filter value (unused when filter='any').")
+    global_: bool = Field(default=True, alias="global",
+        description="Always-global trigger.")
+
+
+class PaymentStatusTriggerData(_StrictData):
+    status: Literal["any", "paid", "failed"] = Field(default="paid",
+        description="Payment callback status to match.")
+    orderId: str | None = Field(default=None,
+        description="Optional exact Botspace payment order id filter.")
+    provider: Literal["", "click", "paycue"] = Field(default="",
+        description="Optional provider filter; empty means any.")
     global_: bool = Field(default=True, alias="global",
         description="Always-global trigger.")
 
@@ -1140,6 +1151,7 @@ NODE_DATA_MODELS: dict[str, type[_StrictData]] = {
     "ExternalWebhookTriggerNode": ExternalWebhookTriggerData,
     "PreCheckoutTriggerNode": PreCheckoutTriggerData,
     "SuccessfulPaymentTriggerNode": SuccessfulPaymentTriggerData,
+    "PaymentStatusTriggerNode": PaymentStatusTriggerData,
     "ChatJoinRequestTriggerNode": ChatJoinRequestTriggerData,
     # send
     "SendTextMessageNode": SendTextMessageData,
