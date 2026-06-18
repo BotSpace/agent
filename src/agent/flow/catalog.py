@@ -621,7 +621,16 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "LEKIN faqat tashqi Qdrant URL + embedding kaliti aniq mavjud bo'lsa (built-in "
             "vector DB YO'Q; aks holda tool jimgina tushib qoladi — o'rniga collection/http "
             "ishlat). Masalan 'narxni ayt' → AICollectionToolNode (real katalog), 'buyurtma "
-            "yarat' → collection create yoki custom_code. "
+            "yarat' → collection create yoki custom_code; "
+            "• joriy sana/vaqt yoki sana hisobi (bron/jadval/eslatma) → AIDateTimeToolNode "
+            "(credential YO'Q); "
+            "• internetdan yangi/joriy ma'lumot (yangilik, narx, o'zgaruvchan fakt) → "
+            "AIWebSearchToolNode (Tavily — type_key='tavily' credential MAJBURIY); "
+            "• Google Sheet o'qish/yozish (lookup, log, buyurtma jurnali) → "
+            "AIGoogleSheetsToolNode (type_key='google_sheets' OAuth credential, dashboard'da "
+            "Connect with Google); "
+            "• AI dinamik to'lov havolasi yaratsin (sotuv-agent narx aytib hisob chiqarsin) → "
+            "AIPaymentLinkToolNode (paymentType click|paycue — qurishdan oldin SO'RA, payme YO'Q). "
             "STRUCTURED JSON: agent JSON qaytarishi kerak bo'lsa systemPrompt'da 'JSON "
             "qaytar' DEMA (ishonchsiz) — `structuredOutput:true` + `jsonSchema` (schema "
             "string) qo'y. Engine model'ni provider darajasida shu schema'ga majburlaydi "
@@ -823,6 +832,88 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "embeddingApiKey", "embeddingBaseURL",
             "vectorDbUrl", "vectorDbApiKey", "topK",
         ],
+        source_handles=["source-default"],
+        target_handles=[],
+        is_accessory=True,
+    ),
+    "AIDateTimeToolNode": NodeTypeSpec(
+        type="AIDateTimeToolNode",
+        category="ai",
+        description=(
+            "Date/time tool sub-node. AIAgentNode'ning acc:ai_tool portiga ulanadi. "
+            "tool='datetime'. Credential YO'Q. Agentga haqiqiy soat + sana hisobini beradi — "
+            "u 'bugun'/'hozir'ni taxmin qilmaydi, sanalarni o'z 'boshida' hisoblamaydi. "
+            "LLM runtime args: op (now|add|diff), amount, unit "
+            "(minutes|hours|days|weeks|months|years), from, to (ISO). "
+            "QACHON: bron/jadval/eslatma botlari joriy sana yoki '3 kundan keyin' / "
+            "'X gacha necha kun' kerak bo'lganda. "
+            "Ixtiyoriy data: tz (IANA, default UTC), format. "
+            "Edge: source=<this_id>, sourceHandle='source-default', "
+            "target=<agent_id>, targetHandle='acc:ai_tool'."
+        ),
+        required_data=[],
+        optional_data=["tool", "toolName", "tz", "format"],
+        source_handles=["source-default"],
+        target_handles=[],
+        is_accessory=True,
+    ),
+    "AIWebSearchToolNode": NodeTypeSpec(
+        type="AIWebSearchToolNode",
+        category="ai",
+        description=(
+            "Tavily web-search tool sub-node. AIAgentNode'ning acc:ai_tool portiga ulanadi. "
+            "tool='web_search'. QACHON: agentga internetdan YANGI/joriy ma'lumot kerak "
+            "bo'lganda (yangilik, narx, o'zgaruvchan fakt) — eskirgan model xotirasi o'rniga. "
+            "LLM uni `query` argi bilan chaqiradi. "
+            "CREDENTIAL MAJBURIY: credential_id — type_key 'tavily' "
+            "(credentials.list(type_key='tavily')). Yo'q bo'lsa: foydalanuvchidan Tavily API "
+            "kalitini so'rab credentials.create(type_key='tavily', data={api_key}) qil "
+            "(non-OAuth, ruxsat). Ixtiyoriy: maxResults (default 5). "
+            "Edge: source=<this_id>, sourceHandle='source-default', "
+            "target=<agent_id>, targetHandle='acc:ai_tool'."
+        ),
+        required_data=["credential_id"],
+        optional_data=["tool", "toolName", "maxResults"],
+        source_handles=["source-default"],
+        target_handles=[],
+        is_accessory=True,
+    ),
+    "AIGoogleSheetsToolNode": NodeTypeSpec(
+        type="AIGoogleSheetsToolNode",
+        category="ai",
+        description=(
+            "Google Sheets tool sub-node. AIAgentNode'ning acc:ai_tool portiga ulanadi. "
+            "tool='google_sheets'. Agent Google Sheet'ni o'qiydi/qator qo'shadi (lookup "
+            "jadval, log, buyurtma jurnali). LLM runtime args: operation (read|append), "
+            "spreadsheet_id, sheet, range, values. "
+            "CREDENTIAL MAJBURIY: credential_id — type_key 'google_sheets' OAuth "
+            "(credentials.list(type_key='google_sheets')). API orqali YARATIB BO'LMAYDI — "
+            "foydalanuvchi dashboard'da 'Connect with Google' qiladi. "
+            "Ixtiyoriy default'lar: spreadsheetId, sheet, operation. "
+            "Edge: source=<this_id>, sourceHandle='source-default', "
+            "target=<agent_id>, targetHandle='acc:ai_tool'."
+        ),
+        required_data=["credential_id"],
+        optional_data=["tool", "toolName", "spreadsheetId", "sheet", "operation"],
+        source_handles=["source-default"],
+        target_handles=[],
+        is_accessory=True,
+    ),
+    "AIPaymentLinkToolNode": NodeTypeSpec(
+        type="AIPaymentLinkToolNode",
+        category="ai",
+        description=(
+            "Dinamik to'lov-havola tool sub-node. AIAgentNode'ning acc:ai_tool portiga "
+            "ulanadi. tool='payment_link'. Agent uchib to'lov havolasi yaratadi (sotuv-agent "
+            "narx aytib so'ng hisob chiqaradi). LLM runtime args: amount (MAJBURIY), "
+            "description. paymentType qurish vaqtida belgilanadi, LLM tanlamaydi. "
+            "QURISH QOIDASI (PaymentNode kabi): qo'shishdan oldin foydalanuvchidan provayderni "
+            "SO'RA — 'click' yoki 'paycue' FAQAT, 'payme' O'YLAB TOPMA. "
+            "Edge: source=<this_id>, sourceHandle='source-default', "
+            "target=<agent_id>, targetHandle='acc:ai_tool'."
+        ),
+        required_data=["paymentType"],
+        optional_data=["tool", "toolName"],
         source_handles=["source-default"],
         target_handles=[],
         is_accessory=True,

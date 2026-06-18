@@ -20,9 +20,13 @@ from .node_data_models import (
     AIAnthropicProviderData,
     AICollectionToolData,
     AICustomCodeToolData,
+    AIDateTimeToolData,
     AIGeminiProviderData,
+    AIGoogleSheetsToolData,
     AIHTTPToolData,
     AIKnowledgeToolData,
+    AIPaymentLinkToolData,
+    AIWebSearchToolData,
     AIOllamaProviderData,
     AIOpenAIProviderData,
     CallbackQueryTriggerData,
@@ -542,7 +546,8 @@ _ACC_PORT_ACCEPTS: dict[str, frozenset[str]] = {
     }),
     "acc:ai_tool": frozenset({
         "AIHTTPToolNode", "AICollectionToolNode", "AICustomCodeToolNode",
-        "AIKnowledgeToolNode",
+        "AIKnowledgeToolNode", "AIDateTimeToolNode", "AIWebSearchToolNode",
+        "AIGoogleSheetsToolNode", "AIPaymentLinkToolNode",
     }),
 }
 
@@ -709,6 +714,61 @@ def build_flow_action_tools() -> list[Tool]:
                 "Required: collection, vectorDbUrl, embeddingProvider "
                 "(openai|ollama|gemini), embeddingModel, embeddingApiKey. "
                 "Optional: textFields, embeddingBaseURL, vectorDbApiKey, topK."
+            ),
+        ),
+        _make_popular_node_tool(
+            name="flow.add_ai_datetime_tool",
+            type_name="AIDateTimeToolNode",
+            data_model=AIDateTimeToolData,
+            description=(
+                "Add a date/time tool sub-node for an AIAgentNode (tool='datetime'). "
+                "NO credential. Gives the agent a real clock + date math so it never "
+                "guesses 'today'/'now' or computes dates in its head. The LLM calls it with "
+                "args op (now|add|diff), amount, unit, from, to. Use for booking / "
+                "scheduling / reminder bots that need the current date or 'N days from now' / "
+                "'days until X'. Optional data: tz (IANA, default UTC), format. Connect to "
+                "acc:ai_tool."
+            ),
+        ),
+        _make_popular_node_tool(
+            name="flow.add_ai_web_search_tool",
+            type_name="AIWebSearchToolNode",
+            data_model=AIWebSearchToolData,
+            description=(
+                "Add a Tavily web-search tool sub-node for an AIAgentNode (tool='web_search'). "
+                "Use when the agent needs FRESH/current info from the internet (news, prices, "
+                "changing facts) instead of stale model memory. The LLM calls it with a `query` "
+                "arg. REQUIRES credential_id of a type_key='tavily' credential — "
+                "credentials.list(type_key='tavily'); if none, ask the user for their Tavily "
+                "API key and credentials.create(type_key='tavily', data={api_key}) (non-OAuth, "
+                "allowed). Optional maxResults (default 5). Connect to acc:ai_tool."
+            ),
+        ),
+        _make_popular_node_tool(
+            name="flow.add_ai_google_sheets_tool",
+            type_name="AIGoogleSheetsToolNode",
+            data_model=AIGoogleSheetsToolData,
+            description=(
+                "Add a Google Sheets tool sub-node for an AIAgentNode (tool='google_sheets'). "
+                "Lets the agent read/append a Google Sheet (lookup table, log, order journal). "
+                "The LLM calls it with args operation (read|append), spreadsheet_id, sheet, "
+                "range, values. REQUIRES credential_id of a type_key='google_sheets' OAuth "
+                "credential — credentials.list(type_key='google_sheets'); it CANNOT be created "
+                "via API, the user connects it in the dashboard ('Connect with Google'). "
+                "Optional defaults: spreadsheetId, sheet, operation. Connect to acc:ai_tool."
+            ),
+        ),
+        _make_popular_node_tool(
+            name="flow.add_ai_payment_link_tool",
+            type_name="AIPaymentLinkToolNode",
+            data_model=AIPaymentLinkToolData,
+            description=(
+                "Add a dynamic payment-link tool sub-node for an AIAgentNode "
+                "(tool='payment_link'). Lets the agent create a payment link on the fly "
+                "(e.g. a sales agent that quotes a price then bills the user). The LLM calls "
+                "it with args amount (required) and description. REQUIRED data paymentType — "
+                "ASK the user first (like PaymentNode): 'click' or 'paycue' ONLY, never invent "
+                "'payme'. Connect to acc:ai_tool."
             ),
         ),
         # ── Core popular nodes ──────────────────────────────────────────
