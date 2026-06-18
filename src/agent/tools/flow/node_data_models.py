@@ -1062,32 +1062,6 @@ class AIDateTimeToolData(_StrictData):
     )
 
 
-class AIWebSearchToolData(_StrictData):
-    """Tavily web search tool. tool='web_search'. REQUIRES a `tavily` credential.
-
-    Lets the agent fetch FRESH / current information from the public internet
-    (news, prices, facts that change) instead of relying on stale model memory.
-    The LLM calls it with a runtime `query` arg (engine builds parametersSchema).
-    CROSS-STREAM CONTRACT with engine (AIWebSearchToolNode) — keep keys exact.
-
-    CREDENTIAL: `credential_id` of a type_key='tavily' credential is REQUIRED.
-    Find it with credentials.list(type_key='tavily'); if none exists, ask the user
-    for their Tavily API key and create one with
-    credentials.create(type_key='tavily', data={api_key}) (non-OAuth, allowed).
-    """
-
-    tool: Literal["web_search"] = "web_search"
-    toolName: str = Field(default="web_search", description="Function name given to the LLM (^[a-zA-Z0-9_]+$).")
-    credential_id: int = Field(
-        description="type_key 'tavily' credential id (REQUIRED). credentials.list(type_key='tavily').",
-    )
-    maxResults: int = Field(
-        default=5,
-        ge=1,
-        description="Max search results returned to the agent (default 5).",
-    )
-
-
 class AIGoogleSheetsToolData(_StrictData):
     """Google Sheets agent tool. tool='google_sheets'. REQUIRES a `google_sheets` credential.
 
@@ -1233,7 +1207,6 @@ NODE_DATA_MODELS: dict[str, type[_StrictData]] = {
     "AICustomCodeToolNode": AICustomCodeToolData,
     "AIKnowledgeToolNode": AIKnowledgeToolData,
     "AIDateTimeToolNode": AIDateTimeToolData,
-    "AIWebSearchToolNode": AIWebSearchToolData,
     "AIGoogleSheetsToolNode": AIGoogleSheetsToolData,
     "AIPaymentLinkToolNode": AIPaymentLinkToolData,
 }

@@ -574,7 +574,7 @@ na `credential_id` na `apiKey` bo'lmasa xato (`ai_provider_missing_credential`).
 ### 8.3 Tool sub-node'lar — `acc:ai_tool` portiga (soni cheksiz)
 Ixtiyoriy. Tool'lar: `flow.add_ai_http_tool`, `flow.add_ai_collection_tool`,
 `flow.add_ai_custom_code_tool`, `flow.add_ai_knowledge_tool`,
-`flow.add_ai_datetime_tool`, `flow.add_ai_web_search_tool`,
+`flow.add_ai_datetime_tool`,
 `flow.add_ai_google_sheets_tool`, `flow.add_ai_payment_link_tool`. QAYSI tool QACHON
 ishlatilishi (va credential/Qdrant talablari) har bir tool'ning O'Z description'ida
 va AIAgentNode catalog tavsifida — bu yerda qaytarmaymiz. Umumiy tamoyil: agent

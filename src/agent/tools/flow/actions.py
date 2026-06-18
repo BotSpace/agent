@@ -26,7 +26,6 @@ from .node_data_models import (
     AIHTTPToolData,
     AIKnowledgeToolData,
     AIPaymentLinkToolData,
-    AIWebSearchToolData,
     AIOllamaProviderData,
     AIOpenAIProviderData,
     CallbackQueryTriggerData,
@@ -546,7 +545,7 @@ _ACC_PORT_ACCEPTS: dict[str, frozenset[str]] = {
     }),
     "acc:ai_tool": frozenset({
         "AIHTTPToolNode", "AICollectionToolNode", "AICustomCodeToolNode",
-        "AIKnowledgeToolNode", "AIDateTimeToolNode", "AIWebSearchToolNode",
+        "AIKnowledgeToolNode", "AIDateTimeToolNode",
         "AIGoogleSheetsToolNode", "AIPaymentLinkToolNode",
     }),
 }
@@ -743,20 +742,6 @@ def build_flow_action_tools() -> list[Tool]:
                 "scheduling / reminder bots that need the current date or 'N days from now' / "
                 "'days until X'. Optional data: tz (IANA, default UTC), format. Connect to "
                 "acc:ai_tool."
-            ),
-        ),
-        _make_popular_node_tool(
-            name="flow.add_ai_web_search_tool",
-            type_name="AIWebSearchToolNode",
-            data_model=AIWebSearchToolData,
-            description=(
-                "Add a Tavily web-search tool sub-node for an AIAgentNode (tool='web_search'). "
-                "Use when the agent needs FRESH/current info from the internet (news, prices, "
-                "changing facts) instead of stale model memory. The LLM calls it with a `query` "
-                "arg. REQUIRES credential_id of a type_key='tavily' credential — "
-                "credentials.list(type_key='tavily'); if none, ask the user for their Tavily "
-                "API key and credentials.create(type_key='tavily', data={api_key}) (non-OAuth, "
-                "allowed). Optional maxResults (default 5). Connect to acc:ai_tool."
             ),
         ),
         _make_popular_node_tool(
