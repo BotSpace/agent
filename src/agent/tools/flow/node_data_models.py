@@ -1031,6 +1031,114 @@ class AIKnowledgeToolData(_StrictData):
     topK: int = Field(default=5, ge=1, description="Number of top documents to return per query.")
 
 
+class AIDateTimeToolData(_StrictData):
+    """Date/time helper tool. tool='datetime'. NO credential.
+
+    Gives the agent a deterministic clock + date-math tool so it never guesses
+    "today"/"now" or does arithmetic on dates in its head. The LLM calls it with
+    runtime args (the engine builds the parametersSchema):
+      op:    'now' (current date/time) | 'add' (shift a date) | 'diff' (difference)
+      amount, unit ('minutes'|'hours'|'days'|'weeks'|'months'|'years') — for 'add'
+      from, to  (ISO dates/datetimes) — 'add' uses `from`, 'diff' uses `from`+`to`
+    Use for booking / scheduling / reminder bots that need the real current date,
+    "3 days from now", or "how many days until X". CROSS-STREAM CONTRACT with
+    engine (AIDateTimeToolNode) — keep `tool`/`tz`/`format` keys exact.
+    """
+
+    tool: Literal["datetime"] = "datetime"
+    toolName: str = Field(default="datetime", description="Function name given to the LLM (^[a-zA-Z0-9_]+$).")
+    tz: str = Field(
+        default="UTC",
+        description="IANA timezone the tool computes in (e.g. 'Asia/Tashkent'). Default 'UTC'.",
+    )
+    format: str = Field(
+        default="",
+        description="Optional output format hint (e.g. an strftime/layout string). Empty = engine default (ISO 8601).",
+    )
+
+
+class AIWebSearchToolData(_StrictData):
+    """Tavily web search tool. tool='web_search'. REQUIRES a `tavily` credential.
+
+    Lets the agent fetch FRESH / current information from the public internet
+    (news, prices, facts that change) instead of relying on stale model memory.
+    The LLM calls it with a runtime `query` arg (engine builds parametersSchema).
+    CROSS-STREAM CONTRACT with engine (AIWebSearchToolNode) — keep keys exact.
+
+    CREDENTIAL: `credential_id` of a type_key='tavily' credential is REQUIRED.
+    Find it with credentials.list(type_key='tavily'); if none exists, ask the user
+    for their Tavily API key and create one with
+    credentials.create(type_key='tavily', data={api_key}) (non-OAuth, allowed).
+    """
+
+    tool: Literal["web_search"] = "web_search"
+    toolName: str = Field(default="web_search", description="Function name given to the LLM (^[a-zA-Z0-9_]+$).")
+    credential_id: int = Field(
+        description="type_key 'tavily' credential id (REQUIRED). credentials.list(type_key='tavily').",
+    )
+    maxResults: int = Field(
+        default=5,
+        ge=1,
+        description="Max search results returned to the agent (default 5).",
+    )
+
+
+class AIGoogleSheetsToolData(_StrictData):
+    """Google Sheets agent tool. tool='google_sheets'. REQUIRES a `google_sheets` credential.
+
+    Lets the agent read from / append to a Google Sheet (lookup tables, logs,
+    order journals) on its own. The LLM calls it with runtime args (engine builds
+    parametersSchema): operation ('read'|'append'), spreadsheet_id, sheet, range,
+    values. The optional `spreadsheetId`/`sheet`/`operation` data fields below are
+    DEFAULTS the engine falls back to when the LLM omits the matching arg.
+    CROSS-STREAM CONTRACT with engine (AIGoogleSheetsToolNode) — keep keys exact.
+
+    CREDENTIAL: `credential_id` of a type_key='google_sheets' OAuth credential is
+    REQUIRED. Find it with credentials.list(type_key='google_sheets'); if none
+    exists it CANNOT be created via the API — the user must connect it in the
+    dashboard ('Connect with Google').
+    """
+
+    tool: Literal["google_sheets"] = "google_sheets"
+    toolName: str = Field(default="google_sheets", description="Function name given to the LLM (^[a-zA-Z0-9_]+$).")
+    credential_id: int = Field(
+        description="type_key 'google_sheets' OAuth credential id (REQUIRED). credentials.list(type_key='google_sheets').",
+    )
+    spreadsheetId: str = Field(
+        default="",
+        description="Default spreadsheet ID (URL /d/<ID>/) used when the LLM omits spreadsheet_id. Optional.",
+    )
+    sheet: str = Field(
+        default="",
+        description="Default sheet/tab name (e.g. 'Sheet1') used when the LLM omits sheet. Optional.",
+    )
+    operation: Literal["read", "append"] = Field(
+        default="read",
+        description="Default operation when the LLM omits it: 'read' (lookup) | 'append' (add a row).",
+    )
+
+
+class AIPaymentLinkToolData(_StrictData):
+    """Dynamic payment-link tool. tool='payment_link'. paymentType REQUIRED.
+
+    Lets the agent create a payment link on the fly (Click or Paycue) — e.g. a
+    sales agent that quotes a price and then bills the user. The LLM calls it with
+    runtime args (engine builds parametersSchema): amount (REQUIRED), description.
+    The `paymentType` data field is fixed at build time and is NOT chosen by the
+    LLM. CROSS-STREAM CONTRACT with engine (AIPaymentLinkToolNode) — keep keys exact.
+
+    BUILD RULE (like PaymentNode): ASK the user which provider before adding —
+    'click' or 'paycue' ONLY. Do NOT invent 'payme'. A merchant/credential may be
+    required by engine/backend later; for now paymentType is assumed sufficient.
+    """
+
+    tool: Literal["payment_link"] = "payment_link"
+    toolName: str = Field(default="payment_link", description="Function name given to the LLM (^[a-zA-Z0-9_]+$).")
+    paymentType: Literal["click", "paycue"] = Field(
+        description="Payment provider (REQUIRED — ASK the user first): 'click' or 'paycue'. No 'payme'.",
+    )
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # REGISTRY
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1119,6 +1227,10 @@ NODE_DATA_MODELS: dict[str, type[_StrictData]] = {
     "AICollectionToolNode": AICollectionToolData,
     "AICustomCodeToolNode": AICustomCodeToolData,
     "AIKnowledgeToolNode": AIKnowledgeToolData,
+    "AIDateTimeToolNode": AIDateTimeToolData,
+    "AIWebSearchToolNode": AIWebSearchToolData,
+    "AIGoogleSheetsToolNode": AIGoogleSheetsToolData,
+    "AIPaymentLinkToolNode": AIPaymentLinkToolData,
 }
 
 
