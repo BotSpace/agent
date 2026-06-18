@@ -539,12 +539,14 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "Google Sheets (v4) — oauth2 credential orqali. credential_id type_key "
             "'google_sheets' bo'lgan credential'ga ishora qiladi (secret flow'da emas, "
             "engine runtime'da access_token'ga aylantiradi). operation: append/read/update/clear. "
-            "spreadsheet_id + range (masalan 'Sheet1!A1:C10') majburiy; values JSON 2D massiv "
-            "(append/update). Natija context[responseVariable] (default 'sheets_response'), "
+            "spreadsheet_id majburiy. range to'liq 'Sheet1!A1:C10' yoki sheet alohida "
+            "berilsa faqat 'A1:C10' (engine sheet+range birlashtiradi) — sheet yoki range'dan "
+            "kamida biri bo'lishi shart. values JSON 2D massiv (append/update). Natija "
+            "context[responseVariable] (default 'sheets_response'), "
             "context[responseVariable+'_status'], context['sheets_success'] ga yoziladi."
         ),
-        required_data=["credential_id", "operation", "spreadsheet_id", "range"],
-        optional_data=["values", "responseVariable"],
+        required_data=["credential_id", "operation", "spreadsheet_id"],
+        optional_data=["sheet", "range", "column", "values", "responseVariable"],
     ),
     "GoogleDriveNode": NodeTypeSpec(
         type="GoogleDriveNode",
@@ -619,12 +621,15 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         category="ai",
         description=(
             "OpenAI provider sub-node. AIAgentNode'ning acc:ai_model portiga ulanadi. "
-            "provider='openai', default model='gpt-4o-mini'. "
+            "provider='openai', default model='gpt-4o-mini'. KALIT: manual apiKey "
+            "EMAS — credential_id (type_key 'openai') bering "
+            "(credentials.list(type_key='openai')). Engine runtime'da api_key/base_url'ga "
+            "aylantiradi. "
             "Edge: source=<this_id>, sourceHandle='source-default', "
             "target=<agent_id>, targetHandle='acc:ai_model'."
         ),
         required_data=[],
-        optional_data=["provider", "apiKey", "model", "baseURL", "temperature", "maxTokens", "extraHeaders", "extraParams"],
+        optional_data=["provider", "credential_id", "apiKey", "model", "baseURL", "temperature", "maxTokens", "extraHeaders", "extraParams"],
         source_handles=["source-default"],
         target_handles=[],
         is_accessory=True,
@@ -635,13 +640,14 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         description=(
             "Ollama provider sub-node. AIAgentNode'ning acc:ai_model portiga ulanadi. "
             "provider='ollama', baseURL='https://ollama.com/v1' (bulut — platforma bulutda "
-            "ishlaydi, localhost ISHLAMAYDI; apiKey kerak). default model='gpt-oss:120b' "
-            "(bo'sh qoldirsang shu ishlatiladi). "
+            "ishlaydi, localhost ISHLAMAYDI). default model='gpt-oss:120b' "
+            "(bo'sh qoldirsang shu ishlatiladi). KALIT: credential_id (type_key 'ollama') "
+            "bering (credentials.list(type_key='ollama')) — manual apiKey EMAS. "
             "Edge: source=<this_id>, sourceHandle='source-default', "
             "target=<agent_id>, targetHandle='acc:ai_model'."
         ),
         required_data=[],
-        optional_data=["provider", "apiKey", "model", "baseURL", "temperature", "maxTokens", "extraHeaders", "extraParams"],
+        optional_data=["provider", "credential_id", "apiKey", "model", "baseURL", "temperature", "maxTokens", "extraHeaders", "extraParams"],
         source_handles=["source-default"],
         target_handles=[],
         is_accessory=True,
@@ -651,12 +657,14 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         category="ai",
         description=(
             "Google Gemini provider sub-node. AIAgentNode'ning acc:ai_model portiga ulanadi. "
-            "provider='gemini', default model='gemini-1.5-flash'. "
+            "provider='gemini', default model='gemini-1.5-flash'. KALIT: credential_id "
+            "(type_key 'ai_studio' — Google AI Studio) bering "
+            "(credentials.list(type_key='ai_studio')) — manual apiKey EMAS. "
             "Edge: source=<this_id>, sourceHandle='source-default', "
             "target=<agent_id>, targetHandle='acc:ai_model'."
         ),
         required_data=[],
-        optional_data=["provider", "apiKey", "model", "baseURL", "temperature", "maxTokens", "extraHeaders", "extraParams"],
+        optional_data=["provider", "credential_id", "apiKey", "model", "baseURL", "temperature", "maxTokens", "extraHeaders", "extraParams"],
         source_handles=["source-default"],
         target_handles=[],
         is_accessory=True,
@@ -667,6 +675,9 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         description=(
             "Anthropic (Claude) provider sub-node. AIAgentNode'ning acc:ai_model portiga ulanadi. "
             "provider='anthropic', default model='claude-3-5-haiku-latest'. "
+            "ESLATMA: registry'da 'anthropic' credential type'i YO'Q — bu provider "
+            "hanuz manual apiKey ishlatadi (ask_user bilan haqiqiy kalit ol). "
+            "credential_id qo'llab-quvvatlanmaydi. "
             "Edge: source=<this_id>, sourceHandle='source-default', "
             "target=<agent_id>, targetHandle='acc:ai_model'."
         ),

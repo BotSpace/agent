@@ -173,11 +173,17 @@ def validate(
                     )
                 )
 
-        # AI provider talking to a CLOUD endpoint MUST carry an apiKey. Without
-        # it the engine's LLM call yields empty output → the bot sends an empty
-        # message → dead bot. Force the flow-builder to collect the key via
-        # ask_user before saving (local Ollama on localhost is exempt).
+        # AI provider talking to a CLOUD endpoint MUST have credentials. The
+        # PREFERRED path is a stored credential (data.credential_id) — the engine
+        # resolves it to api_key/base_url at runtime. apiKey is a legacy fallback
+        # (still accepted; required for AIAnthropicProviderNode, which has no
+        # credential type). Without either, the engine's LLM call yields empty
+        # output → the bot sends nothing → dead bot. Local Ollama is exempt.
         if node.type in _ACC_PORT_ACCEPTS["acc:ai_model"]:
+            cred_id = node.data.get("credential_id")
+            has_credential = isinstance(cred_id, (int, str)) and str(cred_id).strip() not in (
+                "", "0", "none", "null", "None",
+            )
             api_key = str(node.data.get("apiKey") or "").strip()
             base_url = str(node.data.get("baseURL") or "").lower()
             is_local = (
@@ -189,17 +195,33 @@ def validate(
             # the user wants to be ASKED for the key, not have env auto-used.
             # Treat any placeholder as missing so the agent must call ask_user.
             is_placeholder = api_key.startswith("{{") or api_key.startswith("{%")
-            if (not api_key or is_placeholder) and not is_local:
+            has_api_key = bool(api_key) and not is_placeholder
+            # Anthropic has no credential type — it can ONLY use apiKey.
+            supports_credential = node.type != "AIAnthropicProviderNode"
+            if not has_credential and not has_api_key and not is_local:
+                if supports_credential:
+                    hint = (
+                        "Set data.credential_id to a stored credential id "
+                        "(credentials.list(type_key=...) — openai→'openai', "
+                        "ollama→'ollama', gemini→'ai_studio'); if the user has none, "
+                        "they must create one in the panel/dashboard first. (Legacy: a "
+                        "real data.apiKey also works, but NOT a {{...}} placeholder.)"
+                    )
+                else:
+                    hint = (
+                        "AIAnthropicProviderNode has no credential type — ASK THE USER "
+                        "(ask_user) and set data.apiKey to the real value; do NOT use "
+                        "{{env.*}} or any placeholder."
+                    )
                 issues.append(
                     ValidationIssue(
                         "error",
-                        "ai_provider_missing_api_key",
-                        f"`{node.type}` `{node.id}` has no real `apiKey`"
+                        "ai_provider_missing_credential",
+                        f"`{node.type}` `{node.id}` has no credential_id and no real "
+                        "apiKey"
                         + (" (a `{{...}}` placeholder is not allowed)" if is_placeholder else "")
-                        + ". A cloud LLM provider needs a REAL key — ASK THE USER "
-                        "(ask_user) and set data.apiKey to the value they give; do NOT "
-                        "use {{env.*}} or any placeholder, otherwise the AI node "
-                        "returns empty output and the bot sends nothing.",
+                        + f". A cloud LLM provider needs credentials. {hint} "
+                        "Otherwise the AI node returns empty output and the bot sends nothing.",
                         node_id=node.id,
                     )
                 )

@@ -459,16 +459,26 @@ tool sub-node'lar.
 
 ### 8.2 Provider node — AYNAN BITTA, `acc:ai_model` portiga
 Har bir AI Agent uchun **AYNAN BITTA provider** node `acc:ai_model` portiga ulangan
-bo'lishi SHART. Ko'p provider = validator xatosi. Provider node turlari (har biriga
-typed tool):
-- `flow.add_ai_ollama_provider` — data: `provider:"ollama"`, `model` (default
-  `llama3.1`), `baseURL` (default **`https://ollama.com/v1`** — bu CLOUD Ollama,
-  lokal `11434` EMAS), `apiKey` (cloud TALAB qiladi), `temperature`, `maxTokens`.
-- `flow.add_ai_openai_provider` — data: `model` (default `gpt-4o-mini`),
-  `baseURL` (default `https://api.openai.com/v1`), `apiKey`.
-- `flow.add_ai_gemini_provider` — data: `model` (default `gemini-1.5-flash`), `apiKey`.
-- `flow.add_ai_anthropic_provider` — data: `model` (default `claude-3-5-haiku-latest`),
-  `apiKey`.
+bo'lishi SHART. Ko'p provider = validator xatosi.
+
+**KALIT (yangi):** openai/ollama/gemini provider'lari endi qo'lda `apiKey` EMAS,
+saqlangan **credential**'ni `credential_id` orqali ishlatadi (pastdagi "Credentials"
+bo'limiga qara). `credentials.list(type_key=...)` bilan mavjud credential id'sini top:
+- `flow.add_ai_openai_provider` — data: `credential_id` (type_key **`openai`**),
+  `model` (default `gpt-4o-mini`), `baseURL`, `temperature`, `maxTokens`.
+- `flow.add_ai_ollama_provider` — data: `credential_id` (type_key **`ollama`**),
+  `model` (default `gpt-oss:120b`), `baseURL` (default **`https://ollama.com/v1`** —
+  CLOUD Ollama, lokal `11434` EMAS), `temperature`, `maxTokens`.
+- `flow.add_ai_gemini_provider` — data: `credential_id` (type_key **`ai_studio`** —
+  Google AI Studio), `model` (default `gemini-1.5-flash`).
+- `flow.add_ai_anthropic_provider` — data: `apiKey` (default `claude-3-5-haiku-latest`).
+  ESLATMA: 'anthropic' credential type'i YO'Q — bu YAGONA provider hanuz qo'lda
+  `apiKey` ishlatadi (`ask_user` bilan haqiqiy kalit ol).
+
+Engine credential'ni runtime'da api_key/base_url'ga aylantiradi (qo'lda apiKey'ni
+override qiladi). Validator: provider'da na `credential_id`, na haqiqiy `apiKey`
+bo'lmasa xato beradi (`ai_provider_missing_credential`) — lokal Ollama (localhost)
+bundan mustasno.
 
 ### 8.3 Tool sub-node'lar — `acc:ai_tool` portiga (soni cheksiz)
 Ixtiyoriy. Agentga qo'shimcha qobiliyat beradi:
