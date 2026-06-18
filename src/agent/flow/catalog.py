@@ -532,6 +532,34 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         optional_data=["paymentType", "comment", "buttonText"],
         source_handles=["paid", "failed"],
     ),
+    "GoogleSheetsNode": NodeTypeSpec(
+        type="GoogleSheetsNode",
+        category="integration",
+        description=(
+            "Google Sheets (v4) — oauth2 credential orqali. credential_id type_key "
+            "'google_sheets' bo'lgan credential'ga ishora qiladi (secret flow'da emas, "
+            "engine runtime'da access_token'ga aylantiradi). operation: append/read/update/clear. "
+            "spreadsheet_id + range (masalan 'Sheet1!A1:C10') majburiy; values JSON 2D massiv "
+            "(append/update). Natija context[responseVariable] (default 'sheets_response'), "
+            "context[responseVariable+'_status'], context['sheets_success'] ga yoziladi."
+        ),
+        required_data=["credential_id", "operation", "spreadsheet_id", "range"],
+        optional_data=["values", "responseVariable"],
+    ),
+    "GoogleDriveNode": NodeTypeSpec(
+        type="GoogleDriveNode",
+        category="integration",
+        description=(
+            "Google Drive (v3) — oauth2 credential orqali. credential_id type_key "
+            "'google_drive' bo'lgan credential'ga ishora qiladi. operation: list/create_folder/"
+            "upload/delete. list uchun query (Drive q filtri); create_folder/upload uchun "
+            "file_name; folder_id ota-papka; upload uchun content (matn) + mime_type "
+            "(default 'text/plain'); delete uchun file_id. Natija context[responseVariable] "
+            "(default 'drive_response'), _status, context['drive_success'] ga yoziladi."
+        ),
+        required_data=["credential_id", "operation"],
+        optional_data=["query", "file_name", "folder_id", "content", "mime_type", "file_id", "responseVariable"],
+    ),
     # ── Interaction ────────────────────────────────────────────────────
     "ChatActionNode": NodeTypeSpec(
         type="ChatActionNode",

@@ -571,6 +571,81 @@ class PaymentNodeData(_StrictData):
     )
 
 
+class GoogleSheetsData(_StrictData):
+    """Google Sheets (v4) integratsiyasi — oauth2 credential orqali.
+
+    Credential FAQAT `credential_id` orqali bog'lanadi (type_key 'google_sheets');
+    secret flow'da saqlanmaydi, engine runtime'da fresh access_token'ga aylantiradi.
+    Natija context[responseVariable] (+ _status, sheets_success) ga yoziladi.
+    """
+
+    credential_id: int = Field(
+        description="type_key 'google_sheets' bo'lgan oauth2 credential id'si.",
+    )
+    operation: Literal["append", "read", "update", "clear"] = Field(
+        default="append",
+        description="append: qator qo'shish | read: o'qish | update: yangilash | clear: tozalash.",
+    )
+    spreadsheet_id: str = Field(
+        description="Spreadsheet ID (URL'dagi /d/<ID>/). {{var}} qo'llab-quvvatlanadi.",
+    )
+    range: str = Field(
+        description="A1 range, masalan 'Sheet1!A1' yoki 'Sheet1!A1:C10'. {{var}} qo'llanadi.",
+    )
+    values: str | None = Field(
+        default=None,
+        description="JSON 2D massiv, masalan [[\"a\",\"b\"],[\"c\",\"d\"]]. append/update uchun. {{var}} qo'llanadi.",
+    )
+    responseVariable: str = Field(
+        default="sheets_response",
+        description="Natija saqlanadigan context kaliti (default 'sheets_response').",
+    )
+
+
+class GoogleDriveData(_StrictData):
+    """Google Drive (v3) integratsiyasi — oauth2 credential orqali.
+
+    Credential FAQAT `credential_id` orqali bog'lanadi (type_key 'google_drive').
+    Natija context[responseVariable] (+ _status, drive_success) ga yoziladi.
+    """
+
+    credential_id: int = Field(
+        description="type_key 'google_drive' bo'lgan oauth2 credential id'si.",
+    )
+    operation: Literal["list", "create_folder", "upload", "delete"] = Field(
+        default="list",
+        description="list: ro'yxat | create_folder: papka | upload: matn fayl | delete: o'chirish.",
+    )
+    query: str | None = Field(
+        default=None,
+        description="list uchun Drive q filtri, masalan \"name contains 'report'\". {{var}} qo'llanadi.",
+    )
+    file_name: str | None = Field(
+        default=None,
+        description="create_folder / upload uchun fayl yoki papka nomi.",
+    )
+    folder_id: str | None = Field(
+        default=None,
+        description="Ota-papka id'si (ixtiyoriy).",
+    )
+    content: str | None = Field(
+        default=None,
+        description="upload uchun matn kontent (v1 = text/plain). {{var}} qo'llanadi.",
+    )
+    mime_type: str = Field(
+        default="text/plain",
+        description="upload uchun MIME tur (default 'text/plain').",
+    )
+    file_id: str | None = Field(
+        default=None,
+        description="delete uchun fayl id'si.",
+    )
+    responseVariable: str = Field(
+        default="drive_response",
+        description="Natija saqlanadigan context kaliti (default 'drive_response').",
+    )
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # INTERACTION (3)
 # ═════════════════════════════════════════════════════════════════════════════
@@ -814,6 +889,8 @@ NODE_DATA_MODELS: dict[str, type[_StrictData]] = {
     "DeclineChatJoinRequestNode": DeclineChatJoinRequestData,
     "CreateInviteLinkNode": CreateInviteLinkData,
     "PaymentNode": PaymentNodeData,
+    "GoogleSheetsNode": GoogleSheetsData,
+    "GoogleDriveNode": GoogleDriveData,
     # interaction
     "ChatActionNode": ChatActionData,
     "CallbackQueryAnswerNode": CallbackQueryAnswerData,
