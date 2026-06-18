@@ -589,8 +589,23 @@ class GoogleSheetsData(_StrictData):
     spreadsheet_id: str = Field(
         description="Spreadsheet ID (URL'dagi /d/<ID>/). {{var}} qo'llab-quvvatlanadi.",
     )
-    range: str = Field(
-        description="A1 range, masalan 'Sheet1!A1' yoki 'Sheet1!A1:C10'. {{var}} qo'llanadi.",
+    sheet: str | None = Field(
+        default=None,
+        description=(
+            "Sheet/tab nomi (masalan 'Sheet1'). range'da '!' bo'lmasa engine "
+            "sheet + range'ni birlashtiradi → 'Sheet1!A1:C10'. {{var}} qo'llanadi."
+        ),
+    )
+    range: str | None = Field(
+        default=None,
+        description=(
+            "A1 range. To'liq 'Sheet1!A1:C10' yoki sheet alohida berilsa faqat "
+            "'A1:C10'. sheet ham, range ham bo'sh bo'lmasligi kerak. {{var}} qo'llanadi."
+        ),
+    )
+    column: str | None = Field(
+        default=None,
+        description="Ixtiyoriy ustun yordamchisi (UI dynamic_select). Engine o'qimaydi — range/sheet yetarli.",
     )
     values: str | None = Field(
         default=None,
@@ -702,7 +717,7 @@ class AIAgentData(_StrictData):
 class _AIProviderBase(_StrictData):
     """Shared fields for all provider sub-nodes (accessory, attach to acc:ai_model)."""
 
-    apiKey: str = Field(default="", description="API key. May be {{env.OPENAI_KEY}}. Never logged.")
+    apiKey: str = Field(default="", description="API key. Never logged.")
     model: str = Field(default="", description="Model id. Leave empty to use node-type default.")
     baseURL: str = Field(default="", description="Override endpoint URL. Leave empty for default.")
     temperature: float = Field(default=0.7, description="Sampling temperature.")
@@ -711,27 +726,64 @@ class _AIProviderBase(_StrictData):
     extraParams: dict[str, Any] = Field(default_factory=dict, description="Provider-specific passthrough (e.g. top_p).")
 
 
-class AIOpenAIProviderData(_AIProviderBase):
-    """OpenAI provider. provider='openai', default model='gpt-4o-mini', baseURL='https://api.openai.com/v1'."""
+class _AICredentialProviderBase(_AIProviderBase):
+    """Provider sub-nodes that PREFER a stored credential (openai/ollama/gemini).
+
+    The panel UI no longer shows a manual API-key box for these — the user
+    picks a saved credential and the node stores its `credential_id`. The engine
+    resolves it to api_key/base_url at runtime (it OVERRIDES any apiKey). Set
+    `credential_id` to the id from credentials.list (or the value the user gives).
+    apiKey stays as an optional legacy fallback (e.g. local Ollama).
+    """
+
+    credential_id: int | None = Field(
+        default=None,
+        description=(
+            "Stored credential id (PREFERRED). credentials.list(type_key=...) bilan "
+            "topiladi yoki foydalanuvchidan so'raladi. Engine uni runtime'da "
+            "api_key/base_url'ga aylantiradi (apiKey'ni override qiladi)."
+        ),
+    )
+
+
+class AIOpenAIProviderData(_AICredentialProviderBase):
+    """OpenAI provider. provider='openai', default model='gpt-4o-mini'.
+
+    credential_id → type_key 'openai'. UI manual apiKey box'i yo'q — credential
+    tanlang (yoki credential_id bering). credentials.list(type_key='openai').
+    """
 
     provider: Literal["openai"] = "openai"
 
 
-class AIOllamaProviderData(_AIProviderBase):
-    """Ollama provider. provider='ollama', baseURL='https://ollama.com/v1' (cloud). Default model 'gpt-oss:120b' when model left empty."""
+class AIOllamaProviderData(_AICredentialProviderBase):
+    """Ollama provider. provider='ollama', baseURL='https://ollama.com/v1' (cloud).
+
+    credential_id → type_key 'ollama'. Default model 'gpt-oss:120b' when model
+    left empty. credentials.list(type_key='ollama').
+    """
 
     provider: Literal["ollama"] = "ollama"
     baseURL: str = Field(default="https://ollama.com/v1", description="Ollama endpoint. Cloud: https://ollama.com/v1")
 
 
-class AIGeminiProviderData(_AIProviderBase):
-    """Gemini provider. provider='gemini', default model='gemini-1.5-flash'."""
+class AIGeminiProviderData(_AICredentialProviderBase):
+    """Gemini provider. provider='gemini', default model='gemini-1.5-flash'.
+
+    credential_id → type_key 'ai_studio' (Google AI Studio).
+    credentials.list(type_key='ai_studio').
+    """
 
     provider: Literal["gemini"] = "gemini"
 
 
 class AIAnthropicProviderData(_AIProviderBase):
-    """Anthropic provider. provider='anthropic', default model='claude-3-5-haiku-latest'."""
+    """Anthropic provider. provider='anthropic', default model='claude-3-5-haiku-latest'.
+
+    NOTE: no 'anthropic' credential type exists in the registry — this provider
+    still uses a manual `apiKey` (ask_user). It is the ONLY provider without
+    credential_id support.
+    """
 
     provider: Literal["anthropic"] = "anthropic"
 

@@ -751,6 +751,33 @@ class BackendClient:
         )
         return _unwrap_item(d)
 
+    # ── credentials (owner-scoped, read-only for the agent) ────────────
+    async def list_credentials(
+        self,
+        *,
+        type_key: str | None = None,
+        page: int | None = None,
+        page_size: int | None = None,
+        auth_claims: dict | None = None,
+    ) -> "PagedList":
+        """Owner-scoped credentials (GET /api/v1/credentials/?type_key=).
+
+        Secrets are masked server-side; only id/name/type_key/label/mode are
+        useful for picking a `credential_id`. Owner-scoped via request.user —
+        NOT filtered by project. Paginated DRF list.
+        """
+        params: dict[str, Any] = {}
+        if type_key:
+            params["type_key"] = type_key
+        if page:
+            params["page"] = page
+        if page_size:
+            params["page_size"] = page_size
+        d = await self._request(
+            "GET", "/api/v1/credentials/", params=params or None, **_auth_kw(auth_claims)
+        )
+        return _unwrap_list(d)
+
     # ── plans (billing) ───────────────────────────────────────────────
     async def list_plans(self, *, auth_claims: dict | None = None) -> list[dict[str, Any]]:
         d = await self._request("GET", "/api/plans/", **_auth_kw(auth_claims))
