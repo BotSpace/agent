@@ -521,9 +521,12 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         type="PaymentNode",
         category="integration",
         description=(
-            "Botspace orqali to'lov. paymentType: 'click' (Click pay-link tugmasi) yoki "
+            "Botspace orqali to'lov. ⚠️ QURISHDAN OLDIN foydalanuvchidan to'lov "
+            "tizimini SO'RA (ask_user select: 'click' yoki 'paycue') va javobni "
+            "paymentType'ga ber. paymentType FAQAT 'click' (Click pay-link tugmasi) yoki "
             "'paycue' (Humo-karta — mijozga aniq summani kartaga o'tkazish ko'rsatmasi "
-            "yuboriladi, tugma bo'lmaydi, avtomatik tasdiqlanadi). Egasi to'lov tizimi "
+            "yuboriladi, tugma bo'lmaydi, avtomatik tasdiqlanadi) — boshqasini o'ylab topma. "
+            "Egasi to'lov tizimi "
             "bilan o'zi integratsiya QILMAYDI. To'lov tasdiqlansa 'paid', aks holda 'failed'. "
             "amount: son yoki {{var}}. To'lovdan keyin context: payment_order_id, payment_amount, "
             "payment_net, payment_status, payment_comment, payment_provider. "
@@ -656,10 +659,14 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         category="ai",
         description=(
             "Ollama provider sub-node. AIAgentNode'ning acc:ai_model portiga ulanadi. "
+            "AFZAL (DEFAULT) AI provider — bot LLM ishlatsa shuni tanla. "
             "provider='ollama', baseURL='https://ollama.com/v1' (bulut — platforma bulutda "
-            "ishlaydi, localhost ISHLAMAYDI). default model='gpt-oss:120b' "
-            "(bo'sh qoldirsang shu ishlatiladi). KALIT: credential_id (type_key 'ollama') "
-            "bering (credentials.list(type_key='ollama')) — manual apiKey EMAS. "
+            "ishlaydi, localhost ISHLAMAYDI). AFZAL model='gemma4:31b-cloud' (cloud model, "
+            "ollama.com/v1'da mavjud) — model'ni ANIQ shunga sozla, bo'sh qoldirma "
+            "(bo'sh qolsa engine eski fallback 'gpt-oss:120b'ni oladi). KALIT: credential_id "
+            "(type_key 'ollama') bering (credentials.list(type_key='ollama')) — manual apiKey "
+            "EMAS. Credential yo'q bo'lsa: foydalanuvchidan kalit so'rab credentials.create "
+            "qiling YOKI muqobil providerni (openai / ai_studio) taklif qiling. "
             "Edge: source=<this_id>, sourceHandle='source-default', "
             "target=<agent_id>, targetHandle='acc:ai_model'."
         ),
