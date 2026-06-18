@@ -62,45 +62,30 @@ broadcasts. You (the MCP client model) act as the bot builder.
    production deploy; `release_logs` shows a release's logs.
 
 ### Behaviour rules (AI + payment — mandatory when building)
-- 🤖 AI PROVIDER DEFAULT = **Ollama**, model **`gemma4:31b-cloud`**. When a bot needs
-  an LLM/AI node, prefer `flow_add_ai_ollama_provider` with
-  `baseURL:"https://ollama.com/v1"` (CLOUD) and set `model` EXPLICITLY to
-  `"gemma4:31b-cloud"` (never leave it empty). This is only the DEFAULT — if the
-  user names another provider/model, use theirs.
-- 🔑 AI CREDENTIAL CHECK (before building the provider node): call
-  `credentials_list(type_key="ollama")`. If a match exists, pass its id as
-  `credential_id`. If NONE: tell the user clearly "Ollama credential not found",
-  ASK for the key (then save via `credentials_create(type_key="ollama")`), AND in
-  the same turn OFFER alternatives — OpenAI (`openai`), Google AI Studio
-  (`ai_studio`). This is a MISSING value, so asking is allowed (not a permission ask).
-  ⚠️ Even if a credential for ANOTHER provider (Gemini/`ai_studio`, OpenAI) already
-  exists, do NOT silently use it — the default is ALWAYS Ollama. Never add a
-  Gemini/OpenAI provider node on your own; switch only if the user explicitly
-  picks that alternative or named another provider in their original request.
-- 💳 PAYMENT SYSTEM (PaymentNode): BEFORE adding the node, ASK the user to pick
-  **click** or **paycue** (`ask_user` select) and set `paymentType` to ONLY `"click"`
-  or `"paycue"`. Never invent another type (payme, uzcard...). PaymentNode = Botspace
-  payment (local cards); do NOT confuse it with `SendInvoiceNode` (Telegram Stars).
+The full just-in-time rules live in each tool's own description (re-sent every call).
+The essentials:
+- 🤖 AI PROVIDER DEFAULT = **Ollama**, model **`gemma4:31b-cloud`** (cloud,
+  `baseURL:"https://ollama.com/v1"`). Use the user's provider/model only if they
+  named one. Do NOT silently use a Gemini/OpenAI credential that happens to exist.
+  Credential check + asking for a missing key: see the provider tool descriptions
+  (`flow_add_ai_ollama_provider` etc.).
+- 💳 PAYMENT (PaymentNode): ASK the user **click** or **paycue** BEFORE adding the
+  node; `paymentType` ONLY `"click"`/`"paycue"`, never invent payme/uzcard.
+  PaymentNode = Botspace local cards; NOT `SendInvoiceNode` (Telegram Stars).
 
 ### Key rules
-- 🎨 DESIGN QUALITY (mandatory): bots must look polished, not bare. Put a fitting
-  EMOJI in every message and on EVERY button. Use HTML: set `parseMode:"HTML"`
-  and format with <b>title</b>, blank lines, bullet lists. Write warm, natural
-  copy in the user's language (usually Uzbek); personalize with {{first_name}}.
-  NEVER ship dry "salom"/"OK"/"Error" text — even a simple "say hello" bot gets a
-  warm emoji greeting. Full structure: a pretty /start menu (3-6 inline buttons)
-  + back/home buttons on every submenu. Full design guide: docs_guide(topic="flow").
-- MESSAGE NODE CHOICE: use `flow_add_edit_or_send` (EditOrSendMessageNode) for
-  ALL bot messages by default — it edits the previous message in place, so menus
-  don't pile up. `flow_add_send_text_message` (SendTextMessageNode) is ONLY for
-  reply keyboards (request_contact / request_location) or when a separate new
-  message is explicitly required.
-- KEYBOARDS: inline keyboards by default (`keyboard_kind:"inline"` + rows).
-  Reply keyboards ONLY for contact/location requests.
+- 🎨 DESIGN QUALITY (mandatory): bots must look polished. Put a fitting EMOJI in
+  every message and on EVERY button, set `parseMode:"HTML"` (<b>title</b>, blank
+  lines), warm copy in the user's language, personalize with {{first_name}};
+  never dry "salom"/"OK". A pretty /start menu + back/home on every submenu. More:
+  the message tool descriptions and docs_guide(topic="flow").
+- MESSAGE NODE / KEYBOARD CHOICE: default `flow_add_edit_or_send` + inline
+  keyboards; `flow_add_send_text_message` + reply keyboard ONLY for
+  contact/location. (Details in those tool descriptions.)
 - Every flow needs at least one trigger node (`flow_add_command_trigger` /start etc.).
 - Branch edges use exact handles: IfCondition → true/false; LoadCollectionItem →
   found/not_found; ForLoop → loop-body/no-items; Random → option_0..N;
-  buttons → flow_connect_button.
+  buttons → flow_connect_button. (Also in flow_connect_branch's description.)
 - `session_status` shows the active project, project name, node/edge counts,
   unsaved changes (flow_dirty) and the project's collections.
 - Unsaved drafts are persisted server-side: if a session is lost, just call

@@ -572,7 +572,12 @@ class PaymentNodeData(_StrictData):
 
     paymentType: Literal["click", "paycue"] = Field(
         default="click",
-        description="To'lov provayderi: 'click' (Click pay-link) yoki 'paycue' (Humo-karta — foydalanuvchi aniq summani kartaga o'tkazadi, avtomatik tasdiqlanadi).",
+        description=(
+            "To'lov provayderi — qurishdan OLDIN foydalanuvchidan SO'RA "
+            "(ask_user select: 'click' yoki 'paycue'). FAQAT 'click' (Click pay-link) yoki "
+            "'paycue' (Humo-karta — foydalanuvchi aniq summani kartaga o'tkazadi, avtomatik "
+            "tasdiqlanadi). Boshqasini (payme, uzcard...) O'YLAB TOPMA."
+        ),
     )
     amount: str | int = Field(
         description="To'lov summasi — son yoki {{var}} (masalan {{state.total}}).",
