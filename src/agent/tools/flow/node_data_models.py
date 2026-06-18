@@ -428,6 +428,15 @@ class CustomCodeData(_StrictData):
             "Edges MUST reference one of these names or the validator will reject them."
         ),
     )
+    terminal: bool = Field(
+        default=False,
+        description=(
+            "Mark this node as a TERMINAL leaf — it produces its own user-facing "
+            "output (send_*/edit_* in jsCode) and ends the flow, so its declared "
+            "outputs intentionally have NO downstream edges. Set true to silence "
+            "the validator's 'unused output / dead-end' warning for leaf nodes."
+        ),
+    )
 
 
 class SendToAdminData(_StrictData):
@@ -714,7 +723,29 @@ class AIAgentData(_StrictData):
     maxIterations: int = Field(default=5, ge=1, le=10, description="Max tool-call loop iterations (hard cap 10).")
     temperature: float | None = Field(default=None, description="Optional per-agent temperature override.")
     maxTokens: int | None = Field(default=None, description="Optional per-agent response cap.")
-    returnMode: Literal["text", "json"] = Field(default="text", description="'text' returns plain string; 'json' also stores parsed JSON under outputKey_json.")
+    returnMode: Literal["text", "json"] = Field(default="text", description="'text' returns plain string; 'json' also stores parsed JSON under outputKey_json. NOTE: for guaranteed-valid JSON prefer structuredOutput+jsonSchema (below) — that constrains the model at the provider level; returnMode='json' only best-effort parses free text.")
+    structuredOutput: bool = Field(
+        default=False,
+        description=(
+            "Enable PROVIDER-LEVEL structured output. When true, supply `jsonSchema` "
+            "and the engine forces the model to return JSON matching that schema; the "
+            "parsed object is written to outputKey (read as {{outputKey.fieldName}}). "
+            "USE THIS instead of telling the model 'return JSON' in systemPrompt — that "
+            "is unreliable. Requires a provider that supports structured output "
+            "(OpenAI/Gemini). On parse failure the raw text goes to outputKey and an "
+            "error to errorOutputKey."
+        ),
+    )
+    jsonSchema: str = Field(
+        default="",
+        description=(
+            "JSON Schema as a STRING (the whole schema serialized), used ONLY when "
+            "structuredOutput=true. Example: "
+            "'{\"type\":\"object\",\"properties\":{\"intent\":{\"type\":\"string\"},"
+            "\"amount\":{\"type\":\"number\"}},\"required\":[\"intent\"]}'. "
+            "Invalid JSON is ignored (structured output silently disabled)."
+        ),
+    )
     historyKey: str = Field(default="", description="Optional context key holding prior messages[] to seed the conversation. Manual mode: builder assembles the [{role,content}] array. For a chat/conversational agent prefer autoHistory=true instead — the engine then manages history for you.")
     autoHistory: bool = Field(default=False, description="Engine-managed PER-CHAT conversation memory (keyed by node + chat_id, so every user keeps a SEPARATE history — never shared/global). When true the engine auto-saves/loads the dialog — NO manual historyKey array needed. SET THIS TRUE for any chatbot / conversational / sales-assistant agent; otherwise the bot is amnesiac (forgets every previous message).")
     maxHistory: int | None = Field(default=None, description="Max stored conversation messages for autoHistory (older ones dropped). Default 40 (~20 turns) when omitted. Lower to save tokens.")
@@ -834,8 +865,57 @@ class AICollectionToolData(_AIToolBase):
     )
     searchFields: list[dict[str, str]] | None = Field(
         default=None,
-        description="Optional fields the LLM can filter/search by, e.g. [{'name':'email','type':'string'}].",
+        description=(
+            "Optional fields the LLM may filter/search by. ARRAY OF OBJECTS — "
+            "each item is a dict with EXACTLY these keys: "
+            "`field` (the collection field name, REQUIRED) and `description` "
+            "(human hint shown to the LLM, optional). "
+            "Engine builds the tool's parametersSchema from these (each field "
+            "becomes a string parameter). "
+            "Correct: [{\"field\": \"email\", \"description\": \"customer email\"}, "
+            "{\"field\": \"status\"}]. "
+            "WRONG (rejected): a plain string array like [\"email\", \"status\"], "
+            "or keys `name`/`type` instead of `field`/`description`."
+        ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_search_fields(cls, data: Any) -> Any:
+        """Accept a plain string array and lenient key aliases for searchFields.
+
+        Engine (AICollectionToolNode/mongoQueryTool) expects
+        `[{"field": str, "description"?: str}]`. Models often emit
+        `["chat_id", "kind"]` or `[{"name": "chat_id"}]`. We normalise those
+        into the engine shape here so a well-intentioned call doesn't hard-fail
+        on a key/shape mismatch — the validator below still rejects truly
+        malformed items (e.g. dicts with no field name).
+        """
+        if not isinstance(data, dict):
+            return data
+        sf = data.get("searchFields")
+        if not isinstance(sf, list):
+            return data
+        coerced: list[dict[str, str]] = []
+        for item in sf:
+            if isinstance(item, str):
+                coerced.append({"field": item})
+            elif isinstance(item, dict):
+                field = item.get("field") or item.get("name")
+                if not isinstance(field, str) or not field:
+                    # Leave as-is; the field-level validator emits a clear error.
+                    coerced.append(item)
+                    continue
+                entry: dict[str, str] = {"field": field}
+                desc = item.get("description") or item.get("desc")
+                if isinstance(desc, str) and desc:
+                    entry["description"] = desc
+                coerced.append(entry)
+            else:
+                coerced.append(item)
+        data = dict(data)
+        data["searchFields"] = coerced
+        return data
 
 
 class AICustomCodeToolData(_AIToolBase):

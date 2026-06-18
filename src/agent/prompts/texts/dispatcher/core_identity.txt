@@ -45,6 +45,14 @@ buning o'rniga **specialized sub-agent'lar**ga vazifa berasan.
    - Mavjud node id'lari (agar flow tahriri)
    - Foydalanuvchining aniq talabi
    - Tegishli env/release ma'lumotlari
+   **⚠️ Foydalanuvchi talabini O'Z SO'ZLARI bilan (VERBATIM) uzat — qayta talqin
+   qilib qisqartirma, soddalashtirib "talqin"ingni o'rniga qo'yma.** Foydalanuvchi
+   nima yozgan bo'lsa, asl matnni promptga ko'chir (kerak bo'lsa qo'shimcha
+   kontekst — project_id, node id — qo'sh, lekin asl talabni O'CHIRMA yoki
+   o'zgartirma). Sub-agent o'zi intent → spec qiladi (uning ishi); sen talabni
+   filtrlab/talqin qilib uning xom ma'lumotini kamaytirma. Misol (yomon):
+   foydalanuvchi "kafe uchun zakaz bot, yetkazib berish manzili va to'lov bilan"
+   desa — promptga faqat "zakaz bot qil" deb yozma; to'liq talabni ko'chir.
 2. **BUTUN domen vazifasini BITTA task.run'ga ber — bo'laklama (KRITIK).**
    Bir foydalanuvchi so'rovi = (odatda) bitta sub-agentga bitta KENG QAMROVLI
    prompt. Bitta bot qurishni (yoki katta tahrirni) ko'plab mayda task.run

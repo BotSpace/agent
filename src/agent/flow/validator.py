@@ -531,7 +531,8 @@ def _filter_kind_warnings(node, schemas: dict[str, dict[str, str]]) -> list[Vali
 
 
 def _unused_output_warnings(node, flow: FlowDocument) -> list[ValidationIssue]:
-    outputs = node.data.get("outputs") if isinstance(node.data, dict) else None
+    data = node.data if isinstance(node.data, dict) else {}
+    outputs = data.get("outputs")
     if not isinstance(outputs, list):
         return []
     declared: list[str] = [
@@ -541,6 +542,35 @@ def _unused_output_warnings(node, flow: FlowDocument) -> list[ValidationIssue]:
     ]
     if not declared:
         return []
+
+    # #7 — terminal CustomCodeNode: a node that produces user-facing output
+    # itself (send_*/edit_* in its jsCode) and then exit()s is a legitimate
+    # leaf — it has NO downstream node by design, so its declared outputs being
+    # unwired is NOT a bug. Two ways to mark this so we don't emit a misleading
+    # "dead-end" warning:
+    #   1. data.terminal == true  (explicit, preferred), OR
+    #   2. heuristic: jsCode both sends a message AND calls exit(...).
+    if data.get("terminal") is True:
+        return []
+    js = data.get("jsCode")
+    if isinstance(js, str):
+        sends = any(tok in js for tok in ("send_message", "edit_or_send", "edit_message_text", "send_photo", "answer_callback_query"))
+        exits = "exit(" in js
+        if sends and exits:
+            # Treat as a terminal leaf — surface at low severity as a tip, not a
+            # warning, so it doesn't look like a flow error.
+            return [
+                ValidationIssue(
+                    "info",
+                    "terminal_custom_output",
+                    f"CustomCodeNode `{node.id}` looks terminal (it sends output "
+                    "then exits). Its declared outputs have no downstream edges — "
+                    "that is fine for a leaf. To silence this, set "
+                    "`data.terminal: true` (or drop the unused outputs).",
+                    node_id=node.id,
+                )
+            ]
+
     used = {
         e.sourceHandle
         for e in flow.edges
@@ -556,7 +586,8 @@ def _unused_output_warnings(node, flow: FlowDocument) -> list[ValidationIssue]:
                     "unused_custom_output",
                     f"CustomCodeNode `{node.id}` declares output `{name}` "
                     f"(handle `{handle}`) but no edge uses it — exit('{name}') "
-                    "would dead-end. Wire an edge or drop the output.",
+                    "would dead-end. Wire an edge, set data.terminal:true if this "
+                    "is a leaf, or drop the output.",
                     node_id=node.id,
                 )
             )

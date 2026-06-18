@@ -683,6 +683,10 @@ async def _run_regression_after_save(
         )
         if not tests:
             return None
+        # `ok` is the load-bearing flag for callers: True only when every enabled
+        # test passed. `ran` distinguishes "didn't run" (simulator down) from
+        # "ran and failed" so a save with no working simulator is not treated as a
+        # regression failure.
         # Simulate against the flow we just saved (clone ctx state so we don't
         # mutate the live workspace; collections come from the same state).
         sim_state = dict(ctx.state)
@@ -699,17 +703,26 @@ async def _run_regression_after_save(
         )
         if not agg.get("ran"):
             return {
+                "ok": True,  # nothing ran → not a failure
+                "ran": False,
                 "text": "🧪 Regression: testlar o'tkazilmadi (simulyator mavjud emas).",
                 "data": {"ran": False},
             }
         passed = agg["passed"]
         total = agg["total"]
         if passed == total:
-            return {"text": f"🧪 Regression: {passed}/{total} o'tdi", "data": agg}
+            return {
+                "ok": True,
+                "ran": True,
+                "text": f"🧪 Regression: {passed}/{total} o'tdi",
+                "data": agg,
+            }
         detail = _fmt_test_results(agg)
         return {
+            "ok": False,
+            "ran": True,
             "text": (
-                f"🧪 Regression: {detail}\n"
+                f"🧪 Regression FAIL: {detail}\n"
                 "Tuzatish yoki flow_rollback bilan oldingi versiyaga qaytish mumkin."
             ),
             "data": agg,
@@ -739,6 +752,15 @@ class FlowSaveInput(BaseModel):
         "automatically (re)started with the new flow and a test link is returned — "
         "the user gets a working bot to try WITHOUT asking. Set false only if the "
         "user explicitly does not want a debug bot.",
+    )
+    fail_on_regression: bool = Field(
+        default=False,
+        description="Default FALSE: regression test failures only WARN (the flow is "
+        "already persisted, so the save still reports ok=true with regression_ok=false). "
+        "Set TRUE to make the tool result an ERROR when any saved regression test fails — "
+        "use this when you want the save step to hard-fail so the failure can't be "
+        "overlooked. NOTE: the flow is saved either way; this only changes how the "
+        "result is reported.",
     )
 
 
@@ -839,13 +861,24 @@ async def flow_save(input: FlowSaveInput, ctx: ToolContext) -> ToolResult:
 
     msg = f"Flow saved to project `{project_id}` ({n_nodes} nodes, {n_edges} edges)."
 
-    # #10 — auto-run saved regression tests against the JUST-SAVED flow. A failure
-    # must NOT undo the save (already persisted) — we only surface the result.
-    # Simulator/store outages degrade to a one-line notice.
+    # #10 / #9 — auto-run saved regression tests against the JUST-SAVED flow. A
+    # failure must NOT undo the save (already persisted) — we surface the result
+    # AND an explicit `regression_ok` flag so the agent can distinguish a clean
+    # save (ok=true, regression_ok=true) from a save whose regression failed
+    # (ok=true, regression_ok=false). Simulator/store outages degrade to a notice
+    # and count as NOT-failed (regression_ok=true, ran=false).
+    regression_failed = False
     regression = await _run_regression_after_save(ctx, project_id, flow_dict)
     if regression:
         data["regression"] = regression.get("data")
+        data["regression_ok"] = bool(regression.get("ok", True))
+        data["regression_ran"] = bool(regression.get("ran", False))
+        regression_failed = not data["regression_ok"]
         msg += "\n" + regression["text"]
+    else:
+        # No tests defined for this project → nothing to regress against.
+        data["regression_ok"] = True
+        data["regression_ran"] = False
 
     # #7 — a running debug bot keeps serving the OLD flow until restarted.
     if input.restart_debug:
@@ -883,14 +916,28 @@ async def flow_save(input: FlowSaveInput, ctx: ToolContext) -> ToolResult:
             "(yoki flow_save'ni restart_debug=true bilan chaqiring)."
         )
 
+    # #9 — the flow is ALWAYS persisted by this point; state must reflect that
+    # even when fail_on_regression turns the result into an error.
+    state_updates = {
+        "working_flow": flow_dict,
+        "baseline_flow": flow_dict,
+        "flow_dirty": False,
+        "pending_save": False,
+    }
+
+    if input.fail_on_regression and regression_failed:
+        return ToolResult.error(
+            msg
+            + "\n⚠️ fail_on_regression=true — save PERSISTED, lekin regressiya "
+            "yiqildi. Tuzating va qayta save qiling, yoki flow_rollback bilan "
+            "oldingi versiyaga qayting.",
+            state_updates=state_updates,
+            data=data,
+        )
+
     return ToolResult.ok(
         msg,
-        state_updates={
-            "working_flow": flow_dict,
-            "baseline_flow": flow_dict,
-            "flow_dirty": False,
-            "pending_save": False,
-        },
+        state_updates=state_updates,
         data=data,
     )
 
