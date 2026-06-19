@@ -72,6 +72,10 @@ The essentials:
 - 💳 PAYMENT (PaymentNode): ASK the user **click** or **paycue** BEFORE adding the
   node; `paymentType` ONLY `"click"`/`"paycue"`, never invent payme/uzcard.
   PaymentNode = Botspace local cards; NOT `SendInvoiceNode` (Telegram Stars).
+- 🔗 GOOGLE (OAuth) CREDENTIAL: Google nodes/tools (GoogleSheetsNode, GoogleDriveNode,
+  AIGoogleSheetsToolNode) need a google_* credential. `credentials.list` first; if none,
+  call `credentials.connect_oauth(type_key=...)` to give the user a connect link (OAuth —
+  can't be created via the API), then re-list for the new `credential_id`.
 
 ### Key rules
 - 🎨 DESIGN QUALITY (mandatory): bots must look polished. Put a fitting EMOJI in

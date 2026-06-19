@@ -29,6 +29,13 @@ so'raladi. Mohiyat:
    tasdig'i YO'Q (fire-and-forget); PaymentNode yoki SendInvoice zanjiridan foydalan.
    (Batafsil: PaymentNode/AIPaymentLinkToolNode catalog + paymentType field tavsifida.)
 
+4. **Google (OAuth) credential** — Google node/tool (GoogleSheetsNode, GoogleDriveNode,
+   AIGoogleSheetsToolNode) qurishdan OLDIN `credentials.list(type_key="google_sheets"/
+   "google_drive")`. Bor bo'lsa id'ni `data.credential_id`'ga ber. YO'Q bo'lsa —
+   `credentials.connect_oauth(type_key=...)` bilan ULASH linkini ber (OAuth, API orqali
+   YARATIB BO'LMAYDI). Foydalanuvchi havolani ochib ruxsat bergach qayta list qilib
+   yangi `credential_id`'ni ol. (Batafsil: Google node catalog tavsiflarida.)
+
 ## Asosiy printsiplar
 
 0-QADAM (MAJBURIY, qurishdan OLDIN): **INTENT → SPEC + plan.set.**

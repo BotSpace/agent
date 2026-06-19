@@ -17,8 +17,10 @@ can pick the right `credential_id` for credential-consuming nodes:
 The agent can list/create/update/delete credentials. NON-OAuth types
 (telegram/openai/ai_studio/ollama) can be created here when the user provides the
 secret. OAUTH types (google_email/google_sheets/google_drive) CANNOT be created via
-the API — they need the browser "Connect with Google" consent popup the user does in
-the dashboard; for those, ask the user to connect, then list.
+the API — they need a browser "Connect with Google" consent. For those, the agent
+calls `credentials.connect_oauth` to mint a one-click ULASH (connect) link the user
+opens; after they grant consent the backend creates the credential under the same
+owner, and the agent re-lists to read the new `credential_id`.
 """
 
 from __future__ import annotations
@@ -107,8 +109,9 @@ async def credentials_list(input: CredentialsListInput, ctx: ToolContext) -> Too
         return ToolResult.ok(
             f"No credentials{filt} found for this user. For NON-OAuth types "
             "(telegram/openai/ai_studio/ollama) you can make one with credentials.create when "
-            "the user gives you the secret. For OAuth types (google_*) the user must connect them "
-            "in the dashboard. node→type_key: " + _NODE_TYPE_KEYS + ".",
+            "the user gives you the secret. For OAuth types (google_*) call "
+            "credentials.connect_oauth to give the user a connect link (they can't be created via "
+            "the API); after they connect, re-list. node→type_key: " + _NODE_TYPE_KEYS + ".",
             data={"credentials": [], "total_items": 0},
         )
 
@@ -172,7 +175,8 @@ async def credentials_create(input: CredentialsCreateInput, ctx: ToolContext) ->
     if input.type_key in _OAUTH_TYPE_KEYS:
         return ToolResult.error(
             f"`{input.type_key}` is an OAuth credential and cannot be created via the API. "
-            "Ask the user to open the dashboard → Credentials → connect with Google, then list."
+            "Call credentials.connect_oauth(type_key="
+            f"'{input.type_key}') to give the user a connect link, then re-list."
         )
     try:
         cred = await _backend(ctx).create_credential(
@@ -244,5 +248,78 @@ async def credentials_delete(input: CredentialsDeleteInput, ctx: ToolContext) ->
     return ToolResult.ok(f"Deleted credential id={input.id}.", data={"id": input.id})
 
 
+# OAuth type_key → provider slug for the backend's start endpoint
+# (POST /api/v1/credentials/oauth/{provider}/start/). All google_* types share
+# the "google" provider (same consent screen, different scopes per type_key).
+_OAUTH_PROVIDERS = {
+    "google_email": "google",
+    "google_sheets": "google",
+    "google_drive": "google",
+}
+
+
+class CredentialsConnectOAuthInput(BaseModel):
+    type_key: str = Field(
+        description=(
+            "OAuth credential type to connect: google_email | google_sheets | google_drive. "
+            "Use the type that matches the node (GoogleSheetsNode/AIGoogleSheetsToolNode→"
+            "google_sheets, GoogleDriveNode→google_drive). NON-OAuth types are rejected — "
+            "create those with credentials.create."
+        )
+    )
+
+
+@tool(
+    name="credentials.connect_oauth",
+    description=(
+        "Mint a one-click ULASH (connect) link for an OAuth credential "
+        "(google_email/google_sheets/google_drive) when the user has NONE for a Google node/tool "
+        "(GoogleSheetsNode, GoogleDriveNode, AIGoogleSheetsToolNode). These credentials CANNOT be "
+        "created via the API — they need a browser Google-consent. This returns an authorize_url; "
+        "give it to the user to open and grant access, then call credentials.list to read the new "
+        "credential_id. Use AFTER credentials.list returns nothing for a google_* type. NON-OAuth "
+        "types (telegram/openai/ai_studio/ollama) are REJECTED — use credentials.create for those."
+    ),
+    input_model=CredentialsConnectOAuthInput,
+)
+async def credentials_connect_oauth(
+    input: CredentialsConnectOAuthInput, ctx: ToolContext
+) -> ToolResult:
+    provider = _OAUTH_PROVIDERS.get(input.type_key)
+    if provider is None:
+        return ToolResult.error(
+            f"`{input.type_key}` is not an OAuth credential type — connect_oauth only handles "
+            f"OAuth types ({', '.join(sorted(_OAUTH_PROVIDERS))}). For non-OAuth types "
+            "(telegram/openai/ai_studio/ollama) use credentials.create with the user's secret."
+        )
+    try:
+        res = await _backend(ctx).oauth_start(
+            provider,
+            input.type_key,
+            auth_claims=ctx.state.get("auth_claims"),
+        )
+    except BackendError as e:
+        return ToolResult.error(format_backend_error("credentials.connect_oauth", e))
+
+    authorize_url = res.get("authorize_url") if isinstance(res, dict) else None
+    if not authorize_url:
+        return ToolResult.error(
+            "Backend did not return an authorize_url for the OAuth start — cannot build the "
+            f"connect link for `{input.type_key}`."
+        )
+    return ToolResult.ok(
+        f"Google hisobingizni ulash uchun shu havolani oching:\n{authorize_url}\n"
+        "Ruxsat bergach menga 'ulandim' deb ayting — keyin credentials.list bilan "
+        f"yangi `{input.type_key}` credential'ini topib node'da ishlataman.",
+        data={"authorize_url": authorize_url, "type_key": input.type_key},
+    )
+
+
 def build_credentials_tools() -> list[Tool]:
-    return [credentials_list, credentials_create, credentials_update, credentials_delete]
+    return [
+        credentials_list,
+        credentials_create,
+        credentials_update,
+        credentials_delete,
+        credentials_connect_oauth,
+    ]
