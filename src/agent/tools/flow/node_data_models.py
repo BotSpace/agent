@@ -920,59 +920,170 @@ class AIHTTPToolData(_AIToolBase):
     )
 
 
+_FILTER_OP = Literal[
+    "eq", "ne", "gt", "gte", "lt", "lte", "in", "nin", "contains", "exists",
+]
+
+
+class FilterCondition(_StrictData):
+    """One TEMPLATE filter condition for read/update/delete.
+
+    source='fixed' → the BUILDER pins `value` (a constant, or a flow placeholder
+    like '{{chat_id}}'/'{{state_phone}}' resolved by the engine at runtime, type
+    preserved). The runtime AI canNOT change it — use it to scope to the current
+    user (user_id == {{chat_id}}). source='ai' → leave `value` empty and write an
+    `aiDescription`; the RUNTIME AI fills the value per turn from that hint.
+    """
+
+    field: str = Field(description="Collection field name to filter on.")
+    op: _FILTER_OP = Field(default="eq", description="Comparison operator.")
+    source: Literal["fixed", "ai"] = Field(
+        default="ai",
+        description="'fixed' (builder pins value) | 'ai' (runtime AI fills the value).",
+    )
+    value: Any | None = Field(
+        default=None,
+        description="Fixed value (source='fixed'). May be a {{chat_id}}/{{state_*}} placeholder; raw type preserved.",
+    )
+    aiDescription: str | None = Field(
+        default=None,
+        description="Hint the runtime AI uses to fill the value (source='ai').",
+    )
+
+
+class FieldEntry(_StrictData):
+    """One TEMPLATE field for create (`documentFields`) / update (`changeFields`).
+
+    source='fixed' → builder pins `value` (constant or {{placeholder}}); source='ai'
+    → runtime AI fills it from `aiDescription`.
+    """
+
+    field: str = Field(description="Collection field/document key to set.")
+    source: Literal["fixed", "ai"] = Field(
+        default="ai",
+        description="'fixed' (builder pins value) | 'ai' (runtime AI fills the value).",
+    )
+    value: Any | None = Field(
+        default=None,
+        description="Fixed value (source='fixed'). May be a {{chat_id}}/{{state_*}} placeholder; raw type preserved.",
+    )
+    aiDescription: str | None = Field(
+        default=None,
+        description="Hint the runtime AI uses to fill the value (source='ai').",
+    )
+
+
 class AICollectionToolData(_AIToolBase):
-    """Collection CRUD tool. tool='collection'. Full CRUD on a bot collection.
+    """Collection tool. tool='collection'. ONE operation per node, TEMPLATE-driven.
 
-    The LLM gets a single tool that can create/read/update/delete documents in
-    `collection`, restricted to the `operations` allow-list. CROSS-STREAM
-    CONTRACT with constructor + engine (AICollectionToolNode) — keep keys exact.
+    CROSS-STREAM CONTRACT with constructor + engine (AICollectionToolNode) — keep
+    keys exact.
 
-    RUNTIME FILTER (NOT static config): for read/update/delete the LLM builds the
-    filter itself AT RUNTIME — this node only declares WHICH fields are filterable
-    via `searchFields`. The engine accepts the LLM filter in TWO shapes:
-      1. Flat equality AND: {field: value, ...} — simple case (all conditions eq+AND).
-      2. Structured multi-condition: {"match": "and"|"or", "conditions": [
-         {"field", "op", "value"}, ...]} where op ∈
-         eq|ne|gt|gte|lt|lte|in|nin|contains|exists.
-    So the agent can express e.g. "status=active AND amount>1000" or
-    "kind=debt OR kind=loan" at runtime. You (the builder) do NOT write these
-    conditions in node data — `searchFields` is just the allow-list of filterable
-    fields; the AND/OR + operators live in the LLM's runtime tool args.
+    ───────────────────────────────────────────────────────────────────────────
+    PREFERRED: TEMPLATE (HYBRID) MODEL — `operation` + per-field fixed/ai slots.
+    ───────────────────────────────────────────────────────────────────────────
+    The BUILDER (you, the flow-builder AI) sets ONE `operation`
+    (create|read|update|delete) and a query SKELETON: for every field you decide
+    whether it is FIXED (you pin the value — safe, the runtime AI cannot change it,
+    e.g. user_id="{{chat_id}}" always scopes to the current user) or an AI-SLOT
+    (you give an `aiDescription` and the RUNTIME AI fills the value per turn).
 
-    FLOW CONTEXT PLACEHOLDERS (runtime-resolved by the engine): the VALUES the LLM
-    puts in filter conditions, in the `document` it creates, and in the `changes` it
-    updates MAY be flow-context placeholders that the engine resolves at runtime from
-    the current chat:
-      {{chat_id}}      current Telegram chat id
-      {{user_id}}      current user id
-      {{first_name}}, {{username}}
-      {{state_<key>}}  a value asked/saved earlier in the flow (e.g. {{state_phone}})
-      {{collection_<key>}}
-    A WHOLE-PLACEHOLDER value keeps its RAW type — value "{{chat_id}}" stays an int,
-    so `user_id == {{chat_id}}` matches an int field correctly. This is how the agent
-    reads/updates/deletes "the CURRENT user's own records" (e.g. user_id == chat_id).
-    These placeholders are INDEPENDENT of `searchFields`: `searchFields` says WHICH
-    field may be filtered; a placeholder is the SOURCE of the VALUE the LLM writes.
-    Examples (the LLM, not you, writes these at runtime):
-      read this user's active debts:
-        {"match": "and", "conditions": [
-          {"field": "user_id", "op": "eq", "value": "{{chat_id}}"},
-          {"field": "status",  "op": "eq", "value": "active"}]}
-      create a record tied to this user:
-        document: {"user_id": "{{chat_id}}", "text": "...", "amount": 1000}
+      operation='read'|'update'|'delete'  → `filterMatch` ('and'|'or') +
+          `filterConditions: [{field, op, source, value?|aiDescription?}]`.
+      operation='create'                  → `documentFields: [{field, source, ...}]`.
+      operation='update'                  → ALSO `changeFields: [{field, source, ...}]`
+          (the fields to SET; `filterConditions` selects WHICH docs).
+
+    ONE operation per node. If the agent needs read + create (or create + update),
+    attach SEPARATE AICollectionToolNodes to the SAME AIAgentNode — one per
+    operation.
+
+    FIXED vs AI:
+      source='fixed' → BUILDER pins `value`. May be a constant OR a flow-context
+        placeholder the engine resolves at runtime (raw type preserved):
+          {{chat_id}} {{user_id}} {{first_name}} {{username}}
+          {{state_<key>}} (asked/saved earlier) {{collection_<key>}}
+        Whole-placeholder value "{{chat_id}}" stays an int → user_id == {{chat_id}}
+        matches an int field. This is how you safely lock a tool to the CURRENT
+        user — the runtime AI cannot override a fixed slot.
+      source='ai' → BUILDER leaves `value` empty and writes `aiDescription`; the
+        RUNTIME AI (the bot's own agent) fills the value each turn from that hint.
+
+    Examples (TEMPLATE — what YOU, the builder, write into node data):
+      read this user's debts, AI picks the status:
+        operation='read', filterMatch='and', filterConditions=[
+          {field:'user_id', op:'eq', source:'fixed', value:'{{chat_id}}'},
+          {field:'status',  op:'eq', source:'ai',
+           aiDescription:'qaysi holatdagi qarzlar (masalan active)'}]
+      create a debt for this user:
+        operation='create', documentFields=[
+          {field:'user_id', source:'fixed', value:'{{chat_id}}'},
+          {field:'amount',  source:'ai', aiDescription:'qarz summasi'},
+          {field:'text',    source:'ai', aiDescription:'qarz izohi'}]
+
+    ───────────────────────────────────────────────────────────────────────────
+    LEGACY (still accepted; engine falls back): `operations` allow-list +
+    `searchFields`. When you do NOT set `operation`/`filterConditions`/
+    `documentFields`/`changeFields`, the engine uses the old runtime-AI-builds-the-
+    -whole-filter model: `operations` lists allowed CRUD verbs and `searchFields`
+    lists filterable fields ([{field, description?}]). PREFER the TEMPLATE model
+    above for new nodes — it lets you pin fixed slots (e.g. user_id) the runtime
+    AI can't change.
     """
 
     tool: Literal["collection"] = "collection"
     toolName: str = Field(default="collection", description="Function name given to the LLM (^[a-zA-Z0-9_]+$).")
     collection: str = Field(default="", description="Bot collection name the tool operates on.")
+
+    # ── TEMPLATE (hybrid) model — PREFERRED ──────────────────────────────────
+    operation: Literal["create", "read", "update", "delete"] | None = Field(
+        default=None,
+        description=(
+            "TEMPLATE model: the SINGLE CRUD operation this node performs. One "
+            "operation per node — for read+create attach two collection tools to "
+            "the same agent. Leave None to fall back to the legacy `operations` "
+            "allow-list."
+        ),
+    )
+    filterMatch: Literal["and", "or"] = Field(
+        default="and",
+        description="How filterConditions combine (read/update/delete).",
+    )
+    filterConditions: list[FilterCondition] | None = Field(
+        default=None,
+        description=(
+            "TEMPLATE filter skeleton for read/update/delete: "
+            "[{field, op, source:'fixed'|'ai', value?|aiDescription?}]. "
+            "Fixed slots are pinned by you (e.g. user_id='{{chat_id}}'); ai slots "
+            "are filled by the runtime AI from aiDescription."
+        ),
+    )
+    documentFields: list[FieldEntry] | None = Field(
+        default=None,
+        description=(
+            "TEMPLATE document skeleton for operation='create': "
+            "[{field, source:'fixed'|'ai', value?|aiDescription?}]."
+        ),
+    )
+    changeFields: list[FieldEntry] | None = Field(
+        default=None,
+        description=(
+            "TEMPLATE changes skeleton for operation='update' (the fields to SET; "
+            "filterConditions selects which docs): "
+            "[{field, source:'fixed'|'ai', value?|aiDescription?}]."
+        ),
+    )
+
+    # ── LEGACY model — backward-compat fallback (engine also falls back) ─────
     operations: list[str] = Field(
         default_factory=lambda: ["create", "read", "update", "delete"],
-        description="Allow-list of CRUD operations the LLM may perform on the collection.",
+        description="LEGACY allow-list of CRUD operations (used when `operation` is unset).",
     )
     searchFields: list[dict[str, str]] | None = Field(
         default=None,
         description=(
-            "Optional allow-list of fields the LLM may filter/search by AT RUNTIME "
+            "LEGACY allow-list (used when the TEMPLATE `filterConditions` is unset): "
+            "fields the LLM may filter/search by AT RUNTIME "
             "for read/update/delete. ARRAY OF OBJECTS — each item is a dict with "
             "EXACTLY these keys: `field` (the collection field name, REQUIRED) and "
             "`description` (human hint shown to the LLM, optional). "

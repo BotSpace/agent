@@ -613,31 +613,49 @@ ishlatilishi (va credential/Qdrant talablari) har bir tool'ning O'Z description'
 va AIAgentNode catalog tavsifida — bu yerda qaytarmaymiz. Umumiy tamoyil: agent
 real ma'lumot/harakat kerak bo'lsa tool ula, toza matnga tayanma.
 
-`flow.add_ai_collection_tool` — `searchFields` = LLM RUNTIME'da filtrlay oladigan
-maydonlar allow-list'i (statik filter EMAS). read/update/delete'da LLM o'zi runtime'da
-bir nechta shartni AND/OR va operatorlar (eq/ne/gt/gte/lt/lte/in/nin/contains/exists)
-bilan quradi — masalan "status=active VA amount>1000" yoki "kind=debt YOKI kind=loan".
-Sen node data'ga shartlarni YOZMAYSAN; faqat qaysi maydonlar filtrlanishi mumkinligini
-`searchFields`'da sanab, har biriga qisqa tur/qiymat izohi (description) ber.
+`flow.add_ai_collection_tool` — **TEMPLATE (gibrid) model**. Har node BITTA
+`operation` (create|read|update|delete). read+create kerak bo'lsa BIR agentga
+IKKI alohida collection tool ula (har biri bitta operation). Sen (builder) so'rov
+SKELETINI sozlaysan: har field uchun FIXED yoki AI-SLOT tanlaysan; runtime AI faqat
+ai-slot'larni to'ldiradi.
 
-**FLOW CONTEXT placeholderlari** (engine RUNTIME'da resolve qiladi): filter shart
-QIYMATLARIda, yaratiladigan `document`da va yangilanadigan `changes`da LLM joriy chat'ga
-bog'liq placeholder yozishi mumkin — `{{chat_id}}` (joriy Telegram chat id), `{{user_id}}`,
-`{{first_name}}`, `{{username}}`, `{{state_<key>}}` (oldin so'ralgan/saqlangan qiymat),
-`{{collection_<key>}}`. BUTUN-placeholder qiymat XOM tipni saqlaydi (`value="{{chat_id}}"`
-int qoladi) — shusiz "JORIY foydalanuvchining O'Z yozuvlari"ni o'qib/yangilab/o'chirib
-bo'lmaydi (`user_id == chat_id`). Bu `searchFields`'ga bog'liq EMAS: searchFields qaysi
-field filtrlanishini, placeholder esa QIYMAT manbasini bildiradi.
-Misol — foydalanuvchi o'z faol qarzlarini ko'rsa (read filter):
+- `operation='read'|'update'|'delete'` → `filterMatch` (`and`/`or`) +
+  `filterConditions: [{field, op, source:'fixed'|'ai', value?|aiDescription?}]`;
+  op ∈ eq/ne/gt/gte/lt/lte/in/nin/contains/exists.
+- `operation='create'` → `documentFields: [{field, source, value?|aiDescription?}]`.
+- `operation='update'` → YANA `changeFields` (SET qilinadigan maydonlar;
+  `filterConditions` QAYSI hujjat ekanini tanlaydi).
+
+**FIXED vs AI** — har field uchun:
+- `source='fixed'` → SEN `value` belgilaysan: constant yoki flow placeholder —
+  `{{chat_id}}`, `{{user_id}}`, `{{first_name}}`, `{{username}}`, `{{state_<key>}}`
+  (oldin so'ralgan/saqlangan), `{{collection_<key>}}`. Engine runtime'da resolve
+  qiladi; BUTUN-placeholder XOM tipni saqlaydi (`value="{{chat_id}}"` int qoladi).
+  FIXED slot'ni runtime AI O'ZGARTIROLMAYDI — shuning uchun `user_id="{{chat_id}}"`
+  qilib tool'ni JORIY foydalanuvchiga XAVFSIZ biriktir (AI boshqa user yozuvlarini
+  ololmaydi).
+- `source='ai'` → `value` bo'sh qoldiriladi, `aiDescription` yoziladi; runtime AI
+  shu tavsifga qarab qiymatni har murojaatda to'ldiradi.
+
+Misol — JORIY foydalanuvchining qarzlarini o'qish, holatni AI tanlaydi (read):
 ```json
-{"match": "and", "conditions": [
-  {"field": "user_id", "op": "eq", "value": "{{chat_id}}"},
-  {"field": "status",  "op": "eq", "value": "active"}]}
+{"operation": "read", "filterMatch": "and", "filterConditions": [
+  {"field": "user_id", "op": "eq", "source": "fixed", "value": "{{chat_id}}"},
+  {"field": "status",  "op": "eq", "source": "ai",
+   "aiDescription": "qaysi holatdagi qarzlar (masalan active)"}]}
 ```
-Misol — yangi yozuvni joriy foydalanuvchiga bog'lab yaratish (create `document`):
+Misol — yangi qarzni JORIY foydalanuvchiga bog'lab yaratish (create):
 ```json
-{"user_id": "{{chat_id}}", "text": "...", "amount": 1000}
+{"operation": "create", "documentFields": [
+  {"field": "user_id", "source": "fixed", "value": "{{chat_id}}"},
+  {"field": "amount",  "source": "ai", "aiDescription": "qarz summasi"},
+  {"field": "text",    "source": "ai", "aiDescription": "qarz izohi"}]}
 ```
+
+LEGACY (hanuz qabul qilinadi, engine fallback qiladi): `operation` bermasang eski
+model ishlaydi — `operations` allow-list + `searchFields` ([{field, description?}]),
+unda runtime AI butun filtrni o'zi quradi. Yangi node'larda TEMPLATE model afzal
+(fixed slot orqali `user_id` kabi maydonlarni AI o'zgartirmaydigan qilib qotirasan).
 
 ### 8.4 Ulash — `flow.connect_accessory`
 Provider/tool sub-node'larni agentga FAQAT `flow.connect_accessory` bilan ula:
