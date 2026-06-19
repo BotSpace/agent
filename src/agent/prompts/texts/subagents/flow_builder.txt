@@ -608,6 +608,13 @@ ishlatilishi (va credential/Qdrant talablari) har bir tool'ning O'Z description'
 va AIAgentNode catalog tavsifida — bu yerda qaytarmaymiz. Umumiy tamoyil: agent
 real ma'lumot/harakat kerak bo'lsa tool ula, toza matnga tayanma.
 
+`flow.add_ai_collection_tool` — `searchFields` = LLM RUNTIME'da filtrlay oladigan
+maydonlar allow-list'i (statik filter EMAS). read/update/delete'da LLM o'zi runtime'da
+bir nechta shartni AND/OR va operatorlar (eq/ne/gt/gte/lt/lte/in/nin/contains/exists)
+bilan quradi — masalan "status=active VA amount>1000" yoki "kind=debt YOKI kind=loan".
+Sen node data'ga shartlarni YOZMAYSAN; faqat qaysi maydonlar filtrlanishi mumkinligini
+`searchFields`'da sanab, har biriga qisqa tur/qiymat izohi (description) ber.
+
 ### 8.4 Ulash — `flow.connect_accessory`
 Provider/tool sub-node'larni agentga FAQAT `flow.connect_accessory` bilan ula:
 ```

@@ -692,9 +692,18 @@ def build_flow_action_tools() -> list[Tool]:
                 "Add a Collection CRUD tool sub-node for an AIAgentNode (tool='collection'). "
                 "Full CRUD on a bot `collection`; restrict via the `operations` allow-list "
                 "(create/read/update/delete). Connect to acc:ai_tool. "
-                "searchFields (optional) = ARRAY OF OBJECTS, each "
+                "searchFields (optional) = RUNTIME filter allow-list, ARRAY OF OBJECTS, each "
                 "{\"field\": \"<name>\", \"description\": \"<hint>\"} (`field` required) — "
-                "NOT a string array, keys are `field`/`description` (not name/type)."
+                "NOT a string array, keys are `field`/`description` (not name/type). "
+                "RUNTIME FILTER (not static): for read/update/delete the LLM builds the filter "
+                "itself at runtime over the searchFields. The engine accepts it in two shapes — "
+                "flat equality AND {field: value}, OR structured {\"match\":\"and\"|\"or\", "
+                "\"conditions\":[{\"field\",\"op\",\"value\"}, ...]} with op ∈ "
+                "eq|ne|gt|gte|lt|lte|in|nin|contains|exists. So the agent can run multi-condition "
+                "AND/OR filters like \"status=active AND amount>1000\" or \"kind=debt OR kind=loan\" "
+                "WITHOUT you writing those conditions here; searchFields only lists which fields "
+                "are filterable. Put a short type/value hint in each field's description so the LLM "
+                "picks the right operator."
             ),
         ),
         _make_popular_node_tool(
