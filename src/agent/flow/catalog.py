@@ -303,7 +303,12 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
     "EditOrSendMessageNode": NodeTypeSpec(
         type="EditOrSendMessageNode",
         category="send",
-        description="Mavjud bo'lsa edit qiladi, aks holda yangisini yuboradi",
+        description=(
+            "Mavjud bo'lsa edit qiladi, aks holda yangisini yuboradi. messageText "
+            "ichida ro'yxatni BITTA xabarda chiqarish uchun {{#each KEY}}...{{/each}} "
+            "(+ {{@number}}/{{@index}}/{{this}}) va bo'sh holat uchun {{^KEY}}...{{/KEY}} "
+            "ishlaydi; KEY = LoadCollectionListNode contextKey (Pattern 4a). Nested each YO'Q."
+        ),
         required_data=["messageText"],
         optional_data=["remove_keyboard", "targetMessageNodeId", "keyboard"],
     ),
@@ -438,9 +443,14 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
     "LoadCollectionListNode": NodeTypeSpec(
         type="LoadCollectionListNode",
         category="data",
-        description="Documents ro'yxati (filter, sort, limit)",
+        description=(
+            "Documents ro'yxatini context'ga yuklaydi (massiv contextKey kalitiga). "
+            "Ro'yxatni BITTA xabar matnida ko'rsatish uchun keyingi EditOrSend matnida "
+            "{{#each KEY}}{{@number}}. {{field}}\\n{{/each}}{{^KEY}}Bo'sh.{{/KEY}} ishlat — "
+            "KEY = contextKey (CustomCode/ForLoop EMAS — flow_builder Pattern 4a)."
+        ),
         required_data=["collection_name"],
-        optional_data=["filter", "sort", "limit"],
+        optional_data=["filter", "sort", "limit", "contextKey"],
     ),
     "UpdateCollectionNode": NodeTypeSpec(
         type="UpdateCollectionNode",
