@@ -589,15 +589,22 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "engine runtime'da access_token'ga aylantiradi). operation: append/read/update/clear. "
             "spreadsheet_id majburiy. range to'liq 'Sheet1!A1:C10' yoki sheet alohida "
             "berilsa faqat 'A1:C10' (engine sheet+range birlashtiradi) — sheet yoki range'dan "
-            "kamida biri bo'lishi shart. values JSON 2D massiv (append/update). Natija "
-            "context[responseVariable] (default 'sheets_response'), "
-            "context[responseVariable+'_status'], context['sheets_success'] ga yoziladi. "
+            "kamida biri bo'lishi shart. values JSON 2D massiv (append/update). "
+            "JAVOB SHAKLI (read): context[responseVariable] (default 'sheets_response') = XOM "
+            "Google API javobi {majorDimension, range, values} — values 2D massiv, 1-QATOR "
+            "SARLAVHA, qolganlari ma'lumot; bu OBYEKT, {{#each}} bilan ISHLAMAYDI. Engine yana "
+            "context[rowsVariable] (default '<responseVariable>_rows' = 'sheets_response_rows') "
+            "ga TOZA array-of-objects yozadi (sarlavha qatori kalit): [{ustun_nomi: qiymat}, ...]. "
+            "Ro'yxatni xabarda chiqarish uchun ALBATTA rowsVariable'ni ishlat: "
+            "`{{#each sheets_response_rows}}{{ustun_nomi}}{{/each}}` — XOM responseVariable'ni "
+            "{{#each}} bilan ISHLATMA. Yana context[responseVariable+'_status'], "
+            "context['sheets_success'] ham yoziladi. "
             "CREDENTIAL: qurishdan OLDIN credentials.list(type_key='google_sheets'); yo'q bo'lsa "
             "credentials.connect_oauth(type_key='google_sheets') bilan ULASH linkini ber "
             "(OAuth — API orqali yaratib BO'LMAYDI); ulangach qayta list qilib credential_id ol."
         ),
         required_data=["credential_id", "operation", "spreadsheet_id"],
-        optional_data=["sheet", "range", "column", "values", "responseVariable"],
+        optional_data=["sheet", "range", "column", "values", "responseVariable", "rowsVariable"],
     ),
     "GoogleDriveNode": NodeTypeSpec(
         type="GoogleDriveNode",

@@ -380,6 +380,24 @@ Misol (LoadCollectionList contextKey="products" → EditOrSend matni):
 ⚠️ **Bitta daraja — nested `{{#each}}` ISHLATMA.** Seksiya ichida yana `{{#each}}`
 qo'ysang engine `{{/each}}`'larni noto'g'ri juftlaydi (buziladi). Bir martada bitta ro'yxat.
 
+**Pattern 4b: Google Sheets ro'yxatini xabarda ko'rsat — `rowsVariable` ISHLAT.**
+GoogleSheetsNode `operation:"read"` IKKI kalit yozadi:
+- `responseVariable` (default `sheets_response`) — XOM Google javobi `{majorDimension, range,
+  values}`; `values` 2D massiv (1-qator sarlavha). Bu OBYEKT — `{{#each}}` bilan ISHLAMAYDI.
+- `rowsVariable` (default `<responseVariable>_rows` = `sheets_response_rows`) — TOZA
+  array-of-objects (sarlavha qatori kalit): `[{name, price, ...}, ...]`. `{{#each}}` uchun MANA SHU.
+
+Ravshanlik uchun `rowsVariable`ni aniq nomla (masalan `"products_rows"`), keyingi
+EditOrSendMessageNode matnida SHU kalitni ishlat:
+```
+📋 <b>Mahsulotlar:</b>
+
+{{#each products_rows}}{{@number}}. {{name}} — {{price}}
+{{/each}}{{^products_rows}}Hozircha mahsulot yo'q.{{/products_rows}}
+```
+Ustun nomlari (`{{name}}`, `{{price}}`) Sheet'ning 1-qatoridagi SARLAVHAlardan keladi.
+XOM `sheets_response`ni `{{#each}}` bilan ISHLATMA (array emas).
+
 **`{{#each}}` (bitta xabar-ro'yxat) vs `ForLoopNode` (har element alohida):**
 - Ro'yxatni BITTA xabarda matn qilib ko'rsatish → `{{#each}}` (afzal, kamroq node).
 - Har element uchun ALOHIDA xabar yuborish yoki amal bajarish (har biriga alohida

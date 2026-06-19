@@ -777,7 +777,10 @@ def build_flow_action_tools() -> list[Tool]:
                 "range, values. REQUIRES credential_id of a type_key='google_sheets' OAuth "
                 "credential — credentials.list(type_key='google_sheets'); it CANNOT be created "
                 "via API, the user connects it in the dashboard ('Connect with Google'). "
-                "Optional defaults: spreadsheetId, sheet, operation. Connect to acc:ai_tool."
+                "Optional defaults: spreadsheetId, sheet, operation. RESULT: this is an AGENT "
+                "TOOL — read returns RAW values to the LLM (2D array, 1st row = header), NOT a "
+                "context variable; for {{#each}} TEMPLATE output use GoogleSheetsNode + "
+                "rowsVariable instead. Connect to acc:ai_tool."
             ),
         ),
         _make_popular_node_tool(
