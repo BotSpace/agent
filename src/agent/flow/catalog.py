@@ -581,7 +581,10 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "berilsa faqat 'A1:C10' (engine sheet+range birlashtiradi) — sheet yoki range'dan "
             "kamida biri bo'lishi shart. values JSON 2D massiv (append/update). Natija "
             "context[responseVariable] (default 'sheets_response'), "
-            "context[responseVariable+'_status'], context['sheets_success'] ga yoziladi."
+            "context[responseVariable+'_status'], context['sheets_success'] ga yoziladi. "
+            "CREDENTIAL: qurishdan OLDIN credentials.list(type_key='google_sheets'); yo'q bo'lsa "
+            "credentials.connect_oauth(type_key='google_sheets') bilan ULASH linkini ber "
+            "(OAuth — API orqali yaratib BO'LMAYDI); ulangach qayta list qilib credential_id ol."
         ),
         required_data=["credential_id", "operation", "spreadsheet_id"],
         optional_data=["sheet", "range", "column", "values", "responseVariable"],
@@ -595,7 +598,10 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "upload/delete. list uchun query (Drive q filtri); create_folder/upload uchun "
             "file_name; folder_id ota-papka; upload uchun content (matn) + mime_type "
             "(default 'text/plain'); delete uchun file_id. Natija context[responseVariable] "
-            "(default 'drive_response'), _status, context['drive_success'] ga yoziladi."
+            "(default 'drive_response'), _status, context['drive_success'] ga yoziladi. "
+            "CREDENTIAL: qurishdan OLDIN credentials.list(type_key='google_drive'); yo'q bo'lsa "
+            "credentials.connect_oauth(type_key='google_drive') bilan ULASH linkini ber "
+            "(OAuth — API orqali yaratib BO'LMAYDI); ulangach qayta list qilib credential_id ol."
         ),
         required_data=["credential_id", "operation"],
         optional_data=["query", "file_name", "folder_id", "content", "mime_type", "file_id", "responseVariable"],
@@ -919,9 +925,10 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "tool='google_sheets'. Agent Google Sheet'ni o'qiydi/qator qo'shadi (lookup "
             "jadval, log, buyurtma jurnali). LLM runtime args: operation (read|append), "
             "spreadsheet_id, sheet, range, values. "
-            "CREDENTIAL MAJBURIY: credential_id — type_key 'google_sheets' OAuth "
-            "(credentials.list(type_key='google_sheets')). API orqali YARATIB BO'LMAYDI — "
-            "foydalanuvchi dashboard'da 'Connect with Google' qiladi. "
+            "CREDENTIAL MAJBURIY: credential_id — type_key 'google_sheets' OAuth. Qurishdan "
+            "OLDIN credentials.list(type_key='google_sheets'); yo'q bo'lsa "
+            "credentials.connect_oauth(type_key='google_sheets') bilan ULASH linkini ber "
+            "(API orqali YARATIB BO'LMAYDI); ulangach qayta list qilib credential_id ol. "
             "Ixtiyoriy default'lar: spreadsheetId, sheet, operation. "
             "Edge: source=<this_id>, sourceHandle='source-default', "
             "target=<agent_id>, targetHandle='acc:ai_tool'."

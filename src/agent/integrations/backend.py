@@ -787,6 +787,33 @@ class BackendClient:
         d = await self._request("POST", "/api/v1/credentials/", json=body, **_auth_kw(auth_claims))
         return _unwrap_item(d)
 
+    async def oauth_start(
+        self,
+        provider: str,
+        type_key: str,
+        *,
+        auth_claims: dict | None = None,
+    ) -> dict[str, Any]:
+        """Begin a browser OAuth consent flow for an OAuth credential type.
+
+        POST /api/v1/credentials/oauth/{provider}/start/  body {"type_key": ...}.
+        The backend signs a state bound to the OWNER (request.user) and returns
+        ``{"authorize_url": "https://accounts.google.com/o/oauth2/..."}``. The
+        agent hands that URL to the user; once the user grants consent the
+        backend's callback creates the credential under the same owner — the
+        agent never sees the token, it just re-lists afterwards.
+
+        ``provider`` is the OAuth provider slug (e.g. "google" for all
+        google_* type_keys); ``type_key`` is the credential type to create.
+        """
+        d = await self._request(
+            "POST",
+            f"/api/v1/credentials/oauth/{provider}/start/",
+            json={"type_key": type_key},
+            **_auth_kw(auth_claims),
+        )
+        return _unwrap_item(d)
+
     async def update_credential(
         self, credential_id: str | int, body: dict[str, Any], *, auth_claims: dict | None = None
     ) -> dict[str, Any]:
