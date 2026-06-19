@@ -599,12 +599,19 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "`{{#each sheets_response_rows}}{{ustun_nomi}}{{/each}}` — XOM responseVariable'ni "
             "{{#each}} bilan ISHLATMA. Yana context[responseVariable+'_status'], "
             "context['sheets_success'] ham yoziladi. "
+            "READ FILTER (in-memory, STATIK — AI-slot YO'Q): faqat ayrim qatorlar kerak bo'lsa "
+            "filterConditions bilan rowsni field/op/value bo'yicha filterla, filterMatch ('and'|'or', "
+            "default 'and') ularni birlashtiradi. op ∈ eq|ne|gt|gte|lt|lte|in|nin|contains|exists; "
+            "field — ustun nomi (1-qator sarlavhasi); value'da {{chat_id}}/{{state_*}} ishlaydi "
+            "(masalan price>100000 yoki category=={{state_category}}). Filterlangan natija ham "
+            "rowsVariable'ga yoziladi. "
             "CREDENTIAL: qurishdan OLDIN credentials.list(type_key='google_sheets'); yo'q bo'lsa "
             "credentials.connect_oauth(type_key='google_sheets') bilan ULASH linkini ber "
             "(OAuth — API orqali yaratib BO'LMAYDI); ulangach qayta list qilib credential_id ol."
         ),
         required_data=["credential_id", "operation", "spreadsheet_id"],
-        optional_data=["sheet", "range", "column", "values", "responseVariable", "rowsVariable"],
+        optional_data=["sheet", "range", "column", "values", "responseVariable", "rowsVariable",
+                       "filterMatch", "filterConditions"],
     ),
     "GoogleDriveNode": NodeTypeSpec(
         type="GoogleDriveNode",
