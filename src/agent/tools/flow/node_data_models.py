@@ -920,6 +920,18 @@ class AICollectionToolData(_AIToolBase):
     The LLM gets a single tool that can create/read/update/delete documents in
     `collection`, restricted to the `operations` allow-list. CROSS-STREAM
     CONTRACT with constructor + engine (AICollectionToolNode) — keep keys exact.
+
+    RUNTIME FILTER (NOT static config): for read/update/delete the LLM builds the
+    filter itself AT RUNTIME — this node only declares WHICH fields are filterable
+    via `searchFields`. The engine accepts the LLM filter in TWO shapes:
+      1. Flat equality AND: {field: value, ...} — simple case (all conditions eq+AND).
+      2. Structured multi-condition: {"match": "and"|"or", "conditions": [
+         {"field", "op", "value"}, ...]} where op ∈
+         eq|ne|gt|gte|lt|lte|in|nin|contains|exists.
+    So the agent can express e.g. "status=active AND amount>1000" or
+    "kind=debt OR kind=loan" at runtime. You (the builder) do NOT write these
+    conditions in node data — `searchFields` is just the allow-list of filterable
+    fields; the AND/OR + operators live in the LLM's runtime tool args.
     """
 
     tool: Literal["collection"] = "collection"
@@ -932,13 +944,20 @@ class AICollectionToolData(_AIToolBase):
     searchFields: list[dict[str, str]] | None = Field(
         default=None,
         description=(
-            "Optional fields the LLM may filter/search by. ARRAY OF OBJECTS — "
-            "each item is a dict with EXACTLY these keys: "
-            "`field` (the collection field name, REQUIRED) and `description` "
-            "(human hint shown to the LLM, optional). "
-            "Engine builds the tool's parametersSchema from these (each field "
-            "becomes a string parameter). "
+            "Optional allow-list of fields the LLM may filter/search by AT RUNTIME "
+            "for read/update/delete. ARRAY OF OBJECTS — each item is a dict with "
+            "EXACTLY these keys: `field` (the collection field name, REQUIRED) and "
+            "`description` (human hint shown to the LLM, optional). "
+            "Each listed field can be used by the LLM not just for EQUALITY but for "
+            "comparison/range/membership/text-match — operators eq|ne|gt|gte|lt|lte|"
+            "in|nin|contains|exists — and combined across fields with AND/OR. The "
+            "engine builds the tool's filter schema from this list; the actual "
+            "conditions (operator + value + AND/OR) are chosen by the LLM at runtime, "
+            "NOT written here. Write a SHORT description per field hinting its type / "
+            "valid values (e.g. status: 'active|inactive', amount: 'number') so the "
+            "LLM picks sensible operators. "
             "Correct: [{\"field\": \"email\", \"description\": \"customer email\"}, "
+            "{\"field\": \"amount\", \"description\": \"order total, number — gt/lt ok\"}, "
             "{\"field\": \"status\"}]. "
             "WRONG (rejected): a plain string array like [\"email\", \"status\"], "
             "or keys `name`/`type` instead of `field`/`description`."
