@@ -152,8 +152,66 @@ def test_collection_tool_data_search_fields_engine_shape():
 
 def test_collection_tool_data_forbids_extra_fields():
     Model = NODE_DATA_MODELS["AICollectionToolNode"]
+    # Unknown field rejected (extra='forbid').
+    with pytest.raises(Exception):
+        Model.model_validate({"collection": "x", "bogusField": 1})
+    # `operation` is now a real Literal field, but an invalid value is rejected.
     with pytest.raises(Exception):
         Model.model_validate({"collection": "x", "operation": "find"})
+
+
+def test_collection_tool_template_read_with_fixed_and_ai_slots():
+    """TEMPLATE (hybrid) read: fixed {{chat_id}} slot + ai status slot."""
+    Model = NODE_DATA_MODELS["AICollectionToolNode"]
+    inst = Model.model_validate(
+        {
+            "collection": "debts",
+            "operation": "read",
+            "filterMatch": "and",
+            "filterConditions": [
+                {"field": "user_id", "op": "eq", "source": "fixed", "value": "{{chat_id}}"},
+                {"field": "status", "op": "eq", "source": "ai",
+                 "aiDescription": "qaysi holatdagi qarzlar (masalan active)"},
+            ],
+        }
+    )
+    dumped = inst.model_dump()
+    assert dumped["operation"] == "read"
+    assert dumped["filterMatch"] == "and"
+    fixed, ai = dumped["filterConditions"]
+    assert fixed["source"] == "fixed" and fixed["value"] == "{{chat_id}}"
+    assert ai["source"] == "ai" and ai["aiDescription"]
+    # Legacy fields keep their backward-compat defaults.
+    assert dumped["operations"] == ["create", "read", "update", "delete"]
+    assert dumped["documentFields"] is None
+
+
+def test_collection_tool_template_create_document_fields():
+    Model = NODE_DATA_MODELS["AICollectionToolNode"]
+    inst = Model.model_validate(
+        {
+            "collection": "debts",
+            "operation": "create",
+            "documentFields": [
+                {"field": "user_id", "source": "fixed", "value": "{{chat_id}}"},
+                {"field": "amount", "source": "ai", "aiDescription": "qarz summasi"},
+                {"field": "text", "source": "ai", "aiDescription": "qarz izohi"},
+            ],
+        }
+    )
+    dumped = inst.model_dump()
+    assert dumped["operation"] == "create"
+    assert [f["field"] for f in dumped["documentFields"]] == ["user_id", "amount", "text"]
+    assert dumped["documentFields"][0]["value"] == "{{chat_id}}"
+
+
+def test_collection_tool_template_invalid_op_rejected():
+    Model = NODE_DATA_MODELS["AICollectionToolNode"]
+    with pytest.raises(Exception):
+        Model.model_validate(
+            {"collection": "c", "operation": "read",
+             "filterConditions": [{"field": "x", "op": "between", "source": "ai"}]}
+        )
 
 
 def test_mongo_tool_node_removed():
