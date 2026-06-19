@@ -829,6 +829,41 @@ class BackendClient:
             "DELETE", f"/api/v1/credentials/{credential_id}/", **_auth_kw(auth_claims)
         )
 
+    # ── debug flow errors (read-only) ──────────────────────────────────
+    async def list_project_errors(
+        self,
+        project_id: str | int,
+        *,
+        limit: int | None = None,
+        auth_claims: dict | None = None,
+    ) -> list[dict[str, Any]]:
+        """Recent runtime errors from the project's DEBUG flow run.
+
+        GET /api/debug/errors/?project_id=&limit= — JWT auth, project owner.
+        The engine records an entry each time a flow node raised while running
+        in debug mode. Returns the newest-first list of
+        ``{node_id, node_type, message, detail, chat_id, ts}`` so the agent can
+        see which node failed and why, then fix the flow.
+
+        Response is wrapped in the standard ``{"status", "data"}`` envelope and
+        carries the rows under a ``errors`` key (NOT DRF ``results``), so we
+        unwrap then pluck ``errors``. Always returns a list.
+        """
+        params: dict[str, Any] = {"project_id": project_id}
+        if limit:
+            params["limit"] = limit
+        d = await self._request(
+            "GET", "/api/debug/errors/", params=params, **_auth_kw(auth_claims)
+        )
+        payload = _unwrap_envelopes(d)
+        if isinstance(payload, dict):
+            rows = payload.get("errors")
+            if isinstance(rows, list):
+                return rows
+        if isinstance(payload, list):
+            return payload
+        return []
+
     # ── plans (billing) ───────────────────────────────────────────────
     async def list_plans(self, *, auth_claims: dict | None = None) -> list[dict[str, Any]]:
         d = await self._request("GET", "/api/plans/", **_auth_kw(auth_claims))

@@ -287,6 +287,115 @@ async def project_delete(input: ProjectDeleteInput, ctx: ToolContext) -> ToolRes
     return ToolResult.ok(f"Project `{input.id}` deleted.")
 
 
+# ── project.errors (read-only — debug flow errors) ──────────────────────────
+
+
+def _resolve_project_id(input_pid: str | int | None, ctx: ToolContext) -> str | None:
+    """Explicit `project_id` arg wins; else fall back to the active session.
+
+    Placeholders ('', 'global', 'none', 'null') count as "not given" — same list
+    the MCP/flow layer uses — so the active-project pointer takes over.
+    """
+    for raw in (input_pid, ctx.project_id):
+        if raw is None:
+            continue
+        text = str(raw).strip()
+        if text and text.lower() not in {"global", "none", "null"}:
+            return text
+    return None
+
+
+def _truncate(text: Any, limit: int) -> str:
+    s = "" if text is None else str(text)
+    return s if len(s) <= limit else s[: limit - 1] + "…"
+
+
+class ProjectErrorsInput(BaseModel):
+    project_id: str | int | None = Field(
+        default=None,
+        description="Project id. Omit to use the active session's project.",
+    )
+    limit: int | None = Field(
+        default=10,
+        description="Max number of recent errors to return (newest first).",
+    )
+    include_detail: bool = Field(
+        default=False,
+        description=(
+            "Include the raw `detail` (stack/raw error) per row. Off by default to "
+            "save tokens — turn on only when the short message isn't enough to fix it."
+        ),
+    )
+
+
+@tool(
+    name="project.errors",
+    description=(
+        "Show recent runtime errors from the project's DEBUG flow run — which node "
+        "failed and why (node_id, node_type, message, time). Use this FIRST when the "
+        "bot doesn't work or throws an error in debug, to locate the broken node and "
+        "fix the flow. Read-only. Newest first. Pass include_detail=true only if the "
+        "short message isn't enough."
+    ),
+    input_model=ProjectErrorsInput,
+)
+async def project_errors(input: ProjectErrorsInput, ctx: ToolContext) -> ToolResult:
+    pid = _resolve_project_id(input.project_id, ctx)
+    if not pid:
+        return ToolResult.error(
+            "Qaysi loyiha? project_id bering yoki avval loyihani tanlang "
+            "(session_use_project / project.get)."
+        )
+    try:
+        rows = await _backend(ctx).list_project_errors(
+            pid, limit=input.limit, auth_claims=ctx.state.get("auth_claims")
+        )
+    except BackendError as e:
+        return ToolResult.error(format_backend_error("project.errors", e))
+
+    if not rows:
+        return ToolResult.ok(
+            f"Loyiha {pid} uchun debug flow xatosi topilmadi — flow xatosiz "
+            "ishlagan yoki hali debug rejimda ishlatilmagan.",
+            data={"errors": [], "total": 0},
+        )
+
+    lines = [f"Loyiha {pid} — {len(rows)} ta oxirgi debug flow xatosi (yangi birinchi):"]
+    payload: list[dict[str, Any]] = []
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        node_id = r.get("node_id")
+        node_type = r.get("node_type")
+        message = r.get("message") or r.get("detail")
+        ts = r.get("ts")
+        item: dict[str, Any] = {
+            "node_id": node_id,
+            "node_type": node_type,
+            "message": message,
+            "ts": ts,
+        }
+        node_label = f"{node_id}" + (f" ({node_type})" if node_type else "")
+        line = f"  • node={node_label or '?'}: {_truncate(message, 240)}"
+        if ts:
+            line += f"  [{ts}]"
+        lines.append(line)
+        if input.include_detail and r.get("detail") and r.get("detail") != message:
+            detail = _truncate(r.get("detail"), 600)
+            lines.append(f"      detail: {detail}")
+            item["detail"] = detail
+        payload.append(item)
+
+    lines.append(
+        "Yuqoridagi node(lar)ni flow'da topib (flow.get) sababini tuzating, "
+        "keyin flow.validate → flow.save."
+    )
+    return ToolResult.ok(
+        "\n".join(lines),
+        data={"errors": payload, "total": len(payload), "project_id": pid},
+    )
+
+
 def build_project_tools() -> list[Tool]:
     from .snapshot import build_project_snapshot_tools
 
@@ -296,5 +405,6 @@ def build_project_tools() -> list[Tool]:
         project_create,
         project_update,
         project_delete,
+        project_errors,
         *build_project_snapshot_tools(),
     ]

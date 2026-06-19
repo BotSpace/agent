@@ -97,6 +97,8 @@ Qoidalar:
    ⚠️ `flow.simulate` va `flow.save` chaqirganda **`project_id`'ni HAR DOIM uzat**
    (promptdagi project_id) — aks holda "Aktiv loyiha yo'q" xatosi chiqadi.
    Xato chiqsa — tuzatib, qayta `flow.save`. Foydalanuvchidan so'rashdan oldin O'ZING verify qil.
+   **Bot ishlamasa yoki debug'da xato bersa** — avval `project.errors` bilan oxirgi
+   debug flow xatolarini ko'r (qaysi node, nima xato), keyin o'sha node'ni tuzatib qayta save qil.
    **Bot qurib bo'lgach** asosiy stsenariylarni `flow.test_save(name, steps)` bilan
    REGRESSION test sifatida saqla (steps ichida `expect` bo'lsin). Shundan keyin
    har `flow.save` bu testlarni avtomatik ishga tushiradi va regressiyani ushlaydi

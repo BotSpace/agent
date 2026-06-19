@@ -53,6 +53,7 @@ _EXCLUDED_NAMES = frozenset({"ask_user"})
 # Read-only deb hisoblanadigan operatsiya nomlari (oxirgi segment bo'yicha).
 _READ_ONLY_VERBS = (
     "get", "list", "diff", "validate", "search", "export", "history", "snapshot",
+    "errors",
 )
 
 # Joriy request'ning autentifikatsiyalangan foydalanuvchisi (Starlette middleware
