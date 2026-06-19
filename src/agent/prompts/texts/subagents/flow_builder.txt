@@ -693,6 +693,10 @@ IKKI alohida collection tool ula (har biri bitta operation). Sen (builder) so'ro
 SKELETINI sozlaysan: har field uchun FIXED yoki AI-SLOT tanlaysan; runtime AI faqat
 ai-slot'larni to'ldiradi.
 
+`flow.add_ai_google_sheets_tool` — credential bilan to'liq sheet boshqaruvi:
+read+append+update+clear+list_tabs. operation'ni RUNTIME AI o'zi tanlaydi (node'da
+static EMAS); sen faqat credential_id + ixtiyoriy default spreadsheetId/sheet tutasan.
+
 - `operation='read'|'update'|'delete'` → `filterMatch` (`and`/`or`) +
   `filterConditions: [{field, op, source:'fixed'|'ai', value?|aiDescription?}]`;
   op ∈ eq/ne/gt/gte/lt/lte/in/nin/contains/exists.

@@ -1331,11 +1331,18 @@ class AIDateTimeToolData(_StrictData):
 class AIGoogleSheetsToolData(_StrictData):
     """Google Sheets agent tool. tool='google_sheets'. REQUIRES a `google_sheets` credential.
 
-    Lets the agent read from / append to a Google Sheet (lookup tables, logs,
-    order journals) on its own. The LLM calls it with runtime args (engine builds
-    parametersSchema): operation ('read'|'append'), spreadsheet_id, sheet, range,
-    values. The optional `spreadsheetId`/`sheet`/`operation` data fields below are
-    DEFAULTS the engine falls back to when the LLM omits the matching arg.
+    Lets the agent VIEW (read, list_tabs) and MANAGE (append, update, clear) a
+    Google Sheet (lookup tables, logs, order journals) on its own. operation is a
+    RUNTIME arg the LLM picks — NOT static node config. The LLM calls it with runtime
+    args (engine builds parametersSchema): operation, spreadsheet_id, sheet, range,
+    values. Operations:
+      - read        — read rows from a range -> {rows, count}.
+      - append      — add row(s); values is a 2D array.
+      - update      — write values into a range; values is a 2D array.
+      - clear       — clear a range.
+      - list_tabs   — list the spreadsheet's tab/sheet names.
+    The optional `spreadsheetId`/`sheet`/`operation` data fields below are DEFAULTS
+    the engine falls back to when the LLM omits the matching arg.
     CROSS-STREAM CONTRACT with engine (AIGoogleSheetsToolNode) — keep keys exact.
 
     CREDENTIAL: `credential_id` of a type_key='google_sheets' OAuth credential is
@@ -1364,9 +1371,12 @@ class AIGoogleSheetsToolData(_StrictData):
         default="",
         description="Default sheet/tab name (e.g. 'Sheet1') used when the LLM omits sheet. Optional.",
     )
-    operation: Literal["read", "append"] = Field(
+    operation: Literal["read", "append", "update", "clear", "list_tabs"] = Field(
         default="read",
-        description="Default operation when the LLM omits it: 'read' (lookup) | 'append' (add a row).",
+        description=(
+            "Default operation when the LLM omits it (the LLM normally picks at runtime): "
+            "'read' | 'append' | 'update' | 'clear' | 'list_tabs'."
+        ),
     )
 
 

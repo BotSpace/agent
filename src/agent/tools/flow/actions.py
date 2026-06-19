@@ -772,8 +772,11 @@ def build_flow_action_tools() -> list[Tool]:
             data_model=AIGoogleSheetsToolData,
             description=(
                 "Add a Google Sheets tool sub-node for an AIAgentNode (tool='google_sheets'). "
-                "Lets the agent read/append a Google Sheet (lookup table, log, order journal). "
-                "The LLM calls it with args operation (read|append), spreadsheet_id, sheet, "
+                "Lets the agent VIEW (read, list_tabs) and MANAGE (append, update, clear) a "
+                "Google Sheet (lookup table, log, order journal). operation is a RUNTIME arg "
+                "the LLM picks: read (rows from a range), append (add row(s), values 2D), "
+                "update (write values into a range, values 2D), clear (clear a range), "
+                "list_tabs (list tab names). Runtime args: operation, spreadsheet_id, sheet, "
                 "range, values. REQUIRES credential_id of a type_key='google_sheets' OAuth "
                 "credential — credentials.list(type_key='google_sheets'); it CANNOT be created "
                 "via API, the user connects it in the dashboard ('Connect with Google'). "
