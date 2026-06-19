@@ -439,7 +439,13 @@ class CustomCodeData(_StrictData):
         description=(
             "JavaScript executed by Goja VM. Stored under data.jsCode — this exact "
             "key is read by the engine and rendered by the constructor UI. See prompt "
-            "Pattern 7 for the full runtime API (send_*, db_*, http_*, exit, set_context, ...)."
+            "Pattern 7 for the full runtime API (send_*, db_*, http_*, exit, set_context, ...). "
+            "FORMAT CLEANLY — the engine stores your code verbatim (no auto-format), so "
+            "write it readable on the FIRST try: one statement per line (never several "
+            "joined by ';'), consistent 2-space indent for blocks, spaces around "
+            "operators (a = 1, x === y — not a=1), meaningful variable names (movie, "
+            "episodes — not m/e). Never emit minified or single-line code. See "
+            "docs_guide(topic='custom_code') for a clean-format example to imitate."
         )
     )
     outputs: list[dict[str, str]] = Field(
@@ -932,6 +938,28 @@ class AICollectionToolData(_AIToolBase):
     "kind=debt OR kind=loan" at runtime. You (the builder) do NOT write these
     conditions in node data — `searchFields` is just the allow-list of filterable
     fields; the AND/OR + operators live in the LLM's runtime tool args.
+
+    FLOW CONTEXT PLACEHOLDERS (runtime-resolved by the engine): the VALUES the LLM
+    puts in filter conditions, in the `document` it creates, and in the `changes` it
+    updates MAY be flow-context placeholders that the engine resolves at runtime from
+    the current chat:
+      {{chat_id}}      current Telegram chat id
+      {{user_id}}      current user id
+      {{first_name}}, {{username}}
+      {{state_<key>}}  a value asked/saved earlier in the flow (e.g. {{state_phone}})
+      {{collection_<key>}}
+    A WHOLE-PLACEHOLDER value keeps its RAW type — value "{{chat_id}}" stays an int,
+    so `user_id == {{chat_id}}` matches an int field correctly. This is how the agent
+    reads/updates/deletes "the CURRENT user's own records" (e.g. user_id == chat_id).
+    These placeholders are INDEPENDENT of `searchFields`: `searchFields` says WHICH
+    field may be filtered; a placeholder is the SOURCE of the VALUE the LLM writes.
+    Examples (the LLM, not you, writes these at runtime):
+      read this user's active debts:
+        {"match": "and", "conditions": [
+          {"field": "user_id", "op": "eq", "value": "{{chat_id}}"},
+          {"field": "status",  "op": "eq", "value": "active"}]}
+      create a record tied to this user:
+        document: {"user_id": "{{chat_id}}", "text": "...", "amount": 1000}
     """
 
     tool: Literal["collection"] = "collection"
@@ -1021,7 +1049,10 @@ class AICustomCodeToolData(_AIToolBase):
         description=(
             "JavaScript. return value (or exit(value)) is the tool result. args and flow "
             "context available. Has full engine access (Mongo write, Telegram send, http) — "
-            "write only the needed operation; avoid infinite loops (30s timeout)."
+            "write only the needed operation; avoid infinite loops (30s timeout). "
+            "Format cleanly (stored verbatim): one statement per line, 2-space indent, "
+            "spaces around operators, meaningful names — never minified/single-line. "
+            "See docs_guide(topic='custom_code')."
         ),
     )
 

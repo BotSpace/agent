@@ -388,6 +388,11 @@ PreCheckout+SuccessfulPayment trigger). Birga ishlatma.
 `edit_or_send`, `edit_message_text`, `db_*`, `callback_query.message.message_id`,
 pagination edit-in-place namunasi) `docs_guide(topic="custom_code")`da. CustomCode
 yozishdan oldin O'QI. Asosiy nuqtalar:
+
+**🧹 KODNI TOZA YOZ** (engine `jsCode`'ni o'zgartirmasdan saqlaydi — format AI'da):
+har statement alohida qatorda (`;` bilan tiqma), izchil 2-probel otступ, operator
+atrofida bo'shliq (`x === y`, NE `x===y`), mazmunli o'zgaruvchi nomlari. Hech qachon
+minified/bir-qatorli yozma. Toza-format namunasi `docs_guide(topic="custom_code")`da.
 - Trigger saqlagan qiymat context'da `state_<key>` (prefiks `state_`!) — masalan
   `state:{key:"movie_code"}` → `get_context("state_movie_code")`.
 - **Edit-in-place (pagination/menyu yangilash):** callback bosilganda YANGI xabar
@@ -615,6 +620,25 @@ bilan quradi — masalan "status=active VA amount>1000" yoki "kind=debt YOKI kin
 Sen node data'ga shartlarni YOZMAYSAN; faqat qaysi maydonlar filtrlanishi mumkinligini
 `searchFields`'da sanab, har biriga qisqa tur/qiymat izohi (description) ber.
 
+**FLOW CONTEXT placeholderlari** (engine RUNTIME'da resolve qiladi): filter shart
+QIYMATLARIda, yaratiladigan `document`da va yangilanadigan `changes`da LLM joriy chat'ga
+bog'liq placeholder yozishi mumkin — `{{chat_id}}` (joriy Telegram chat id), `{{user_id}}`,
+`{{first_name}}`, `{{username}}`, `{{state_<key>}}` (oldin so'ralgan/saqlangan qiymat),
+`{{collection_<key>}}`. BUTUN-placeholder qiymat XOM tipni saqlaydi (`value="{{chat_id}}"`
+int qoladi) — shusiz "JORIY foydalanuvchining O'Z yozuvlari"ni o'qib/yangilab/o'chirib
+bo'lmaydi (`user_id == chat_id`). Bu `searchFields`'ga bog'liq EMAS: searchFields qaysi
+field filtrlanishini, placeholder esa QIYMAT manbasini bildiradi.
+Misol — foydalanuvchi o'z faol qarzlarini ko'rsa (read filter):
+```json
+{"match": "and", "conditions": [
+  {"field": "user_id", "op": "eq", "value": "{{chat_id}}"},
+  {"field": "status",  "op": "eq", "value": "active"}]}
+```
+Misol — yangi yozuvni joriy foydalanuvchiga bog'lab yaratish (create `document`):
+```json
+{"user_id": "{{chat_id}}", "text": "...", "amount": 1000}
+```
+
 ### 8.4 Ulash — `flow.connect_accessory`
 Provider/tool sub-node'larni agentga FAQAT `flow.connect_accessory` bilan ula:
 ```
@@ -673,11 +697,23 @@ Copy-paste qilinadigan, real scenariylarga asoslangan.
 ### 1. flow.add_custom_code
 
 **(a) Linear — outputs e'lon qilma, exit() shart emas:**
+(jsCode'ni ALBATTA toza, ko'p qatorli yoz — quyidagidek; bir qatorga tiqma.)
 ```python
 flow.add_custom_code(
     id="save-order",
     data={
-        "jsCode": "const name = get_context('user_name'); const phone = get_context('user_phone'); const res = db_insert('orders', {name: name, phone: phone, status: 'new', created_at: current_timestamp()}); set_context('order_id', res.data); send_message('Buyurtma qabul qilindi! ID: ' + res.data);",
+        "jsCode": (
+            "const name = get_context('user_name');\n"
+            "const phone = get_context('user_phone');\n"
+            "const res = db_insert('orders', {\n"
+            "  name: name,\n"
+            "  phone: phone,\n"
+            "  status: 'new',\n"
+            "  created_at: current_timestamp(),\n"
+            "});\n"
+            "set_context('order_id', res.insertedId);\n"
+            "send_message('Buyurtma qabul qilindi! ID: ' + res.insertedId);"
+        ),
         "outputs": [{"name": "default"}]
     },
     after="capture-phone"
@@ -689,7 +725,16 @@ flow.add_custom_code(
 flow.add_custom_code(
     id="check-user",
     data={
-        "jsCode": "const res = db_find_one('users', {telegram_id: chat_id}); if (!res || !res.data) { send_message('Siz ro\'yxatdan o\'tmagansiz.'); exit('not_found'); return; } set_context('user', res.data); exit('found');",
+        "jsCode": (
+            "const res = db_find_one('users', { telegram_id: chat_id });\n"
+            "if (!res || !res.data) {\n"
+            "  send_message('Siz ro\\'yxatdan o\\'tmagansiz.');\n"
+            "  exit('not_found');\n"
+            "  return;\n"
+            "}\n"
+            "set_context('user', res.data);\n"
+            "exit('found');"
+        ),
         "outputs": [{"name": "found"}, {"name": "not_found"}]
     },
     after="start"
@@ -704,7 +749,22 @@ flow.connect(source="check-user", target="register-ask", source_handle="output-n
 flow.add_custom_code(
     id="list-courses",
     data={
-        "jsCode": "const res = db_find('courses', {}); const courses = (res && res.data) || []; if (!courses.length) { send_message('Kurslar mavjud emas.'); exit('default'); return; } const rows = courses.map(function(c) { return [{ text: c.name + ' — ' + c.price + ' so\'m', callback_data: 'course:' + c._id }]; }); send_message('Mavjud kurslar:', { inline_keyboard: rows });",
+        "jsCode": (
+            "const res = db_find('courses', {});\n"
+            "const courses = (res && res.data) || [];\n"
+            "if (!courses.length) {\n"
+            "  send_message('Kurslar mavjud emas.');\n"
+            "  exit('default');\n"
+            "  return;\n"
+            "}\n"
+            "const rows = courses.map(function (course) {\n"
+            "  return [{\n"
+            "    text: course.name + ' — ' + course.price + ' so\\'m',\n"
+            "    callback_data: 'course:' + course._id,\n"
+            "  }];\n"
+            "});\n"
+            "send_message('Mavjud kurslar:', { inline_keyboard: rows });"
+        ),
         "outputs": [{"name": "default"}]
     },
     after="menu"
@@ -864,7 +924,26 @@ flow.add_callback_query_trigger(
 flow.add_custom_code(
     id="course-detail",
     data={
-        "jsCode": "const id = callback_query.data.replace('course:', ''); const res = db_find_one('courses', {_id: id}); if (!res || !res.data) { send_message('Topilmadi.'); exit('default'); return; } const c = res.data; send_message('<b>' + c.name + '</b>\n' + c.description + '\nNarx: ' + c.price + ' so\'m', {parse_mode: 'HTML', inline_keyboard: [[{text: '✅ Ro\'yxatdan o\'tish', callback_data: 'enroll:' + id}]]}); exit('default');",
+        "jsCode": (
+            "const courseId = callback_query.data.replace('course:', '');\n"
+            "const res = db_find_one('courses', { _id: courseId });\n"
+            "if (!res || !res.data) {\n"
+            "  send_message('Topilmadi.');\n"
+            "  exit('default');\n"
+            "  return;\n"
+            "}\n"
+            "const course = res.data;\n"
+            "const text = '<b>' + course.name + '</b>\\n'\n"
+            "  + course.description + '\\n'\n"
+            "  + 'Narx: ' + course.price + ' so\\'m';\n"
+            "send_message(text, {\n"
+            "  parse_mode: 'HTML',\n"
+            "  inline_keyboard: [[\n"
+            "    { text: '✅ Ro\\'yxatdan o\\'tish', callback_data: 'enroll:' + courseId },\n"
+            "  ]],\n"
+            "});\n"
+            "exit('default');"
+        ),
         "outputs": [{"name": "default"}]
     },
     after="course-cb"

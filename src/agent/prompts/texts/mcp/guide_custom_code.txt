@@ -5,6 +5,52 @@ o'zgaruvchilar va funksiyalar mavjud. (Node `data.outputs:[{name:"..."}]` e'lon
 qiladi va kodda `exit("nom")` bilan keyingi qadamga yo'naltiradi; yagona chiziqli
 yo'l uchun `outputs:[{name:"default"}]` + `exit("default")`.)
 
+## ⚠️ KOD FORMATI — TOZA, O'QILADIGAN YOZ (engine saqlashda formatlamaydi!)
+`jsCode` qanday yozsang, shundayligicha saqlanadi — engine/UI uni qayta
+formatlamaydi. Shuning uchun BIRINCHI martda toza, o'qiladigan, "prettier"
+ko'rinishida yoz. Minified yoki bir-qatorga tiqilgan kod YOZMA. Qoidalar:
+- **Har statement alohida qatorda.** Bitta qatorga `;` bilan ko'p amal tiqma
+  (`const a = 1; const b = 2;` EMAS — ikki qatorga ajrat).
+- **Izchil 2-probel otступ.** `{ ... }` bloklar ichidagi qatorlarni bir pog'ona
+  ichkariga sur; yopuvchi `}` ochuvchi qator bilan teng turadi.
+- **Operator/qiymat atrofida bo'shliq:** `a = 1`, `x === y`, `i < n` (NE `a=1`,
+  `x===y`). Vergul va `:` dan keyin bitta probel (`{ text: name, qty: 1 }`).
+- **Mazmunli o'zgaruvchi nomlari** — `movie`, `episodes`, `phone` (bir harfli
+  `m`/`e`/`p` EMAS); qisqa loop indeksigina (`i`) istisno.
+- **Murakkab joyga qisqa izoh** (`// _id avto ObjectId bo'ladi`) — lekin har
+  qatorga emas, faqat noaniq joyga.
+- `if (cond) { exit('x'); return; }` ni AGAR qisqa bo'lsa bir qatorda qoldirsang
+  ham bo'ladi, lekin tana 1+ amaldan oshsa bloklab yoz (har amal alohida qator).
+- `exit('NAME')` va `return` uslubini saqla: branch'dan keyin `return` (quyidagi
+  kod ishlamasin); linear (outputs yo'q) holatda `exit`/`return` shart emas.
+
+### Toza format namunasi (SHUNGA TAQLID QIL)
+```javascript
+const phone = (message.contact && message.contact.phone_number) || '';
+const digits = phone.replace(/\D/g, '');
+
+if (digits.length < 9) {
+  send_message('❌ Telefon raqami noto‘g‘ri.');
+  exit('invalid');
+  return;
+}
+
+const existing = db_find_one('users', { telegram_id: chat_id });
+if (existing && existing.data) {
+  set_context('user', existing.data);
+  exit('existing');
+  return;
+}
+
+const created = db_insert('users', {
+  telegram_id: chat_id,
+  phone: digits,
+  created_at: current_timestamp(),
+});
+set_context('user_id', created.insertedId);
+exit('new');
+```
+
 ## Global o'zgaruvchilar
 - `chat_id` (number) — joriy chat id
 - `message` (object) — kelgan xabar: `.text`, `.first_name`, `.contact.phone_number`,
@@ -131,22 +177,46 @@ tahrirlaydi (yangi xabar yubormaydi). Sir: callback'da `edit_or_send` yoki
 
 ```javascript
 // show-list node (kod kiritilganda VA page: callback'da — ikkala holatda ishlaydi)
-const PAGE = 5;
-const code = String(get_state('movie_code') || (callback_query && (callback_query.data||'').split(':')[1]) || '').trim();
-const page = parseInt((callback_query && (callback_query.data||'').split(':')[2]) || 1, 10);
-const m = db_find_one('movies', { code: code });
-if (!m || !m.data) { edit_or_send({ text: '❌ Kod topilmadi.' }); exit('default'); }
-const all = (db_find('episodes', { code: code }).data || []).sort((a,b)=>(a.episode_no||0)-(b.episode_no||0));
-const pages = Math.max(1, Math.ceil(all.length/PAGE));
-const p = Math.min(Math.max(page,1), pages);
-const chunk = all.slice((p-1)*PAGE, p*PAGE);
-let text = '🎬 <b>'+m.data.title+'</b>\nJami: '+all.length+' qism\nSahifa: '+p+'/'+pages;
-const rows = chunk.map(e => [{ text: '▶️ '+e.episode_no+'-qism', callback_data: 'ep:'+e._id }]);
+const PAGE_SIZE = 5;
+const callbackParts = (callback_query && (callback_query.data || '').split(':')) || [];
+const code = String(get_state('movie_code') || callbackParts[1] || '').trim();
+const requestedPage = parseInt(callbackParts[2] || 1, 10);
+
+const movie = db_find_one('movies', { code: code });
+if (!movie || !movie.data) {
+  edit_or_send({ text: '❌ Kod topilmadi.' });
+  exit('default');
+  return;
+}
+
+const episodes = (db_find('episodes', { code: code }).data || [])
+  .sort((a, b) => (a.episode_no || 0) - (b.episode_no || 0));
+const pageCount = Math.max(1, Math.ceil(episodes.length / PAGE_SIZE));
+const page = Math.min(Math.max(requestedPage, 1), pageCount);
+const chunk = episodes.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+let text = '🎬 <b>' + movie.data.title + '</b>';
+text += '\nJami: ' + episodes.length + ' qism';
+text += '\nSahifa: ' + page + '/' + pageCount;
+
+const rows = chunk.map((episode) => [
+  { text: '▶️ ' + episode.episode_no + '-qism', callback_data: 'ep:' + episode._id },
+]);
+
 const nav = [];
-if (p>1) nav.push({ text:'⬅️ Oldingi', callback_data:'page:'+code+':'+(p-1) });
-if (p<pages) nav.push({ text:'Keyingi ➡️', callback_data:'page:'+code+':'+(p+1) });
-if (nav.length) rows.push(nav);
-if (callback_query) answer_callback_query('Sahifa '+p);
+if (page > 1) {
+  nav.push({ text: '⬅️ Oldingi', callback_data: 'page:' + code + ':' + (page - 1) });
+}
+if (page < pageCount) {
+  nav.push({ text: 'Keyingi ➡️', callback_data: 'page:' + code + ':' + (page + 1) });
+}
+if (nav.length) {
+  rows.push(nav);
+}
+
+if (callback_query) {
+  answer_callback_query('Sahifa ' + page);
+}
 edit_or_send({ text: text, parse_mode: 'HTML', inline_keyboard: rows });
 exit('default');
 ```

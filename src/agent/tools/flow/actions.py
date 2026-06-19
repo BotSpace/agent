@@ -703,7 +703,17 @@ def build_flow_action_tools() -> list[Tool]:
                 "AND/OR filters like \"status=active AND amount>1000\" or \"kind=debt OR kind=loan\" "
                 "WITHOUT you writing those conditions here; searchFields only lists which fields "
                 "are filterable. Put a short type/value hint in each field's description so the LLM "
-                "picks the right operator."
+                "picks the right operator. "
+                "FLOW CONTEXT PLACEHOLDERS: filter condition values, the created `document`, and "
+                "the updated `changes` MAY use runtime placeholders the engine resolves from the "
+                "current chat — {{chat_id}}, {{user_id}}, {{first_name}}, {{username}}, "
+                "{{state_<key>}}, {{collection_<key>}}. A whole-placeholder value keeps its RAW "
+                "type ({{chat_id}} stays an int), so the agent can read/update/delete the CURRENT "
+                "user's own records (user_id == chat_id). This is independent of searchFields. "
+                "E.g. read this user's active debts: {\"match\":\"and\",\"conditions\":["
+                "{\"field\":\"user_id\",\"op\":\"eq\",\"value\":\"{{chat_id}}\"},"
+                "{\"field\":\"status\",\"op\":\"eq\",\"value\":\"active\"}]}; create tied to user: "
+                "document={\"user_id\":\"{{chat_id}}\",\"text\":\"...\"}."
             ),
         ),
         _make_popular_node_tool(
