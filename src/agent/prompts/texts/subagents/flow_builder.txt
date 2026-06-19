@@ -172,7 +172,9 @@ talab qilinmagan node'ni QO'SHMA.
 - **Shartli tarmoq (1-2 oddiy shart)** → `IfConditionNode`. 3+ shart yoki DB+validatsiya
   aralash → bitta `CustomCodeNode` (exit('a')/exit('b')).
 - **Bir martalik yozuv saqla** → `flow.save_to_collection` / `CollectionNode`.
-- **Dinamik ro'yxat ko'rsat (db'dan)** → `collectionData` keyboard (CustomCode SHART EMAS).
+- **Dinamik ro'yxatni TUGMA qil (db'dan)** → `collectionData` keyboard (CustomCode SHART EMAS).
+- **Dinamik ro'yxatni BITTA XABAR MATNIDA ko'rsat (db'dan)** → `LoadCollectionListNode` +
+  EditOrSend matnida `{{#each KEY}}...{{/each}}` (CustomCode/ForLoop SHART EMAS — Pattern 4a).
 - **Murakkab logika / DB+HTTP+format birga** → `CustomCodeNode` (modular, Pattern 7).
 - **LLM javob / intelligent chat** → `AIAgentNode` + provider (+ tool'lar, Pattern 8).
   AI real ma'lumotga tayansin → tool ula (collection/http/knowledge), toza matn EMAS.
@@ -351,6 +353,38 @@ Approach A: tugma'da `value: "back-menu"` belgila, keyin
 - Ko'p sahifada "⬅️ Ortga" bir manzilga qaytarsa → `global:true` CallbackQueryTriggerNode
 - "⬅️ Ortga" tugmasi CustomCode ichida dinamik yaratilsa → `global:true` trigger SHART
   (chunki CustomCode output'dan statik edge tortib bo'lmaydi)
+
+### Pattern 4a: Ro'yxatni BITTA xabarda ko'rsat — `{{#each}}` (CustomCode/ForLoop EMAS)
+
+Collection ro'yxatini foydalanuvchiga **bitta xabar matnida** chiqarish kerak bo'lsa
+(mahsulotlar, buyurtmalar, FAQ ro'yxati) — CustomCode loop yoki ForLoopNode YOZMA.
+Engine xabar matnida Handlebars-uslubidagi seksiyani render qiladi: oddiyroq, kamroq node.
+
+1. `LoadCollectionListNode` bilan ro'yxatni context'ga yukla: `data.collection={name:"products"}`,
+   `data.contextKey="products"` (+ ixtiyoriy `filters`/`limit`/`skip`). Engine massivni
+   `context["products"]` ga yozadi — bu `{{#each}}` ning KEY'i.
+2. Keyingi `EditOrSendMessageNode` matnida `{{#each KEY}}...{{/each}}` ishlat. KEY =
+   LoadCollectionListNode'ning `contextKey`'i. Tana ichida element field'lari `{{field}}`,
+   tartib raqami `{{@number}}` (1-based) yoki `{{@index}}` (0-based), element o'zi `{{this}}`.
+3. Bo'sh ro'yxat uchun `{{^KEY}}...{{/KEY}}` (inverted) — KEY bo'sh/yo'q bo'lsa SHU tana
+   chiqadi. Edge-case (bo'sh ro'yxat) shu bilan hal bo'ladi, alohida branch SHART EMAS.
+
+Misol (LoadCollectionList contextKey="products" → EditOrSend matni):
+```
+🛒 <b>Mahsulotlar:</b>
+
+{{#each products}}{{@number}}. {{name}} — {{price}} so'm
+{{/each}}{{^products}}Hozircha mahsulot yo'q.{{/products}}
+```
+
+⚠️ **Bitta daraja — nested `{{#each}}` ISHLATMA.** Seksiya ichida yana `{{#each}}`
+qo'ysang engine `{{/each}}`'larni noto'g'ri juftlaydi (buziladi). Bir martada bitta ro'yxat.
+
+**`{{#each}}` (bitta xabar-ro'yxat) vs `ForLoopNode` (har element alohida):**
+- Ro'yxatni BITTA xabarda matn qilib ko'rsatish → `{{#each}}` (afzal, kamroq node).
+- Har element uchun ALOHIDA xabar yuborish yoki amal bajarish (har biriga alohida
+  `send_message`, DB yozuv, HTTP) → `ForLoopNode` (`loop-body`/`no-items` handle).
+- Har element bitta TUGMA bo'lsa → `collectionData` keyboard (Pattern 7'dagi misol), `{{#each}}` EMAS.
 
 ### Pattern 5: Branching
 IfCondition, LoadCollectionItem, CheckMembership, ForLoop, PaymentNode uchun
