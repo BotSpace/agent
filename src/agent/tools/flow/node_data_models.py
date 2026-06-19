@@ -628,6 +628,20 @@ class GoogleSheetsData(_StrictData):
     Credential FAQAT `credential_id` orqali bog'lanadi (type_key 'google_sheets');
     secret flow'da saqlanmaydi, engine runtime'da fresh access_token'ga aylantiradi.
     Natija context[responseVariable] (+ _status, sheets_success) ga yoziladi.
+
+    READ JAVOB SHAKLI (MUHIM — matnda ishlatishda farqi bor):
+    - context[responseVariable] (default 'sheets_response') = Google API'ning XOM
+      javobi: {"majorDimension": "ROWS", "range": "Sheet1!A1:C10",
+      "values": [["nom","narx","tavsif"], ["Olma","5000","..."], ...]}.
+      `values` — 2D massiv: BIRINCHI qator sarlavha (kalitlar), qolganlari ma'lumot.
+      Bu OBYEKT (nomli field yo'q, array emas) — `{{#each}}` bilan TO'G'RIDAN ISHLAMAYDI.
+    - context[rowsVariable] (default '<responseVariable>_rows', ya'ni 'sheets_response_rows')
+      = engine tomonidan tayyorlangan TOZA array-of-objects: sarlavha qatori kalit bo'lib
+      ishlatiladi → [{"nom":"Olma","narx":"5000","tavsif":"..."}, ...].
+      Matn/ro'yxat chiqarish uchun MANA SHUNI ishlat:
+      `{{#each sheets_response_rows}}{{nom}} — {{narx}}{{/each}}`.
+    QOIDA: ro'yxatni xabarda ko'rsatish uchun XOM responseVariable'ni `{{#each}}` bilan
+    ISHLATMA; doim rowsVariable (toza rows) dan foydalan.
     """
 
     credential_id: int = Field(
@@ -664,7 +678,21 @@ class GoogleSheetsData(_StrictData):
     )
     responseVariable: str = Field(
         default="sheets_response",
-        description="Natija saqlanadigan context kaliti (default 'sheets_response').",
+        description=(
+            "XOM Google API javobi saqlanadigan context kaliti (default 'sheets_response'). "
+            "read'da shakl {majorDimension, range, values} — values 2D massiv, 1-qator "
+            "sarlavha. Bu OBYEKT, {{#each}} bilan ISHLAMAYDI; ro'yxat uchun rowsVariable'ni ishlat."
+        ),
+    )
+    rowsVariable: str | None = Field(
+        default=None,
+        description=(
+            "read uchun TOZA rows saqlanadigan context kaliti (ixtiyoriy; default "
+            "'<responseVariable>_rows' = 'sheets_response_rows'). Engine values'ning 1-qatorini "
+            "sarlavha (kalit) qilib array-of-objects yozadi: [{ustun_nomi: qiymat, ...}, ...]. "
+            "Matnda `{{#each sheets_response_rows}}{{ustun_nomi}}{{/each}}` bilan ishlat — "
+            "ro'yxat chiqarishda XOM responseVariable o'rniga ALBATTA SHUNI ishlat."
+        ),
     )
 
 
@@ -1268,6 +1296,13 @@ class AIGoogleSheetsToolData(_StrictData):
     REQUIRED. Find it with credentials.list(type_key='google_sheets'); if none
     exists it CANNOT be created via the API — the user must connect it in the
     dashboard ('Connect with Google').
+
+    RESULT SHAPE: this is an AGENT TOOL — its result goes back to the LLM as a
+    tool_result, NOT into a context variable for {{#each}} templates. On 'read' the
+    tool returns the RAW Google API values (2D array: first row = header, rest = data,
+    shape {majorDimension, range, values}). The LLM reasons over that array itself;
+    no clean array-of-objects transform is applied for the tool path. (For TEMPLATE
+    output use the GoogleSheetsNode read with rowsVariable instead — see GoogleSheetsData.)
     """
 
     tool: Literal["google_sheets"] = "google_sheets"

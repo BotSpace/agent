@@ -76,6 +76,10 @@ The essentials:
   AIGoogleSheetsToolNode) need a google_* credential. `credentials.list` first; if none,
   call `credentials.connect_oauth(type_key=...)` to give the user a connect link (OAuth —
   can't be created via the API), then re-list for the new `credential_id`.
+  GoogleSheetsNode read: `responseVariable` (default `sheets_response`) is the RAW Google
+  reply `{majorDimension,range,values}` (values 2D, row 1 = header) — NOT usable with
+  `{{#each}}`. Use `rowsVariable` (default `<responseVariable>_rows`) — clean
+  array-of-objects keyed by the header row — for `{{#each rowsVariable}}{{col}}{{/each}}`.
 
 ### Key rules
 - 🎨 DESIGN QUALITY (mandatory): bots must look polished. Put a fitting EMOJI in
