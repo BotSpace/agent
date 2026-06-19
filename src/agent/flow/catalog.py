@@ -946,8 +946,12 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         category="ai",
         description=(
             "Google Sheets tool sub-node. AIAgentNode'ning acc:ai_tool portiga ulanadi. "
-            "tool='google_sheets'. Agent Google Sheet'ni o'qiydi/qator qo'shadi (lookup "
-            "jadval, log, buyurtma jurnali). LLM runtime args: operation (read|append), "
+            "tool='google_sheets'. Credential bilan sheet'ni KO'RISH (read, list_tabs) va "
+            "BOSHQARISH (append, update, clear) — lookup jadval, log, buyurtma jurnali. "
+            "LLM runtime'da operation'ni O'ZI tanlaydi (node'da static EMAS). Operatsiyalar: "
+            "read (range'dan qatorlar o'qish), append (qator(lar) qo'shish, values 2D), "
+            "update (range'ga values yozish, values 2D), clear (range'ni tozalash), "
+            "list_tabs (sahifa/tab nomlari ro'yxati). Runtime args: operation, "
             "spreadsheet_id, sheet, range, values. "
             "CREDENTIAL MAJBURIY: credential_id — type_key 'google_sheets' OAuth. Qurishdan "
             "OLDIN credentials.list(type_key='google_sheets'); yo'q bo'lsa "
