@@ -471,7 +471,8 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "data.outputs=[{name}] e'lon qilinsa, exit('name') bilan `output-{name}` "
             "source handle orqali tarmoqlanadi. data.terminal=true — node leaf "
             "(o'zi javob yuborib oqimni tugatadi), keyingi edge yo'qligi normal "
-            "(validator 'dead-end' ogohlantirishini o'chiradi)."
+            "(validator 'dead-end' ogohlantirishini o'chiradi). jsCode'ni TOZA, "
+            "ko'p qatorli yoz (engine verbatim saqlaydi) — docs_guide(topic='custom_code')."
         ),
         required_data=["jsCode"],
         optional_data=["outputs", "terminal"],
@@ -809,6 +810,18 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "masalan \"status=active VA amount>1000\" yoki \"kind=debt YOKI kind=loan\". "
             "searchFields shu shartlar qaysi maydonlar ustida qurilishi MUMKINligini bildiradi; "
             "AND/OR va operatorlar esa LLM runtime args'ida (node config'da emas). "
+            "FLOW CONTEXT PLACEHOLDER'lari (engine RUNTIME'da resolve qiladi): filter "
+            "shartlari, yaratiladigan `document` va yangilanadigan `changes` QIYMATLARIda LLM "
+            "joriy chat'ga bog'liq placeholder yozishi mumkin: {{chat_id}} (joriy Telegram chat "
+            "id), {{user_id}}, {{first_name}}, {{username}}, {{state_<key>}} (oldin so'ralgan/"
+            "saqlangan qiymat), {{collection_<key>}}. BUTUN-placeholder qiymat XOM tipni saqlaydi "
+            "(value=\"{{chat_id}}\" int qoladi) — shu sabab JORIY foydalanuvchining O'Z yozuvlarini "
+            "o'qish/yangilash/o'chirish mumkin (user_id == chat_id). Bu searchFields'ga BOG'LIQ "
+            "EMAS: searchFields qaysi field filtrlanishini, placeholder esa QIYMAT manbasini "
+            "bildiradi. Masalan joriy foydalanuvchining faol qarzlari: {\"match\":\"and\","
+            "\"conditions\":[{\"field\":\"user_id\",\"op\":\"eq\",\"value\":\"{{chat_id}}\"},"
+            "{\"field\":\"status\",\"op\":\"eq\",\"value\":\"active\"}]}; yangi yozuvni joriy "
+            "foydalanuvchiga bog'lash: document={\"user_id\":\"{{chat_id}}\",\"text\":\"...\"}. "
             "Edge: source=<this_id>, sourceHandle='source-default', "
             "target=<agent_id>, targetHandle='acc:ai_tool'."
         ),
