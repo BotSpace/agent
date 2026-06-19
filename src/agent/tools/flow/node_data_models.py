@@ -622,6 +622,34 @@ class PaymentNodeData(_StrictData):
     )
 
 
+_SHEETS_FILTER_OP = Literal[
+    "eq", "ne", "gt", "gte", "lt", "lte", "in", "nin", "contains", "exists",
+]
+
+
+class SheetsFilterCondition(_StrictData):
+    """GoogleSheetsNode read uchun BITTA in-memory filter sharti — STATIK (AI-slot YO'Q).
+
+    Collection tool filteriga o'xshaydi, lekin BU node STATIK: builder field/op/value'ni
+    o'zi yozadi (runtime AI to'ldirmaydi — shuning uchun `source`/`aiDescription` YO'Q).
+    `value`da {{chat_id}}/{{state_*}} placeholder ishlatish mumkin (engine runtime'da
+    almashtiradi). `field` — rows obyektidagi ustun nomi (Sheet 1-qator sarlavhasi).
+    """
+
+    field: str = Field(description="Filterlanadigan ustun nomi (Sheet 1-qator sarlavhasi).")
+    op: _SHEETS_FILTER_OP = Field(
+        default="eq",
+        description="Taqqoslash operatori: eq|ne|gt|gte|lt|lte|in|nin|contains|exists.",
+    )
+    value: Any | None = Field(
+        default=None,
+        description=(
+            "Taqqoslanadigan qiymat. {{chat_id}}/{{state_*}} placeholder bo'lishi mumkin "
+            "(engine runtime'da almashtiradi). op='exists' uchun shart emas."
+        ),
+    )
+
+
 class GoogleSheetsData(_StrictData):
     """Google Sheets (v4) integratsiyasi — oauth2 credential orqali.
 
@@ -692,6 +720,24 @@ class GoogleSheetsData(_StrictData):
             "sarlavha (kalit) qilib array-of-objects yozadi: [{ustun_nomi: qiymat, ...}, ...]. "
             "Matnda `{{#each sheets_response_rows}}{{ustun_nomi}}{{/each}}` bilan ishlat — "
             "ro'yxat chiqarishda XOM responseVariable o'rniga ALBATTA SHUNI ishlat."
+        ),
+    )
+    filterMatch: Literal["and", "or"] = Field(
+        default="and",
+        description=(
+            "read uchun IN-MEMORY filter: filterConditions qanday birlashadi — "
+            "'and' (HAMMA shart) yoki 'or' (KAMIDA bittasi). Default 'and'."
+        ),
+    )
+    filterConditions: list[SheetsFilterCondition] | None = Field(
+        default=None,
+        description=(
+            "read'da sheetdan olingan rowsni IN-MEMORY filterlash (STATIK, AI-slot YO'Q): "
+            "[{field, op, value}]. field — ustun nomi (1-qator sarlavhasi), "
+            "op ∈ eq|ne|gt|gte|lt|lte|in|nin|contains|exists, value'da {{chat_id}}/{{state_*}} "
+            "ishlaydi. Masalan faqat bitta kategoriya: "
+            "[{field:'category', op:'eq', value:'{{state_category}}'}]. None = filtersiz (hamma row). "
+            "Filterlangan natija ham rowsVariable'ga yoziladi — {{#each}} bilan o'qiladi."
         ),
     )
 
