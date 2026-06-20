@@ -469,8 +469,10 @@ yozishdan oldin O'QI. Asosiy nuqtalar:
 har statement alohida qatorda (`;` bilan tiqma), izchil 2-probel otступ, operator
 atrofida bo'shliq (`x === y`, NE `x===y`), mazmunli o'zgaruvchi nomlari. Hech qachon
 minified/bir-qatorli yozma. Toza-format namunasi `docs_guide(topic="custom_code")`da.
-- Trigger saqlagan qiymat context'da `state_<key>` (prefiks `state_`!) — masalan
-  `state:{key:"movie_code"}` → `get_context("state_movie_code")`.
+- **O'qish — obyekt-access AFZAL:** `state.<key>` (state qiymati, `state_` prefiks
+  avtomatik) va `context.<key>` (xom kalit). Masalan `state:{key:"movie_code"}` →
+  `state.movie_code`; `const phone = state.user_phone; const rows = context.sheets_response_rows;`.
+  `get_state`/`get_context` funksiyalari ham bor, lekin obyekt-access qisqa/toza.
 - **Edit-in-place (pagination/menyu yangilash):** callback bosilganda YANGI xabar
   emas, o'sha xabarni tahrirla — `edit_or_send({text, parse_mode, inline_keyboard})`
   (mumkin bo'lsa edit, bo'lmasa send). callback ichida argumentsiz `edit_message_text`
@@ -552,8 +554,10 @@ ortiqcha murakkablik.
 
 **JavaScript runtime (Goja VM) imkoniyatlari:**
 - Flow control: `exit('name')`, `wait_for_input()`, `sleep(s)`
-- Context: `get_context`, `set_context`, `delete_context`, `has_context`,
-  `clear_context`, `get_all_context`
+- Context/State o'qish — **obyekt-access AFZAL**: `context.<key>`, `state.<key>`
+  (`state_` prefiks avto). Yozish: `set_context`/`set_state`. Boshqa:
+  `delete_context`, `has_context`, `clear_context`, `get_all_context`,
+  `get_context`/`get_state` (funksiya-muqobil)
 - Telegram: `send_message`, `send_photo`, `send_video`, `send_audio`,
   `send_document`, `send_sticker`, `send_voice`, `send_location`,
   `send_contact`, `send_animation`, `edit_message_text`,
@@ -801,8 +805,8 @@ flow.add_custom_code(
     id="save-order",
     data={
         "jsCode": (
-            "const name = get_context('user_name');\n"
-            "const phone = get_context('user_phone');\n"
+            "const name = context.user_name;\n"
+            "const phone = context.user_phone;\n"
             "const res = db_insert('orders', {\n"
             "  name: name,\n"
             "  phone: phone,\n"

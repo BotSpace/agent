@@ -58,10 +58,13 @@ exit('new');
 - `callback_query` (object) — inline tugma bosilganda: `.data` (callback_data),
   `.message_id` va `.message.message_id` (TUGMA TURGAN XABAR id — edit uchun!),
   `.message.text`, `.first_name`
-- `context` (object) — barcha kontekst kalitlari. Top-level o'zgaruvchi sifatida
-  ham mavjud: `state_<key>` (trigger/StateNode saqlagan — DIQQAT: prefiks `state_`),
-  `collection_<key>`, `message_id_<nodeId>` (har send-node yuborgan xabar id),
-  `user_id`, `first_name`, `last_name`, `username`
+- `context` (object) — barcha kontekst kalitlari. **O'qish uchun AFZAL usul:
+  obyekt-access** `context.<key>` (`context.first_name`, `context.user_id`,
+  `context.sheets_response_rows`, `context.collection_<key>`,
+  `context.message_id_<nodeId>` — har send-node yuborgan xabar id). Qisqa va toza.
+- `state` (object) — state qiymatlari. **AFZAL: `state.<key>`** — `state_`
+  prefiks AVTOMATIK qo'shiladi (toza nom yoz). `state.user_phone` ≡
+  `context.state_user_phone`. Node maydonidagi `{{state.user_phone}}` bilan bir xil.
 - `command_args` (string) — `/start ABC` da "ABC" (argumentsiz "")
 
 ## Flow boshqaruv
@@ -72,19 +75,28 @@ exit('new');
 
 ## State (TAVSIYA — prefiks avtomatik)
 StateNode/trigger saqlagan qiymatlar node maydonlarida `{{name}}` / `{{state.name}}`
-ko'rinishida o'qiladi (ichida `state_` prefiks bilan saqlanadi). Custom code'da
-prefiksni QO'LDA yozma — quyidagilar uni avtomatik qo'shadi (toza nom ber):
-- `set_state(key, value)` → bool  (`set_state("movie_code", x)` ⇒ node'da `{{movie_code}}`)
-- `get_state(key)` → qiymat | undefined  (`get_state("movie_code")`)
+ko'rinishida o'qiladi (ichida `state_` prefiks bilan saqlanadi).
+**O'QISH — `state.<key>` obyekt-access afzal** (qisqa, toza):
+```javascript
+const phone = state.user_phone;      // ≡ get_state("user_phone")
+const code = state.movie_code;
+```
+- YOZISH: `set_state(key, value)` → bool  (`set_state("movie_code", x)` ⇒ node'da `{{movie_code}}`)
+- O'QISH (muqobil funksiya): `get_state("movie_code")` — obyekt-access bilan bir xil
 - `has_state(key)`, `delete_state(key)`
+- Prefiksni QO'LDA yozma — `state.x` / `set_state("x", ...)` ikkalasi ham
+  `state_` ni avtomatik qo'shadi (toza nom ber).
 
 ## Kontekst (xom kalit — prefiks YO'Q)
-State uchun yuqoridagi `set_state`/`get_state` afzal. `set_context` kalitni
-o'zgartirmaydi (prefiks qo'shmaydi); node'da `{{key}}` bo'lib o'qiladi.
-- `get_context(key)` → qiymat | undefined
-- `set_context(key, value)` → bool
+**O'QISH — `context.<key>` obyekt-access afzal** (qisqa, toza):
+```javascript
+const firstName = context.first_name;          // ≡ get_context("first_name")
+const rows = context.sheets_response_rows;
+```
+- YOZISH: `set_context(key, value)` → bool (kalitni o'zgartirmaydi; node'da `{{key}}`)
+- O'QISH (muqobil funksiya): `get_context("first_name")` — obyekt-access bilan bir xil
 - `has_context(key)`, `delete_context(key)`, `get_all_context()`
-- Eslatma: `set_state("x", v)` ≡ `set_context("state_x", v)`
+- Eslatma: `state.x` ≡ `context.state_x`; `set_state("x", v)` ≡ `set_context("state_x", v)`
 
 ## Xabar yuborish / tahrirlash
 - `send_message("matn")` yoki `send_message("matn", {parse_mode, inline_keyboard, reply_keyboard, remove_keyboard})`
@@ -179,7 +191,7 @@ tahrirlaydi (yangi xabar yubormaydi). Sir: callback'da `edit_or_send` yoki
 // show-list node (kod kiritilganda VA page: callback'da — ikkala holatda ishlaydi)
 const PAGE_SIZE = 5;
 const callbackParts = (callback_query && (callback_query.data || '').split(':')) || [];
-const code = String(get_state('movie_code') || callbackParts[1] || '').trim();
+const code = String(state.movie_code || callbackParts[1] || '').trim();  // o'qish: obyekt-access
 const requestedPage = parseInt(callbackParts[2] || 1, 10);
 
 const movie = db_find_one('movies', { code: code });

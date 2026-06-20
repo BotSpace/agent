@@ -481,8 +481,10 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "data.outputs=[{name}] e'lon qilinsa, exit('name') bilan `output-{name}` "
             "source handle orqali tarmoqlanadi. data.terminal=true — node leaf "
             "(o'zi javob yuborib oqimni tugatadi), keyingi edge yo'qligi normal "
-            "(validator 'dead-end' ogohlantirishini o'chiradi). jsCode'ni TOZA, "
-            "ko'p qatorli yoz (engine verbatim saqlaydi) — docs_guide(topic='custom_code')."
+            "(validator 'dead-end' ogohlantirishini o'chiradi). State/context'dan "
+            "O'QISH uchun obyekt-access AFZAL: context.<key> va state.<key> (state_ "
+            "prefiks avto) — masalan state.user_phone, context.first_name. jsCode'ni "
+            "TOZA, ko'p qatorli yoz (engine verbatim saqlaydi) — docs_guide(topic='custom_code')."
         ),
         required_data=["jsCode"],
         optional_data=["outputs", "terminal"],
