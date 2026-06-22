@@ -1,0 +1,81 @@
+Tashqi MODULE tizimi — qo'llanma
+
+Modullar engine'ga YANGI node turlari va biznes-logikani beradi. Modul = alohida
+servis (o'z porti/endpoint'i), engine bilan JSON-RPC 2.0 orqali gaplashadi. Modul
+PER-PROJECT yoqiladi: faqat shu loyihada YOQILGAN modullarning node'lari ishlatiladi.
+
+## 1. Modul node turlari
+
+- Node turi NAMESPACE'li: `moduleId.NodeName` (masalan `openrouter.Chat`,
+  `ollama.Chat`, `mymodule.Echo`). Nuqta — modul slug bilan node nomini ajratadi.
+- Bu turlar STATIK katalogda YO'Q — ular dinamik, loyihaga bog'liq. Ro'yxatni
+  qayerdan bilasan:
+  • `session_use_project` javobida `module_node_types` + matnda "Modul node turlari";
+  • kontekst blokida "Module node types (per-project, enabled modules)";
+  • `flow_list_node_types` natijasida (modul turlari `[module]` belgisi bilan;
+    `flow_list_node_types(type='moduleId.NodeName')` — maydon ro'yxati).
+- Qo'shish: oddiy `flow_add_node(type='moduleId.NodeName', data={...})`. Modul
+  node'ining typed flow.add_* tooli YO'Q — har doim flow_add_node ishlat.
+- Maydonlar manifest'dan keladi (required / optional). Engine `data`'ni modul
+  `node.execute`'ga verbatim uzatadi — keraksiz maydon QO'SHMA, required'ni qoldirma.
+- Modul node natijani context'ga yozadi (manifest `producesState`, masalan
+  `llm_output`). Keyingi node'lar `{{llm_output}}` orqali foydalanadi (xuddi
+  built-in node context kabi).
+
+## 2. Modul triggerlari
+
+- Modul EVENT-MATCH trigger node ham berishi mumkin (manifest'da trigger:true /
+  category="triggers"), masalan `mymodule.OnKeyword`. Ular built-in triggerlar
+  kabi flow'ni boshlaydi.
+- "global" toggle: global:true bo'lsa har qanday holatda (pauza bo'lmasa ham)
+  ishlaydi — built-in triggerlardagi kabi. Catch-all kerak bo'lsa global:true ber.
+- triggerMode: "event-match" (engine update kelganda modul `trigger.match`'ini
+  chaqiradi) yoki "push" (modul o'zi engine'ga event yuboradi). Builder uchun farq
+  yo'q — ikkisi ham flow'ni boshlaydi.
+- Validator modul trigger'ini HAQIQIY trigger deb biladi: u "no_trigger" /
+  "unreachable" ogohlantirishini bermaydi.
+
+## 3. Dinamik credentials (modul o'z type'ini beradi)
+
+- Credential TYPE'lari endi 3 manbadan: code (built-in: openai/ai_studio/ollama/
+  telegram/google_*), admin (admin.botspace.uz), va MODULE (modul `describe()`'da
+  e'lon qiladi, masalan `openrouter.apikey`).
+- Mavjud type'larni KO'R: `credentials.list_types` — har biri {key, mode, source
+  (code|admin|module:<slug>), fields}. Modul node'ining manifest'idagi credential
+  maydoni `credentialType` (masalan `openrouter.apikey`) shu type key'ga ishora qiladi.
+- Modul node'da credential maydoni bor bo'lsa (`flow_list_node_types` "credential"
+  type field ko'rsatadi), o'sha maydonga credential ID ber:
+  1. `credentials.list(type_key='openrouter.apikey')` — bor credential'ni topib id'ni
+     node'ning credential maydoniga yoz (masalan data['api_credential']=<id>).
+  2. Yo'q bo'lsa: NON-OAuth (apikey/bearer/none) type — foydalanuvchidan kalit so'rab
+     `credentials.create(type_key='openrouter.apikey', data={...})`. Field nomlarini
+     `credentials.list_types`'dan o'qib aniq ber.
+  3. mode=="oauth2" type bo'lsa — `credentials.connect_oauth` (brauzerda ruxsat),
+     API orqali create QILMA.
+- Field type'lar (manifest): text/password/number/textarea/select/url/switch.
+
+## 4. Result.Error — xato surface
+
+- Modul node `node.execute`'da `Result.Error` qaytarsa, engine uni debug error
+  list + alert'da ko'rsatadi (flow yiqilmaydi, lekin xato ko'rinadi). Shuning uchun
+  modul node'idan keyin xato holatini tekshirmoqchi bo'lsang, modul `producesState`
+  ichidagi xato kalitini (masalan `llm_error`) IfConditionNode bilan branch qil.
+
+## 5. Self-hosted modullar
+
+- Foydalanuvchi O'Z serveridagi modulni endpoint orqali loyihaga ulashi mumkin
+  (platforma build qilmaydi, faqat endpoint'ga ulanadi va manifest oladi). Bu
+  builder uchun shaffof: ulangach modul node'lari xuddi shunday `moduleId.NodeName`
+  bo'lib session katalogida paydo bo'ladi. Sen faqat enabled node'larni ishlatasan.
+
+## Tezkor namuna (OpenRouter chat)
+
+1. `session_use_project(project_id)` → javobda `openrouter.Chat` modul node turi.
+2. `credentials.list(type_key='openrouter.apikey')` → bor bo'lsa id ol; yo'q bo'lsa
+   foydalanuvchidan kalit so'rab `credentials.create(type_key='openrouter.apikey', ...)`.
+3. `flow_add_node(type='openrouter.Chat', data={`
+   `  api_credential: <credential_id>, model: 'openai/gpt-4o-mini',`
+   `  prompt: '{{message.text}}'`
+   `})` — keyin `{{llm_output}}` ni SendTextMessageNode'da yubor.
+4. `flow_validate` → modul node required maydonlar tekshiriladi (unknown_node_type
+   ogohlantirishi BERILMAYDI).

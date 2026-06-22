@@ -50,6 +50,10 @@ class Workspace:
     flow_dirty: bool = False
     auth_claims: dict[str, Any] = field(default_factory=dict)
     collections: list[dict[str, Any]] = field(default_factory=list)
+    # Per-project external module node types (dynamic catalog extension), loaded
+    # at session_use_project. Each entry = normalized manifest (see
+    # backend.load_project_module_nodes). Empty when no modules are enabled.
+    module_nodes: list[dict[str, Any]] = field(default_factory=list)
     # Undo ring: each entry = {label, working_flow, flow_dirty}. Newest last.
     snapshots: list[dict[str, Any]] = field(default_factory=list)
     last_used: float = field(default_factory=time.monotonic)
@@ -70,6 +74,8 @@ class Workspace:
             state["baseline_flow"] = self.baseline_flow
         if self.collections:
             state["collections"] = self.collections
+        if self.module_nodes:
+            state["module_nodes"] = self.module_nodes
         return state
 
     def merge_state_updates(self, updates: dict[str, Any]) -> None:
@@ -86,6 +92,8 @@ class Workspace:
             self.project_id = str(updates["project_id"])
         if "collections" in updates:
             self.collections = updates["collections"] or []
+        if "module_nodes" in updates:
+            self.module_nodes = updates["module_nodes"] or []
         # auth_claims tool ichida in-place yangilanadi (reference saqlangan) —
         # alohida merge shart emas, lekin to'liq dict kelsa qabul qilamiz.
         if "auth_claims" in updates and isinstance(updates["auth_claims"], dict):

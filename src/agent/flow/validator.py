@@ -97,8 +97,27 @@ def validate(
     *,
     known_collections: list[str] | None = None,
     collection_schemas: dict[str, dict[str, str]] | None = None,
+    module_nodes: list[dict] | None = None,
 ) -> ValidationResult:
     issues: list[ValidationIssue] = []
+    # External MODULE node types (namespaced `moduleId.NodeName`), loaded per
+    # project at session_use_project. Not in the static catalog, so a node whose
+    # type matches one of these must NOT be flagged `unknown_node_type`. Map
+    # type → normalized manifest so we can also check the module node's required
+    # fields (the engine routes the rest to node.execute).
+    module_map: dict[str, dict] = {
+        str(m.get("type")): m
+        for m in (module_nodes or [])
+        if isinstance(m, dict) and m.get("type")
+    }
+
+    def _node_is_trigger(node_type: str) -> bool:
+        """Trigger if a static-catalog trigger OR a module trigger node
+        (manifest `is_trigger`). Module triggers count for presence/reachability."""
+        if is_trigger(node_type):
+            return True
+        mod = module_map.get(node_type)
+        return bool(mod and mod.get("is_trigger"))
     # #12 — known collection names (from the workspace's loaded CMS list). When
     # provided, flow nodes referencing an unknown collection get a WARNING.
     known_set: set[str] | None = (
@@ -131,11 +150,38 @@ def validate(
 
         spec = get_node_spec(node.type)
         if spec is None:
+            mod = module_map.get(node.type)
+            if mod is not None:
+                # External module node — validate against its manifest, then skip
+                # the static-catalog-specific checks below (handles, state, etc.).
+                for required in mod.get("required_fields") or []:
+                    if required not in node.data or node.data.get(required) in (None, ""):
+                        issues.append(
+                            ValidationIssue(
+                                "error",
+                                "missing_required_field",
+                                f"module node `{node.type}` requires `data.{required}`",
+                                node_id=node.id,
+                            )
+                        )
+                for cf in mod.get("credential_fields") or []:
+                    key = cf.get("key")
+                    if key and not node.data.get(key):
+                        issues.append(
+                            ValidationIssue(
+                                "warning",
+                                "missing_module_credential",
+                                f"module node `{node.type}` field `{key}` has no "
+                                f"credential (type_key `{cf.get('type_key')}`)",
+                                node_id=node.id,
+                            )
+                        )
+                continue
             issues.append(
                 ValidationIssue(
                     "error",
                     "unknown_node_type",
-                    f"Unknown node type `{node.type}` (not in catalog)",
+                    f"Unknown node type `{node.type}` (not in catalog or enabled modules)",
                     node_id=node.id,
                 )
             )
@@ -371,7 +417,7 @@ def validate(
                 )
 
     # ── 3. Trigger presence ────────────────────────────────────────────
-    trigger_nodes = [n for n in flow.nodes if is_trigger(n.type)]
+    trigger_nodes = [n for n in flow.nodes if _node_is_trigger(n.type)]
     if flow.nodes and not trigger_nodes:
         issues.append(
             ValidationIssue("warning", "no_trigger", "Flow has no trigger node — it can never start")
@@ -392,7 +438,7 @@ def validate(
                 if not (e.targetHandle or "").startswith(_ACC_PREFIX):
                     queue.append(e.target)
     for node in flow.nodes:
-        if node.id not in reachable and not is_trigger(node.type):
+        if node.id not in reachable and not _node_is_trigger(node.type):
             # Accessory nodes are never reachable from triggers by design — skip warning.
             if _is_accessory_node(node.type):
                 continue

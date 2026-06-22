@@ -32,6 +32,13 @@ class AgentState(TypedDict, total=False):
     """Project CMS collections + field names: [{"name", "fields":[...]}].
     Seeded at run start so the flow-builder can reference them correctly."""
 
+    module_nodes: list[dict[str, Any]] | None
+    """Per-project ENABLED external module node types (dynamic catalog), e.g.
+    [{"type": "openrouter.Chat", "module": "openrouter", "is_trigger": False,
+    "required_fields": [...], "credential_fields": [...]}]. Seeded at run start so
+    flow.add_node / the validator accept `moduleId.NodeName` types. None/empty =
+    no modules enabled."""
+
     # ── planner ─────────────────────────────────────────────────────────
     current_plan: list[dict[str, Any]] | None
 

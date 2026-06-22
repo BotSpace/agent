@@ -869,6 +869,80 @@ class BackendClient:
         d = await self._request("GET", "/api/plans/", **_auth_kw(auth_claims))
         return _unwrap_list(d)
 
+    # ── modules (external node types) ──────────────────────────────────
+    async def list_project_module_manifests(
+        self, project_id: str | int, *, auth_claims: dict | None = None
+    ) -> list[dict[str, Any]]:
+        """Per-project ENABLED module node manifests.
+
+        GET /api/project/{id}/module-manifests/ → {"manifests": [NodeManifest, ...]}.
+        Each manifest is one node type contributed by an enabled external module,
+        tagged with `moduleSlug`/`moduleName`. Shape (module describe() contract):
+          type            — namespaced node type, e.g. "openrouter.Chat"
+          category        — node category ("ai", "triggers", ...)
+          titleFallback   — display title
+          descriptionFallback — short description
+          content         — list of fields ({type, key, label, optional,
+                            credentialType?, ...}); type "credential" → the node
+                            needs a credential_id of credentialType key
+          trigger         — bool (event-match trigger node)
+          triggerMode     — "event-match" | "push" (triggers only)
+          producesState   — context keys the node writes
+          moduleSlug / moduleName — owning module
+
+        Owner+project scoped. Returns [] on any failure (backend hiccup must not
+        break a run) — module nodes are then simply unavailable for that session.
+        """
+        try:
+            d = await self._request(
+                "GET",
+                f"/api/project/{project_id}/module-manifests/",
+                **_auth_kw(auth_claims),
+            )
+        except BackendError:
+            logger.warning(
+                "Failed to load module manifests for project=%s; continuing without modules",
+                project_id,
+                exc_info=True,
+            )
+            return []
+        payload = _unwrap_envelopes(d)
+        if isinstance(payload, dict):
+            payload = payload.get("manifests", payload)
+        if not isinstance(payload, list):
+            return []
+        return [m for m in payload if isinstance(m, dict) and m.get("type")]
+
+    async def list_credential_types(
+        self, *, auth_claims: dict | None = None
+    ) -> list[dict[str, Any]]:
+        """All registered credential TYPES (not the user's saved credentials).
+
+        GET /api/v1/credentials/types/ → a list of type descriptors from THREE
+        sources, each tagged with `source` and `editable`:
+          source = "code"          — built-in (openai, ai_studio, ollama, telegram, google_*)
+          source = "admin"         — admin-defined at admin.botspace.uz /settings
+          source = "module:<slug>" — declared by an enabled module's describe()
+
+        Each type: {key, label, mode, fields:[{name,label,type,secret,required,
+        default,options}], source, editable, provider?, scopes?}.
+        `mode == "oauth2"` types are connected via OAuth (browser consent), not
+        created with a secret. Returns [] on failure.
+        """
+        try:
+            d = await self._request(
+                "GET", "/api/v1/credentials/types/", **_auth_kw(auth_claims)
+            )
+        except BackendError:
+            logger.warning("Failed to load credential types; continuing", exc_info=True)
+            return []
+        payload = _unwrap_envelopes(d)
+        if isinstance(payload, dict):
+            payload = payload.get("results", payload.get("data", payload))
+        if not isinstance(payload, list):
+            return []
+        return [t for t in payload if isinstance(t, dict) and t.get("key")]
+
     # ── files ──────────────────────────────────────────────────────────
     async def list_files(
         self,
@@ -1406,6 +1480,100 @@ async def load_project_collections(
                 exc_info=True,
             )
         out.append({"name": str(name), "fields": fields, "field_kinds": field_kinds})
+    return out
+
+
+async def load_project_module_nodes(
+    project_id: str | int | None,
+    *,
+    auth_claims: dict[str, Any] | None = None,
+    client: BackendClient | None = None,
+) -> list[dict[str, Any]]:
+    """Fetch the project's ENABLED module node types, normalized for the catalog.
+
+    Returns a compact list the agent can treat as extra (per-project, dynamic)
+    node types alongside the static catalog:
+        [{
+          "type": "openrouter.Chat",        # namespaced moduleId.NodeName
+          "module": "openrouter",           # owning module slug
+          "category": "ai",
+          "description": "...",             # titleFallback/descriptionFallback
+          "is_trigger": False,
+          "trigger_mode": None,             # "event-match"|"push" for triggers
+          "required_fields": ["prompt"],    # non-optional, non-credential keys
+          "optional_fields": ["model", ...],
+          "credential_fields": [            # fields needing a credential_id
+              {"key": "api_credential", "type_key": "openrouter.apikey"}
+          ],
+          "produces_state": ["llm_output", ...],
+        }, ...]
+
+    Robust by contract: NEVER raises. On any failure returns []. Module nodes are
+    then simply unavailable for the session (agent falls back to built-ins).
+    """
+    pid = "" if project_id is None else str(project_id)
+    if not pid or pid == "global":
+        return []
+    try:
+        backend = client or get_backend_client()
+        manifests = await backend.list_project_module_manifests(
+            pid, auth_claims=auth_claims
+        )
+    except Exception:
+        logger.warning(
+            "Failed to load module manifests for project=%s; continuing without modules",
+            pid,
+            exc_info=True,
+        )
+        return []
+
+    out: list[dict[str, Any]] = []
+    for m in manifests or []:
+        if not isinstance(m, dict):
+            continue
+        node_type = m.get("type")
+        if not isinstance(node_type, str) or "." not in node_type:
+            continue
+        slug = m.get("moduleSlug") or node_type.split(".", 1)[0]
+        is_trigger = bool(m.get("trigger")) or m.get("category") == "triggers"
+        required: list[str] = []
+        optional: list[str] = []
+        credential_fields: list[dict[str, str]] = []
+        for f in m.get("content") or []:
+            if not isinstance(f, dict):
+                continue
+            key = f.get("key")
+            if not isinstance(key, str) or not key:
+                continue
+            if f.get("type") == "credential":
+                credential_fields.append(
+                    {"key": key, "type_key": str(f.get("credentialType") or "")}
+                )
+                continue
+            (optional if f.get("optional") else required).append(key)
+        desc = (
+            m.get("descriptionFallback")
+            or m.get("titleFallback")
+            or m.get("description")
+            or node_type
+        )
+        out.append(
+            {
+                "type": node_type,
+                "module": str(slug),
+                "module_name": m.get("moduleName") or str(slug),
+                "category": m.get("category") or "integration",
+                "description": str(desc),
+                "is_trigger": is_trigger,
+                "trigger_mode": m.get("triggerMode") if is_trigger else None,
+                "required_fields": required,
+                "optional_fields": optional,
+                "credential_fields": credential_fields,
+                "produces_state": [
+                    str(s) for s in (m.get("producesState") or []) if s
+                ],
+            }
+        )
     return out
 
 

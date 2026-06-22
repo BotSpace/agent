@@ -14,11 +14,15 @@ can pick the right `credential_id` for credential-consuming nodes:
   - GoogleDriveNode        → type_key 'google_drive'
   - HTTPRequestNode        → any type_key
 
-The agent can list/create/update/delete credentials. NON-OAuth types
-(telegram/openai/ai_studio/ollama) can be created here when the user provides the
-secret. OAUTH types (google_email/google_sheets/google_drive) CANNOT be created via
-the API — they need a browser "Connect with Google" consent. For those, the agent
-calls `credentials.connect_oauth` to mint a one-click ULASH (connect) link the user
+The agent can list/create/update/delete credentials, and DISCOVER credential
+TYPES via `credentials.list_types`. Types come from THREE sources (code / admin /
+module): besides the built-ins, an enabled module declares its own credential
+type in its manifest (e.g. `openrouter.apikey`) — a module node's credential
+field references such a key. NON-OAuth types (any mode != oauth2) can be created
+here when the user provides the secret. OAUTH types (mode oauth2, e.g.
+google_email/google_sheets/google_drive) CANNOT be created via the API — they
+need a browser "Connect with Google" consent. For those, the agent calls
+`credentials.connect_oauth` to mint a one-click ULASH (connect) link the user
 opens; after they grant consent the backend creates the credential under the same
 owner, and the agent re-lists to read the new `credential_id`.
 """
@@ -134,28 +138,118 @@ async def credentials_list(input: CredentialsListInput, ctx: ToolContext) -> Too
 
 
 # OAuth types can't be created via the API — they need the browser consent popup.
+# This is the built-in (code) baseline; admin/module types are discovered at
+# runtime via credentials.list_types (mode == "oauth2" → OAuth).
 _OAUTH_TYPE_KEYS = {"google_email", "google_sheets", "google_drive"}
 
-# Data fields per non-oauth type, to guide the LLM on what `data` to pass.
+# Data fields per built-in non-oauth type, to guide the LLM on what `data` to pass.
+# Module/admin types declare their own fields — read them via credentials.list_types.
 _TYPE_FIELDS = (
     "telegram→{bot_token}, openai→{api_key, base_url?}, "
     "ai_studio→{api_key}, ollama→{base_url, api_key?}"
 )
 
 
+async def _oauth_type_keys(ctx: ToolContext) -> set[str]:
+    """OAuth credential type keys (mode == 'oauth2') across ALL sources.
+
+    Built-in google_* are always OAuth; admin/module types are discovered at
+    runtime. Falls back to the built-in set if the type list can't be loaded —
+    so a backend hiccup can't wrongly reject a non-OAuth create.
+    """
+    try:
+        types = await _backend(ctx).list_credential_types(
+            auth_claims=ctx.state.get("auth_claims")
+        )
+    except Exception:
+        return set(_OAUTH_TYPE_KEYS)
+    keys = {
+        t.get("key")
+        for t in types
+        if isinstance(t, dict) and t.get("mode") == "oauth2" and t.get("key")
+    }
+    return keys | set(_OAUTH_TYPE_KEYS)
+
+
+class CredentialsListTypesInput(BaseModel):
+    pass
+
+
+@tool(
+    name="credentials.list_types",
+    description=(
+        "List all available credential TYPES (not the user's saved credentials) "
+        "from THREE sources: built-in code types (openai/ai_studio/ollama/telegram/"
+        "google_*), admin-defined types, and MODULE types (each enabled module may "
+        "declare its own, e.g. `openrouter.apikey`). Use this to discover the right "
+        "`type_key` + fields for a node's credential — module nodes reference a "
+        "credentialType key in their manifest; that key is a type listed here. Each "
+        "type: {key, label, mode, fields:[{name,type,secret,required}], source "
+        "(code|admin|module:<slug>), editable}. mode=='oauth2' → connect via "
+        "credentials.connect_oauth (browser consent); other modes → "
+        "credentials.create with the secret."
+    ),
+    input_model=CredentialsListTypesInput,
+)
+async def credentials_list_types(
+    input: CredentialsListTypesInput, ctx: ToolContext
+) -> ToolResult:
+    try:
+        types = await _backend(ctx).list_credential_types(
+            auth_claims=ctx.state.get("auth_claims")
+        )
+    except BackendError as e:
+        return ToolResult.error(format_backend_error("credentials.list_types", e))
+    if not types:
+        return ToolResult.ok(
+            "No credential types returned. Built-in fallback: "
+            f"{_TYPE_FIELDS} (+ google_* OAuth).",
+            data={"types": []},
+        )
+    lines = [f"{len(types)} credential type(s):"]
+    payload = []
+    for t in types:
+        key = t.get("key")
+        mode = t.get("mode")
+        source = t.get("source", "code")
+        field_names = [
+            f.get("name") for f in (t.get("fields") or []) if isinstance(f, dict)
+        ]
+        is_oauth = mode == "oauth2"
+        how = "connect_oauth" if is_oauth else "create"
+        lines.append(
+            f"  key={key}  mode={mode}  source={source}  "
+            f"fields={field_names or '—'}  → credentials.{how}"
+        )
+        payload.append(
+            {
+                "key": key,
+                "label": t.get("label"),
+                "mode": mode,
+                "source": source,
+                "fields": field_names,
+                "oauth": is_oauth,
+            }
+        )
+    return ToolResult.ok("\n".join(lines), data={"types": payload})
+
+
 class CredentialsCreateInput(BaseModel):
     type_key: str = Field(
         description=(
-            "Credential type. NON-OAuth only: telegram | openai | ai_studio | ollama. "
-            "OAuth types (google_*) cannot be created here — the user connects them in the "
-            "dashboard."
+            "Credential type key. Any NON-OAuth type from credentials.list_types — "
+            "built-in (telegram | openai | ai_studio | ollama), admin-defined, or a "
+            "MODULE type (e.g. `openrouter.apikey`). OAuth types (mode oauth2, e.g. "
+            "google_*) cannot be created here — connect them with "
+            "credentials.connect_oauth."
         )
     )
     name: str = Field(description="Human label for the credential, e.g. 'My OpenAI key'.")
     data: dict = Field(
         description=(
-            "Secret field values for the type. Fields per type: " + _TYPE_FIELDS + ". "
-            "Only set what the user explicitly provides."
+            "Secret field values for the type. Built-in fields: " + _TYPE_FIELDS + ". "
+            "For module/admin types read the exact field names from "
+            "credentials.list_types. Only set what the user explicitly provides."
         )
     )
 
@@ -163,16 +257,21 @@ class CredentialsCreateInput(BaseModel):
 @tool(
     name="credentials.create",
     description=(
-        "Create a NON-OAuth credential (telegram/openai/ai_studio/ollama) when the user gives "
-        "you the secret (api key / bot token). Returns the new id to use as `data.credential_id`. "
-        "Fields per type: " + _TYPE_FIELDS + ". OAuth types (google_*) are REJECTED — the user "
-        "must connect those via the dashboard's 'Connect with Google'. Note: the secret passes "
-        "through this conversation, so only do this when the user explicitly asks."
+        "Create a NON-OAuth credential when the user gives you the secret (api key / bot "
+        "token). Works for ANY non-OAuth type_key from credentials.list_types: built-in "
+        "(telegram/openai/ai_studio/ollama), admin-defined, or MODULE types (e.g. "
+        "`openrouter.apikey` declared by an enabled module). Returns the new id to use as "
+        "`data.credential_id` (or the module node's credential field). Built-in fields: "
+        + _TYPE_FIELDS + " — for module/admin types read fields from credentials.list_types. "
+        "OAuth types (mode oauth2, e.g. google_*) are REJECTED — connect those with "
+        "credentials.connect_oauth. Note: the secret passes through this conversation, so "
+        "only do this when the user explicitly asks."
     ),
     input_model=CredentialsCreateInput,
 )
 async def credentials_create(input: CredentialsCreateInput, ctx: ToolContext) -> ToolResult:
-    if input.type_key in _OAUTH_TYPE_KEYS:
+    oauth_keys = await _oauth_type_keys(ctx)
+    if input.type_key in oauth_keys:
         return ToolResult.error(
             f"`{input.type_key}` is an OAuth credential and cannot be created via the API. "
             "Call credentials.connect_oauth(type_key="
@@ -318,6 +417,7 @@ async def credentials_connect_oauth(
 def build_credentials_tools() -> list[Tool]:
     return [
         credentials_list,
+        credentials_list_types,
         credentials_create,
         credentials_update,
         credentials_delete,
