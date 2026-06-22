@@ -35,6 +35,7 @@ from starlette.types import Receive, Scope, Send
 from ..integrations.backend import (
     get_backend_client,
     load_project_collections,
+    load_project_module_nodes,
     load_saved_flow,
 )
 from ..tools import ToolContext, build_default_registry
@@ -184,6 +185,7 @@ _GUIDE_TOPICS = {
     "deploy": "Deploy/release qo'llanmasi",
     "simulate": "Bot simulyatsiyasi qo'llanmasi (flow_simulate step turlari, expect/assert, multi-user, regression testlar)",
     "custom_code": "CustomCodeNode JS API to'liq ma'lumotnoma (send/edit_or_send, db_*, callback_query.message.message_id, pagination edit-in-place namunasi)",
+    "modules": "Tashqi MODULE tizimi: modul node turlari (moduleId.NodeName), modul triggerlari (+global), dinamik credential type'lar, Result.Error xato surface, self-hosted modullar",
 }
 
 
@@ -192,7 +194,7 @@ def _load_guide(topic: str) -> str:
     from ..prompts.loader import load_prompt
 
     if topic == "node_catalog":
-        return render_compact_catalog()
+        return render_compact_catalog() + _MODULE_CATALOG_NOTE
     files = {
         "flow": "subagents/flow_builder.txt",
         "flow_examples": "subagents/flow_builder_examples.txt",
@@ -201,8 +203,26 @@ def _load_guide(topic: str) -> str:
         "deploy": "subagents/deploy_manager.txt",
         "simulate": "mcp/guide_simulate.txt",
         "custom_code": "mcp/guide_custom_code.txt",
+        "modules": "mcp/guide_modules.txt",
     }
     return load_prompt(files[topic])
+
+
+# Appended to the static node_catalog so the agent learns that, beyond the
+# built-in types listed above, per-project ENABLED modules contribute extra
+# `moduleId.NodeName` node types (the live list is in the session context after
+# session_use_project, and via flow_list_node_types). See docs_guide("modules").
+_MODULE_CATALOG_NOTE = (
+    "\n\n### MODUL NODE TURLARI (dinamik, per-project)\n"
+    "Yuqoridagi built-in turlardan tashqari, loyihada YOQILGAN tashqi modullar "
+    "qo'shimcha node turlari beradi — namespace `moduleId.NodeName` "
+    "(masalan `openrouter.Chat`, `ollama.Chat`). Bu turlar STATIK emas: ular "
+    "loyihaga bog'liq va `session_use_project` paytida yuklanadi. Joriy ro'yxat "
+    "session javobida (`module_node_types`), kontekst blokida va "
+    "`flow_list_node_types` natijasida ko'rinadi. Qo'shish: "
+    "`flow_add_node(type='moduleId.NodeName', data={...})`. Batafsil: "
+    "`docs_guide(topic='modules')`.\n"
+)
 
 
 def _load_instructions() -> str:
@@ -432,11 +452,20 @@ async def _handle_session_use_project(
                 ws.collections = collections
             except Exception:
                 collections = ws.collections
+            # Module node types are dynamic (per-project enabled modules) — always
+            # refresh so a freshly-enabled module's nodes appear; keep old list on
+            # failure (never raises).
+            ws.module_nodes = await load_project_module_nodes(
+                project_id, auth_claims=ws.auth_claims, client=backend
+            )
             ws.project_id = project_id
             flow = ws.working_flow or {"nodes": [], "edges": []}
         else:
             flow = await load_saved_flow(project_id, auth_claims=ws.auth_claims, client=backend)
             collections = await load_project_collections(
+                project_id, auth_claims=ws.auth_claims, client=backend
+            )
+            module_nodes = await load_project_module_nodes(
                 project_id, auth_claims=ws.auth_claims, client=backend
             )
             flow = flow if isinstance(flow, dict) else {"nodes": [], "edges": []}
@@ -445,6 +474,7 @@ async def _handle_session_use_project(
             ws.baseline_flow = flow
             ws.flow_dirty = False
             ws.collections = collections
+            ws.module_nodes = module_nodes
             ws.snapshots = []
 
         # Remember the project's display name for session_status (#7).
@@ -462,6 +492,11 @@ async def _handle_session_use_project(
         col_names = [
             c.get("name") for c in collections if isinstance(c, dict) and c.get("name")
         ]
+        module_types = [
+            m.get("type")
+            for m in ws.module_nodes
+            if isinstance(m, dict) and m.get("type")
+        ]
         if restored:
             head = (
                 f"Loyiha {project_id} tanlandi. Saqlanmagan draft tiklandi "
@@ -473,6 +508,12 @@ async def _handle_session_use_project(
             f"{head}\n"
             f"Kolleksiyalar ({len(col_names)}): {', '.join(col_names) if col_names else '—'}"
         )
+        if module_types:
+            text += (
+                f"\nModul node turlari ({len(module_types)}): {', '.join(module_types)}"
+                " — bular flow.add_node bilan to'g'ridan-to'g'ri qo'shiladi "
+                "(docs_guide(topic='modules'))."
+            )
         return _result_to_mcp(
             text,
             is_error=False,
@@ -484,6 +525,7 @@ async def _handle_session_use_project(
                 "flow_dirty": ws.flow_dirty,
                 "draft_restored": restored,
                 "collections": col_names,
+                "module_node_types": module_types,
             },
         )
 

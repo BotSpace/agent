@@ -156,6 +156,22 @@ def build_dynamic_block(state: dict[str, Any] | None = None) -> str:
                 rendered.append(str(name))
         if rendered:
             lines.append("- Available collections: " + "; ".join(rendered))
+    module_nodes = state.get("module_nodes") or []
+    if module_nodes:
+        rendered_m: list[str] = []
+        for m in module_nodes:
+            if not isinstance(m, dict) or not m.get("type"):
+                continue
+            tag = " [trigger]" if m.get("is_trigger") else ""
+            rendered_m.append(f"{m['type']}{tag}")
+        if rendered_m:
+            lines.append(
+                "- Module node types (per-project, enabled modules): "
+                + "; ".join(rendered_m)
+                + ". Add with flow.add_node(type='moduleId.NodeName'); module "
+                "credential fields take a credential_id of the manifest type_key. "
+                "See docs_guide(topic='modules')."
+            )
     return "\n".join(lines) + "\n"
 
 

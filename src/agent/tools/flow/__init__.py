@@ -121,6 +121,38 @@ def _known_collections(ctx: ToolContext) -> list[str] | None:
     return names
 
 
+# ── Module (external) node types — dynamic, per-project ───────────────────────
+#
+# External modules contribute extra node types (namespaced `moduleId.NodeName`,
+# e.g. `openrouter.Chat`) loaded at session_use_project into ctx.state
+# ["module_nodes"]. They are NOT in the static catalog, so flow.add_node and the
+# validator must consult this session list as a fallback. Each entry is a
+# normalized manifest (see backend.load_project_module_nodes).
+
+
+def _module_nodes(ctx: ToolContext) -> list[dict[str, Any]]:
+    raw = ctx.state.get("module_nodes")
+    return raw if isinstance(raw, list) else []
+
+
+def _module_node_spec(ctx: ToolContext, node_type: str) -> dict[str, Any] | None:
+    """Return the normalized manifest for a module node type, or None.
+
+    Used as a fallback when get_node_spec() (static catalog) returns None — a
+    namespaced `moduleId.NodeName` type may be a per-project enabled module node.
+    """
+    if "." not in node_type:
+        return None
+    for m in _module_nodes(ctx):
+        if isinstance(m, dict) and m.get("type") == node_type:
+            return m
+    return None
+
+
+def _module_node_types(ctx: ToolContext) -> list[str]:
+    return [m["type"] for m in _module_nodes(ctx) if isinstance(m, dict) and m.get("type")]
+
+
 # ── flow.get ─────────────────────────────────────────────────────────────────
 
 
@@ -193,6 +225,75 @@ def _edge_id(source: str, target: str, source_handle: str | None = None) -> str:
     return f"e-{source}-{target}-{handle}"
 
 
+async def _add_module_node(
+    input: FlowAddNodeInput, ctx: ToolContext, mod: dict[str, Any]
+) -> ToolResult:
+    """Add/replace an external MODULE node type (`moduleId.NodeName`).
+
+    Module nodes are validated against the per-project manifest (not a static
+    Pydantic model): required non-credential fields must be present, and each
+    credential field needs a `<key>` referencing a credential of the manifest's
+    `type_key` (engine resolves it at runtime). Data is stored verbatim — the
+    engine routes unknown types to the module's `node.execute`.
+    """
+    data = dict(input.data)
+    required = [str(r) for r in (mod.get("required_fields") or [])]
+    missing = [r for r in required if r not in data or data.get(r) in (None, "")]
+    if missing:
+        return ToolResult.error(
+            f"Module node `{input.type}` ({mod.get('module')}) requires field(s): "
+            f"{', '.join(missing)}. Optional: {mod.get('optional_fields') or '—'}."
+        )
+
+    # Credential fields: each must carry a credential reference. The manifest key
+    # is the data key (e.g. `api_credential`); its `type_key` (e.g.
+    # 'openrouter.apikey') is what credentials.list(type_key=...) must match.
+    for cf in mod.get("credential_fields") or []:
+        key = cf.get("key")
+        if key and not data.get(key):
+            return ToolResult.error(
+                f"Module node `{input.type}` needs a credential in `{key}` "
+                f"(credential type_key `{cf.get('type_key')}`). "
+                f"credentials.list(type_key='{cf.get('type_key')}') → put the id "
+                f"in data['{key}']. If none exists, create/connect one first."
+            )
+
+    flow = _load_working_flow(ctx)
+    if input.after and flow.get_node(input.after) is None:
+        return ToolResult.error(f"`after` node `{input.after}` does not exist.")
+
+    pos = Position(**input.position) if input.position else Position()
+    flow.upsert_node(FlowNode(id=input.id, type=input.type, data=data, position=pos))
+
+    connected_from: str | None = None
+    if input.after:
+        flow.upsert_edge(
+            FlowEdge(
+                id=input.edge_id or _edge_id(input.after, input.id, input.source_handle),
+                source=input.after,
+                target=input.id,
+                sourceHandle=input.source_handle,
+                targetHandle=input.target_handle,
+            )
+        )
+        connected_from = input.after
+
+    msg = (
+        f"Module node `{input.id}` ({input.type}, module={mod.get('module')}) saved"
+        + (f", connected from `{connected_from}`." if connected_from else ".")
+    )
+    return ToolResult.ok(
+        msg,
+        state_updates=_set_working_flow(flow),
+        data={
+            "node_id": input.id,
+            "type": input.type,
+            "module": mod.get("module"),
+            "connected_from": connected_from,
+        },
+    )
+
+
 @tool(
     name="flow.add_node",
     description=(
@@ -205,8 +306,22 @@ def _edge_id(source: str, target: str, source_handle: str | None = None) -> str:
 async def flow_add_node(input: FlowAddNodeInput, ctx: ToolContext) -> ToolResult:
     spec = get_node_spec(input.type)
     if spec is None:
+        # Fallback: a namespaced `moduleId.NodeName` may be a per-project module
+        # node type (dynamic catalog, loaded at session_use_project). Modules have
+        # no static Pydantic model — validate required fields against the manifest
+        # and pass data through verbatim.
+        mod = _module_node_spec(ctx, input.type)
+        if mod is not None:
+            return await _add_module_node(input, ctx, mod)
+        known_mods = _module_node_types(ctx)
+        hint = (
+            f" This project's module node types: {', '.join(known_mods)}."
+            if known_mods
+            else " No module node types are enabled for this project."
+        )
         return ToolResult.error(
-            f"Unknown node type `{input.type}`. Use flow.list_node_types to discover types."
+            f"Unknown node type `{input.type}`. Use flow.list_node_types to discover "
+            f"built-in types.{hint}"
         )
 
     # Per-type strict Pydantic validation (rejects unknown fields, type errors,
@@ -538,6 +653,7 @@ async def flow_validate(_: FlowValidateInput, ctx: ToolContext) -> ToolResult:
         flow,
         known_collections=_known_collections(ctx),
         collection_schemas=_collection_schemas(ctx),
+        module_nodes=_module_nodes(ctx),
     )
     summary = {
         "ok": result.ok,
@@ -614,13 +730,59 @@ async def flow_list_node_types(input: FlowListNodeTypesInput, ctx: ToolContext) 
                 "validator": schema["validator"],
             }
         )
+
+    # External MODULE node types (per-project, dynamic). Built from the session
+    # manifest rather than a static Pydantic model. Filtered the same way.
+    for mod in _module_nodes(ctx):
+        if not isinstance(mod, dict) or not mod.get("type"):
+            continue
+        if input.type and mod["type"] != input.type:
+            continue
+        if input.category and mod.get("category") != input.category:
+            continue
+        fields = [
+            {"name": f, "required": True, "source": "module"}
+            for f in (mod.get("required_fields") or [])
+        ] + [
+            {"name": f, "required": False, "source": "module"}
+            for f in (mod.get("optional_fields") or [])
+        ] + [
+            {
+                "name": cf.get("key"),
+                "required": True,
+                "type": "credential",
+                "credential_type_key": cf.get("type_key"),
+            }
+            for cf in (mod.get("credential_fields") or [])
+        ]
+        payload.append(
+            {
+                "type": mod["type"],
+                "category": mod.get("category") or "integration",
+                "description": (
+                    f"[MODULE {mod.get('module')}] {mod.get('description')}"
+                    + (
+                        f"  trigger:{mod.get('trigger_mode')}"
+                        if mod.get("is_trigger")
+                        else ""
+                    )
+                ),
+                "source_handles": ["source-default"],
+                "is_trigger": bool(mod.get("is_trigger")),
+                "module": mod.get("module"),
+                "fields": fields,
+                "validator": None,
+            }
+        )
+
     # Group by category so the LLM gets an overview without drowning in schema detail.
     # Full per-type schema (fields + validators) is still in data["types"].
     from collections import defaultdict
     by_cat: dict[str, list[str]] = defaultdict(list)
     for p in payload:
         marker = "[trigger]" if p.get("is_trigger") else ""
-        by_cat[p["category"]].append(f"{p['type']}{marker}")
+        mod_marker = "[module]" if p.get("module") else ""
+        by_cat[p["category"]].append(f"{p['type']}{marker}{mod_marker}")
     lines = [f"{len(payload)} node type(s) in {len(by_cat)} categories:"]
     for cat, types in sorted(by_cat.items()):
         lines.append(f"  {cat}: {', '.join(types)}")
@@ -780,6 +942,7 @@ async def flow_save(input: FlowSaveInput, ctx: ToolContext) -> ToolResult:
         flow,
         known_collections=_known_collections(ctx),
         collection_schemas=_collection_schemas(ctx),
+        module_nodes=_module_nodes(ctx),
     )
     if not result.ok:
         return ToolResult.error(

@@ -26,4 +26,8 @@
 • CheckMembershipNode: channels:[{value:"@kanal"}] (chatId emas!).
 • Yakun: flow_validate → flow_save → flow_simulate bilan asosiy stsenariylarni
   O'ZING tekshir (step turlari: docs_guide(topic="simulate")) → flow_test_save.
+• MODUL node turlari (per-project): session_use_project javobida/kontekstda
+  `moduleId.NodeName` (masalan openrouter.Chat) ko'rinsa — flow_add_node bilan
+  qo'sh; credential maydoniga credentials.list_types/list dan mos type_key id'sini
+  ber. Batafsil: docs_guide(topic="modules").
 • To'liq qoidalar: docs_guide(topic="flow"); node maydonlari: flow_list_node_types.
