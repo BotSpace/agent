@@ -166,12 +166,24 @@ def build_dynamic_block(state: dict[str, Any] | None = None) -> str:
             rendered_m.append(f"{m['type']}{tag}")
         if rendered_m:
             lines.append(
-                "- Module node types (per-project, enabled modules): "
+                "- Module node types (per-project, ENABLED modules — ONLY these are "
+                "usable; a non-enabled module's nodes are unknown): "
                 + "; ".join(rendered_m)
                 + ". Add with flow.add_node(type='moduleId.NodeName'); module "
                 "credential fields take a credential_id of the manifest type_key. "
-                "See docs_guide(topic='modules')."
+                "Need a capability NOT in this list? modules.search → ask the user → "
+                "modules.enable → reload session. See docs_guide(topic='modules')."
             )
+    else:
+        # No modules enabled for this project: nudge the discovery path so the
+        # agent reaches for modules.search instead of inventing a node type.
+        lines.append(
+            "- Modules: none enabled for this project. Only built-in nodes are "
+            "available. If the user needs a capability built-ins lack (another LLM "
+            "provider, a third-party/own service), use modules.search to find a "
+            "catalog module, confirm with the user, then modules.enable (SIDE-EFFECTFUL) "
+            "and reload the session. See docs_guide(topic='modules')."
+        )
     return "\n".join(lines) + "\n"
 
 
