@@ -53,6 +53,38 @@ async def _template_sync_loop(initial_delay: int, interval_hours: float) -> None
         raise
 
 
+async def _module_sync_loop(initial_delay: int, interval_hours: float) -> None:
+    """Run agent.scripts.ingest_modules on a repeating schedule.
+
+    Sibling of `_template_sync_loop`: keeps the module-catalog vector
+    index fresh so `modules.search` reflects newly-listed (or de-listed)
+    platform modules without a manual re-ingest. Per-cycle errors are
+    swallowed so one bad sync doesn't kill the loop.
+    """
+    if interval_hours <= 0:
+        return
+    interval_seconds = max(60.0, interval_hours * 3600.0)
+    # Lazy import — pgvector connection + embedder happen lazily inside.
+    from ..scripts.ingest_modules import ingest
+
+    try:
+        await asyncio.sleep(max(0, initial_delay))
+        while True:
+            try:
+                result = await ingest(rebuild=False)
+                logger.info(
+                    "Module sync cycle ok: fetched=%s indexed=%s",
+                    result.get("fetched"),
+                    result.get("indexed"),
+                )
+            except Exception:
+                logger.exception("Module sync cycle failed; will retry next interval")
+            await asyncio.sleep(interval_seconds)
+    except asyncio.CancelledError:
+        logger.info("Module sync loop cancelled (shutdown)")
+        raise
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     s = settings or get_settings()
     configure_logging(s.log_level)
@@ -98,22 +130,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Background scheduler: periodically refresh the template vector
         # index so newly-added templates become searchable without a
         # manual re-deploy. AGENT_TEMPLATE_SYNC_INTERVAL_HOURS=0 disables.
-        sync_task: asyncio.Task | None = None
+        sync_tasks: list[asyncio.Task] = []
         if s.rag_enabled and s.template_sync_interval_hours > 0:
-            sync_task = asyncio.create_task(
-                _template_sync_loop(
-                    s.template_sync_initial_delay_seconds,
-                    s.template_sync_interval_hours,
-                ),
-                name="template-sync-loop",
+            sync_tasks.append(
+                asyncio.create_task(
+                    _template_sync_loop(
+                        s.template_sync_initial_delay_seconds,
+                        s.template_sync_interval_hours,
+                    ),
+                    name="template-sync-loop",
+                )
+            )
+        # Module-catalog RAG: same scheduler, separate cadence so
+        # `modules.search` stays current. AGENT_MODULE_SYNC_INTERVAL_HOURS=0
+        # disables it independently of the template loop.
+        if s.rag_enabled and s.module_sync_interval_hours > 0:
+            sync_tasks.append(
+                asyncio.create_task(
+                    _module_sync_loop(
+                        s.module_sync_initial_delay_seconds,
+                        s.module_sync_interval_hours,
+                    ),
+                    name="module-sync-loop",
+                )
             )
         try:
             yield
         finally:
-            if sync_task is not None:
-                sync_task.cancel()
+            for task in sync_tasks:
+                task.cancel()
+            for task in sync_tasks:
                 try:
-                    await sync_task
+                    await task
                 except (asyncio.CancelledError, Exception):  # noqa: BLE001
                     pass
 

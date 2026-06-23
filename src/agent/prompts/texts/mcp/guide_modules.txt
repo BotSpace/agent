@@ -4,6 +4,32 @@ Modullar engine'ga YANGI node turlari va biznes-logikani beradi. Modul = alohida
 servis (o'z porti/endpoint'i), engine bilan JSON-RPC 2.0 orqali gaplashadi. Modul
 PER-PROJECT yoqiladi: faqat shu loyihada YOQILGAN modullarning node'lari ishlatiladi.
 
+## 0. Modulni TOPISH → SO'RASH → YOQISH (discovery oqimi)
+
+Foydalanuvchi built-in node'lar qoplamaydigan qobiliyat so'rasa (boshqa LLM
+provayder, uchinchi-tomon integratsiya, o'z servisi), modul KATALOGIdan qidir.
+MUHIM: faqat YOQILGAN modul node'larini flow'ga qo'sha olasan. Yoqilmaganini
+flow_add_node bilan ishlatma — `unknown_node_type` bo'ladi. Oqim:
+
+1. `modules.search(query=...)` — semantik qidiruv (RAG). Eng mos modullarni
+   slug + qo'shadigan node turlari + similarity bilan qaytaradi. Vector store
+   o'chiq bo'lsa `modules.list_available` ga o'tadi.
+   • Aniq nom/slug bo'yicha ko'rmoqchi bo'lsang: `modules.list_available(search=...)`
+     — to'g'ridan-to'g'ri backend katalogi, har bir modulda `enabled` bayrog'i bor.
+2. Mos modul topilsa, foydalanuvchiga NIMA ekanini va nima berishini ayt, so'ng
+   YOQISHGA RUXSAT SO'RA. `modules.enable` SIDE-EFFECTLI: backend modul servisini
+   deploy/ulash qiladi (billing modullar uchun narx oqibati bor). Ruxsatsiz CHAQIRMA.
+3. Ruxsat olingach `modules.enable(slug=...)`. Bu DARROV tayyor node bermaydi:
+   modul pod'i hali ko'tarilmoqda → manifest bir zumda tayyor bo'lmaydi. Bir-necha
+   soniya kut, keyin `session_use_project` (yoki `flow_list_node_types`) ni QAYTA
+   chaqirib yangi `moduleId.NodeName` turlarini yukla.
+4. Endi `flow_add_node(type='moduleId.NodeName', data={...})` bilan flow'ga qo'sh
+   (1-3 bo'limlardagi qoidalar bo'yicha — maydonlar manifest'dan, credential kerak
+   bo'lsa 3-bo'lim).
+
+Modul allaqachon yoqilgan bo'lsa (`list_available`'da enabled:true yoki session
+katalogida ko'rinsa) — qadam 1-3 ni tashlab, to'g'ridan-to'g'ri qadam 4 ga o't.
+
 ## 1. Modul node turlari
 
 - Node turi NAMESPACE'li: `moduleId.NodeName` (masalan `openrouter.Chat`,

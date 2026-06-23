@@ -11,6 +11,7 @@ from .credentials import build_credentials_tools
 from .env import build_env_tools
 from .file import build_file_tools
 from .flow import build_flow_tools
+from .modules import build_modules_tools
 from .plan import build_plan_tools, has_incomplete_plan
 from .project import build_project_tools
 from .registry import ToolRegistry
@@ -36,6 +37,7 @@ def build_default_registry() -> ToolRegistry:
     reg.extend(build_file_tools())
     reg.extend(build_cms_tools())
     reg.extend(build_credentials_tools())
+    reg.extend(build_modules_tools())
     reg.extend(build_broadcast_tools())
     reg.extend(build_chat_tools())
     reg.extend(build_search_tools())

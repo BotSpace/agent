@@ -913,6 +913,68 @@ class BackendClient:
             return []
         return [m for m in payload if isinstance(m, dict) and m.get("type")]
 
+    async def list_modules_catalog(
+        self,
+        *,
+        search: str | None = None,
+        page: int | None = None,
+        page_size: int | None = None,
+        auth_claims: dict | None = None,
+    ) -> "PagedList":
+        """The platform-wide catalog of AVAILABLE modules (GET /api/modules/).
+
+        Authenticated (any user can browse — enabling is per-project). Each row is
+        a ModuleSerializer: {id, slug, name, description, icon, active, nodes:[{type,
+        title, category, trigger}], docs, source, ...}. `active=false` modules are
+        catalog entries that can't be enabled — filter them out before offering.
+
+        Supports DRF `search` (name/slug/description) and pagination. Returns an
+        empty PagedList on failure so a backend hiccup can't break a run.
+        """
+        params: dict[str, Any] = {"active": "true"}
+        if search:
+            params["search"] = search
+        if page:
+            params["page"] = page
+        if page_size:
+            params["page_size"] = page_size
+        try:
+            d = await self._request(
+                "GET", "/api/modules/", params=params, **_auth_kw(auth_claims)
+            )
+        except BackendError:
+            logger.warning("Failed to list modules catalog; continuing", exc_info=True)
+            return PagedList()
+        return _unwrap_list(d)
+
+    async def enable_module(
+        self,
+        project_id: str | int,
+        module_slug: str,
+        *,
+        auth_claims: dict | None = None,
+    ) -> dict[str, Any]:
+        """Enable a catalog module FOR A PROJECT (POST /api/project/{id}/modules/).
+
+        SIDE-EFFECTFUL — the backend deploys (or attaches) the module's service and
+        wires its node types into the project. Returns the ProjectModule row
+        ({id, module:{...}, enabled, status, endpoint, ...}). If the module was
+        already enabled the backend returns {"detail": "already enabled"} (200);
+        callers treat that as success.
+
+        After this returns, the module's node types may NOT be immediately
+        queryable — a freshly-deployed pod takes a moment to boot before its
+        manifest (node types) can be fetched. Re-run session_use_project /
+        flow_list_node_types after a short delay to see the new nodes.
+        """
+        d = await self._request(
+            "POST",
+            f"/api/project/{project_id}/modules/",
+            json={"module_slug": module_slug},
+            **_auth_kw(auth_claims),
+        )
+        return _unwrap_item(d) if isinstance(d, dict) else {}
+
     async def list_credential_types(
         self, *, auth_claims: dict | None = None
     ) -> list[dict[str, Any]]:
@@ -1574,6 +1636,38 @@ async def load_project_module_nodes(
                 ],
             }
         )
+    return out
+
+
+async def load_modules_catalog(
+    *,
+    search: str | None = None,
+    auth_claims: dict[str, Any] | None = None,
+    client: BackendClient | None = None,
+) -> list[dict[str, Any]]:
+    """Fetch the full ACTIVE module catalog across all pages, compactly.
+
+    Used by the module-RAG ingest script and `modules.list_available`. Walks DRF
+    pagination so the caller sees every catalog entry, not just page 1. NEVER
+    raises — returns whatever it managed to fetch ([] on total failure).
+    """
+    backend = client or get_backend_client()
+    out: list[dict[str, Any]] = []
+    page = 1
+    while True:
+        try:
+            rows = await backend.list_modules_catalog(
+                search=search, page=page, page_size=100, auth_claims=auth_claims
+            )
+        except Exception:
+            logger.warning("load_modules_catalog page=%s failed; stopping", page, exc_info=True)
+            break
+        out.extend(r for r in rows if isinstance(r, dict) and r.get("slug"))
+        if not getattr(rows, "has_next", False):
+            break
+        page += 1
+        if page > 50:  # safety valve — never loop forever
+            break
     return out
 
 

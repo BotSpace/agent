@@ -123,6 +123,20 @@ class Settings(BaseSettings):
     template_sync_initial_delay_seconds: int = Field(
         default=60, alias="AGENT_TEMPLATE_SYNC_INITIAL_DELAY_SECONDS"
     )
+    # Module-catalog RAG re-ingestion interval (hours). Mirrors the
+    # template scheduler: 0 disables the background loop entirely
+    # (manual `python -m agent.scripts.ingest_modules` only). The module
+    # catalog changes when the platform lists/de-lists a module, so a
+    # slightly longer default than templates is fine.
+    module_sync_interval_hours: float = Field(
+        default=12.0, alias="AGENT_MODULE_SYNC_INTERVAL_HOURS"
+    )
+    # Delay before the first module sync after pod startup (seconds).
+    # Offset from the template sync's default so the two ingest loops
+    # don't hammer the backend / embedder at the same instant on boot.
+    module_sync_initial_delay_seconds: int = Field(
+        default=90, alias="AGENT_MODULE_SYNC_INITIAL_DELAY_SECONDS"
+    )
 
     # ── observability ───────────────────────────────────────────────────
     otel_endpoint: str | None = Field(default=None, alias="OTEL_EXPORTER_OTLP_ENDPOINT")
