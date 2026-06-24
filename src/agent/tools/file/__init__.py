@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+import mimetypes
+
+import httpx
+from pydantic import BaseModel, Field, model_validator
 
 from ...integrations.backend import (
     BackendClient,
@@ -106,5 +109,103 @@ async def file_delete(input: FileDeleteInput, ctx: ToolContext) -> ToolResult:
     return ToolResult.ok(f"File `{input.file_id}` deleted.")
 
 
+class FileUploadInput(BaseModel):
+    filename: str = Field(description="Name of the file to upload (e.g. report.pdf).")
+    content: str | None = Field(
+        default=None,
+        description="Text content of the file. Mutually exclusive with `url`.",
+    )
+    url: str | None = Field(
+        default=None,
+        description="Public URL to download the file from. Mutually exclusive with `content`.",
+    )
+    project_id: str | int | None = Field(
+        default=None,
+        description="Project id/uuid. Defaults to the current session project.",
+    )
+    ttl: int | None = Field(
+        default=None,
+        ge=1,
+        description="Time-to-live in seconds. Omit (or pass null) for permanent storage.",
+    )
+
+    @model_validator(mode="after")
+    def _check_source(self) -> "FileUploadInput":
+        if self.content is None and self.url is None:
+            raise ValueError("Provide either `content` (text) or `url` (download source).")
+        if self.content is not None and self.url is not None:
+            raise ValueError("`content` and `url` are mutually exclusive.")
+        return self
+
+
+@tool(
+    name="file.upload",
+    description=(
+        "Upload a file to the project (optional ttl in seconds; omit for permanent). "
+        "Supply either `content` (plain text) or `url` (file will be downloaded first)."
+    ),
+    input_model=FileUploadInput,
+)
+async def file_upload(input: FileUploadInput, ctx: ToolContext) -> ToolResult:
+    pid = input.project_id or ctx.state.get("project_id")
+    if not pid:
+        return ToolResult.error("project_id talab qilinadi — ctx.state da ham yo'q.")
+
+    if input.url:
+        try:
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as http:
+                resp = await http.get(input.url)
+                resp.raise_for_status()
+            content_bytes = resp.content
+            content_type = (
+                resp.headers.get("content-type", "").split(";")[0].strip()
+                or _mime_from_name(input.filename)
+            )
+        except httpx.HTTPError as exc:
+            return ToolResult.error(f"URL dan yuklab olishda xato: {exc}")
+    else:
+        assert input.content is not None
+        content_bytes = input.content.encode("utf-8")
+        content_type = _mime_from_name(input.filename)
+
+    try:
+        result = await _backend(ctx).upload_file(
+            input.filename,
+            content_bytes,
+            content_type,
+            project=pid,
+            ttl=input.ttl or None,
+            auth_claims=ctx.state.get("auth_claims"),
+        )
+    except BackendError as e:
+        return ToolResult.error(format_backend_error("file.upload", e))
+
+    file_id = result.get("id")
+    name = result.get("name") or input.filename
+    url = result.get("url", "")
+    expires_at = result.get("expires_at")
+    ttl_note = "permanent" if not expires_at else f"expires {expires_at}"
+    size = result.get("size")
+    size_note = f"  size={round(size / 1024, 1)} KB" if size else ""
+
+    return ToolResult.ok(
+        f"Uploaded: id={file_id}  name={name}{size_note}  {ttl_note}\n  url={url}",
+        data={
+            "id": file_id,
+            "name": name,
+            "url": url,
+            "expires_at": expires_at,
+            "size": size,
+            "mime": result.get("mime"),
+            "uuid": result.get("uuid"),
+        },
+    )
+
+
+def _mime_from_name(filename: str) -> str:
+    mime, _ = mimetypes.guess_type(filename)
+    return mime or "application/octet-stream"
+
+
 def build_file_tools() -> list[Tool]:
-    return [file_list, file_delete]
+    return [file_list, file_delete, file_upload]

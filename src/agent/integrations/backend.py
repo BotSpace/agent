@@ -1027,6 +1027,66 @@ class BackendClient:
     async def delete_file(self, file_id: str | int, *, auth_claims: dict | None = None) -> None:
         await self._request("DELETE", f"/api/file/{file_id}/", **_auth_kw(auth_claims))
 
+    async def upload_file(
+        self,
+        filename: str,
+        content_bytes: bytes,
+        content_type: str,
+        *,
+        project: str | int,
+        ttl: int | None = None,
+        auth_claims: dict | None = None,
+    ) -> dict[str, Any]:
+        """POST /api/file/ multipart — upload a file to the project.
+
+        ``ttl`` is in seconds (omit or pass 0/None for permanent storage).
+        Returns the FileModel dict: {id, name, url, size, mime, created_at,
+        expires_at, uuid, ...}.
+        """
+        kw = _auth_kw(auth_claims)
+        user_id: str | None = kw.get("user_id")
+        bearer: str | None = kw.get("bearer")
+
+        url = self._base_url + "/api/file/"
+        files = {"file": (filename, content_bytes, content_type)}
+        data: dict[str, Any] = {"project": str(project)}
+        if ttl:
+            data["ttl"] = str(ttl)
+
+        resp = await self._client.post(
+            url,
+            files=files,
+            data=data,
+            headers=self._headers(bearer=bearer, user_id=user_id),
+        )
+        if resp.status_code == 401 and not (self._internal_token and user_id):
+            refresh_token = kw.get("refresh_token")
+            if refresh_token:
+                refreshed = await self._try_refresh(refresh_token)
+                if refreshed:
+                    new_access, new_refresh = refreshed
+                    if auth_claims is not None:
+                        auth_claims["access_token"] = new_access
+                        if new_refresh:
+                            auth_claims["refresh_token"] = new_refresh
+                    resp = await self._client.post(
+                        url,
+                        files=files,
+                        data=data,
+                        headers=self._headers(bearer=new_access),
+                    )
+        if resp.status_code >= 400:
+            try:
+                details = resp.json()
+            except Exception:
+                details = resp.text
+            raise BackendError(
+                f"POST /api/file/ → {resp.status_code}",
+                status=resp.status_code,
+                details=details,
+            )
+        return _unwrap_item(resp.json())
+
     # ── collections (metadata) ─────────────────────────────────────────
     async def list_collections(
         self,
