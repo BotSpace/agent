@@ -60,13 +60,23 @@ async def file_list(input: FileListInput, ctx: ToolContext) -> ToolResult:
     note = pagination_summary(items)
     shown = list(items)[: input.limit]
     payload = [
-        {"id": f.get("id"), "name": f.get("name"), "url": f.get("url"), "size": f.get("size")}
+        {
+            "id": f.get("id"),
+            "name": f.get("name"),
+            "url": f.get("url"),
+            "size": f.get("size"),
+            # expires_at=None -> stored permanently; otherwise the file is auto-deleted then (TTL).
+            "expires_at": f.get("expires_at"),
+        }
         for f in shown
     ]
     lines = [f"Showing {len(payload)} of {total} file(s):{note}"]
     for f in payload:
         size_kb = f"{round(f['size'] / 1024, 1)} KB" if f.get("size") else "?"
-        lines.append(f"  id={f['id']}  name={f['name']}  size={size_kb}  url={f.get('url', '')}")
+        ttl = "permanent" if not f.get("expires_at") else f"expires {f['expires_at']}"
+        lines.append(
+            f"  id={f['id']}  name={f['name']}  size={size_kb}  {ttl}  url={f.get('url', '')}"
+        )
     return ToolResult.ok(
         "\n".join(lines) if payload else f"0 of {total} file(s).{note}",
         data={
