@@ -94,6 +94,11 @@ The essentials:
 - Branch edges use exact handles: IfCondition → true/false; LoadCollectionItem →
   found/not_found; ForLoop → loop-body/no-items; Random → option_0..N;
   buttons → flow_connect_button. (Also in flow_connect_branch's description.)
+- TEMPLATE SECTIONS in any message/field text: `{{#each ARRAY}}…{{/each}}` loops an
+  array; `{{#if KEY}}…{{/if}}` renders the body when KEY is truthy (non-empty string/
+  array, not false/null); `{{^KEY}}…{{/KEY}}` renders when KEY is empty (the inverse).
+  `{{#if}}` is PRESENCE-only — for real comparisons (==, >, <, contains) branch with an
+  IfCondition node instead.
 - `session_status` shows the active project, project name, node/edge counts,
   unsaved changes (flow_dirty) and the project's collections.
 - Unsaved drafts are persisted server-side: if a session is lost, just call
