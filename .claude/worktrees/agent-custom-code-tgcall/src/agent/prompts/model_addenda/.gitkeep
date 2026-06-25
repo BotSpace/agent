@@ -1,3 +1,0 @@
-# Model-specific prompt addenda. Drop <model-substring>.txt files here to
-# append extra system guidance for matching models. Universal guidance lives
-# in ../autonomy.txt instead.
