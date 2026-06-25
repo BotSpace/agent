@@ -39,7 +39,7 @@ class CommandTriggerData(_StrictData):
         description="True: fires anywhere. False: only while engine paused.")
     withArgs: bool = Field(default=False, description="Capture text after the command.")
     state: dict[str, str] | None = Field(default=None,
-        description="Optional {key, type} to auto-save command args into state.")
+        description="Optional {key, type} to auto-save command args into public state (public_<key>, read as {{key}}).")
 
 
 class MessageTriggerData(_StrictData):
@@ -360,7 +360,7 @@ class RandomData(_StrictData):
 
 
 class ForLoopData(_StrictData):
-    array: str = Field(description="Array expression like {{state.users}} or {{collection.X}}.")
+    array: str = Field(description="Array expression like {{users}} (or {{public.users}}) or {{collection.X}}.")
 
 
 class ForLoopContinueData(_StrictData):
@@ -392,7 +392,7 @@ class StateData(_StrictData):
 class CollectionData(_StrictData):
     collection_name: str
     fieldMappings: dict[str, str] = Field(
-        description="{collection_field: state_key}, e.g. {name:'user_name', phone:'phone'}.")
+        description="{collection_field: var_key} (var_key — saqlangan ochiq o'zgaruvchi nomi, prefiksiz), e.g. {name:'user_name', phone:'phone'}.")
 
 
 class LoadCollectionItemData(_StrictData):
@@ -440,8 +440,9 @@ class CustomCodeData(_StrictData):
             "JavaScript executed by Goja VM. Stored under data.jsCode — this exact "
             "key is read by the engine and rendered by the constructor UI. See prompt "
             "Pattern 7 for the full runtime API (send_*, db_*, http_*, exit, set_context, ...). "
-            "To READ state/context PREFER object-access: context.<key> and state.<key> "
-            "(state_ prefix auto), e.g. state.user_phone, context.first_name "
+            "To READ state/context PREFER object-access: vars.<key> (public, maps to "
+            "public_<key>; state.<key> is a legacy alias that still works), private.<key> "
+            "(secret), and context.<key> (raw key), e.g. vars.user_phone, context.first_name "
             "(get_state/get_context also work, but object-access is shorter/cleaner). "
             "FORMAT CLEANLY — the engine stores your code verbatim (no auto-format), so "
             "write it readable on the FIRST try: one statement per line (never several "
@@ -528,7 +529,7 @@ class CheckMembershipData(_StrictData):
 
 
 class DownloadData(_StrictData):
-    fileId: str = Field(description="Telegram file_id or {{state.file_id}}.")
+    fileId: str = Field(description="Telegram file_id or {{file_id}} (saqlangan ochiq qiymat).")
     saveAs: str = Field(description="State key for the local file path / URL.")
 
 
@@ -613,7 +614,7 @@ class PaymentNodeData(_StrictData):
         ),
     )
     amount: str | int = Field(
-        description="To'lov summasi — son yoki {{var}} (masalan {{state.total}}).",
+        description="To'lov summasi — son yoki {{var}} (masalan {{total}} yoki {{public.total}}).",
     )
     comment: str | None = Field(
         default=None,
@@ -635,8 +636,9 @@ class SheetsFilterCondition(_StrictData):
 
     Collection tool filteriga o'xshaydi, lekin BU node STATIK: builder field/op/value'ni
     o'zi yozadi (runtime AI to'ldirmaydi — shuning uchun `source`/`aiDescription` YO'Q).
-    `value`da {{chat_id}}/{{state_*}} placeholder ishlatish mumkin (engine runtime'da
-    almashtiradi). `field` — rows obyektidagi ustun nomi (Sheet 1-qator sarlavhasi).
+    `value`da {{chat_id}}/{{<key>}} (saqlangan ochiq qiymat) placeholder ishlatish mumkin
+    (engine runtime'da almashtiradi; legacy {{state_<key>}} ham ishlaydi).
+    `field` — rows obyektidagi ustun nomi (Sheet 1-qator sarlavhasi).
     """
 
     field: str = Field(description="Filterlanadigan ustun nomi (Sheet 1-qator sarlavhasi).")
@@ -647,8 +649,9 @@ class SheetsFilterCondition(_StrictData):
     value: Any | None = Field(
         default=None,
         description=(
-            "Taqqoslanadigan qiymat. {{chat_id}}/{{state_*}} placeholder bo'lishi mumkin "
-            "(engine runtime'da almashtiradi). op='exists' uchun shart emas."
+            "Taqqoslanadigan qiymat. {{chat_id}}/{{<key>}} (saqlangan ochiq qiymat) placeholder "
+            "bo'lishi mumkin (engine runtime'da almashtiradi; legacy {{state_<key>}} ham). "
+            "op='exists' uchun shart emas."
         ),
     )
 
@@ -1006,7 +1009,8 @@ class FilterCondition(_StrictData):
     """One TEMPLATE filter condition for read/update/delete.
 
     source='fixed' → the BUILDER pins `value` (a constant, or a flow placeholder
-    like '{{chat_id}}'/'{{state_phone}}' resolved by the engine at runtime, type
+    like '{{chat_id}}'/'{{phone}}' (saved public var; legacy '{{state_phone}}' also
+    works) resolved by the engine at runtime, type
     preserved). The runtime AI canNOT change it — use it to scope to the current
     user (user_id == {{chat_id}}). source='ai' → leave `value` empty and write an
     `aiDescription`; the RUNTIME AI fills the value per turn from that hint.
@@ -1020,7 +1024,7 @@ class FilterCondition(_StrictData):
     )
     value: Any | None = Field(
         default=None,
-        description="Fixed value (source='fixed'). May be a {{chat_id}}/{{state_*}} placeholder; raw type preserved.",
+        description="Fixed value (source='fixed'). May be a {{chat_id}}/{{<key>}} placeholder (saved public var; legacy {{state_<key>}} also works); raw type preserved.",
     )
     aiDescription: str | None = Field(
         default=None,
@@ -1042,7 +1046,7 @@ class FieldEntry(_StrictData):
     )
     value: Any | None = Field(
         default=None,
-        description="Fixed value (source='fixed'). May be a {{chat_id}}/{{state_*}} placeholder; raw type preserved.",
+        description="Fixed value (source='fixed'). May be a {{chat_id}}/{{<key>}} placeholder (saved public var; legacy {{state_<key>}} also works); raw type preserved.",
     )
     aiDescription: str | None = Field(
         default=None,
@@ -1079,7 +1083,7 @@ class AICollectionToolData(_AIToolBase):
       source='fixed' → BUILDER pins `value`. May be a constant OR a flow-context
         placeholder the engine resolves at runtime (raw type preserved):
           {{chat_id}} {{user_id}} {{first_name}} {{username}}
-          {{state_<key>}} (asked/saved earlier) {{collection_<key>}}
+          {{<key>}} (asked/saved earlier; legacy {{state_<key>}} also works) {{collection_<key>}}
         Whole-placeholder value "{{chat_id}}" stays an int → user_id == {{chat_id}}
         matches an int field. This is how you safely lock a tool to the CURRENT
         user — the runtime AI cannot override a fixed slot.

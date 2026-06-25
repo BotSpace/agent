@@ -452,9 +452,44 @@ trigger. SuccessfulPayment context: `{{payment_payload}}`, `{{payment_total_amou
 `PaymentNode` (Click/Paycue, callback) ≠ `SendInvoiceNode` (Telegram-native,
 PreCheckout+SuccessfulPayment trigger). Birga ishlatma.
 
-### Pattern 6: Expression
-`{{first_name}}`, `{{username}}`, `{{state.var}}`, `{{collection.X.field}}`,
-`{{inserted_id}}`, `{{message.text}}`, `{{callback_query.data}}`.
+### Pattern 6: Expression — O'zgaruvchilar modeli (MUHIM)
+
+Engine ikki turdagi saqlangan o'zgaruvchini ajratadi: **ochiq (public)** va
+**maxfiy (private)**. Substitution `{{...}}` node maydonlarida (matn, tugma
+matni/qiymati/callback, filter qiymati — INLINE/REPLY, nested rows ham) ishlaydi.
+
+**O'qish — `{{...}}` ko'rinishlari (hammasi engine'da map qilinadi):**
+- `{{key}}` (yalang'och) — avval shu nom qidiriladi, topilmasa `public_key`.
+  **Yangi flowlarda AFZAL** — eng qisqa, toza.
+- `{{public.key}}` ≡ `{{vars.key}}` ≡ `{{state.key}}` → `public_key`. Uchchovi
+  BIR XIL. `state.` orqaga-moslik uchun HALI ishlaydi (buzilmaydi), lekin yangi
+  flowda `{{key}}` yoki `{{public.key}}` yoz.
+- `{{private.key}}` → `private_key` (maxfiy qiymat — token, parol, sirli kod).
+- `{{collection.key}}` → `collection_key`; `{{user.key}}` → `user_key`.
+- `{{callback_data}}` → bosilgan tugmaning callback string'i. ENDI HAR DOIM
+  mavjud — root/callback/global trigger orqali yangi flow boshlanganda ham.
+  Qo'shimcha: `{{callback_query.data}}`, `{{callback_query.from.id}}`.
+- Standart: `{{first_name}}`, `{{last_name}}`, `{{username}}`, `{{user_id}}`,
+  `{{chat_id}}`, `{{message.text}}`, `{{inserted_id}}`, `{{agent_output}}`.
+
+**Saqlash — ochiq vs maxfiy:**
+- StateNode / trigger `data.state` "save" → ochiq `public_<key>` ga yoziladi
+  (`{{key}}` / `{{public.key}}` bilan o'qiladi). Bu ODATIY holat.
+- Maxfiy ma'lumot (token, parol, sirli kod, bir martalik kod) → `private_<key>`,
+  `{{private.key}}` bilan o'qiladi. Bunday qiymatni `{{key}}` yalang'och nom
+  bilan xabar matnida AKS ETTIRMA (maxfiy joyda sof qolsin).
+
+**Custom code (Goja VM) ichida:**
+- `vars.x` — ochiq qiymat O'QISH/YOZISH (`public_x` ga map qiladi). **AFZAL.**
+- `state.x` — `vars.x` ning legacy aliasi, HALI ishlaydi (`public_x` ga). Yangi
+  kodda `vars.x` yoz.
+- `private.x` — maxfiy qiymat o'qish/yozish (`private_x`). Token/parol shu yerda.
+- `set_state("x", v)` / `get_state("x")` ham `public_x` bilan ishlaydi (legacy).
+- Batafsil: `docs_guide(topic="custom_code")`.
+
+**Tugmalarda `{{}}`:** tugma matni, `value` (callback) va collection tugmasi
+matni ichida `{{key}}` substitution ISHLAYDI (inline/reply, nested rows ham).
+Misol: `{"text": "👤 {{first_name}}", "type": "callback", "value": "user:{{user_id}}"}`.
 
 ### Pattern 7: CustomCodeNode — modular, fokuslangan kod bloklari
 
@@ -1103,7 +1138,7 @@ cms.bulk_insert(
 flow.add_if_condition(
     id="check-premium",
     data={
-        "conditions": [{"left": "{{state.subscription}}", "operator": "equals", "right": "premium"}],
+        "conditions": [{"left": "{{subscription}}", "operator": "equals", "right": "premium"}],
         "operator": "and"
     },
     after="check-user"

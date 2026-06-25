@@ -702,7 +702,8 @@ def build_flow_action_tools() -> list[Tool]:
                 "operation='update' → ALSO changeFields (the fields to SET; filterConditions "
                 "selects which docs). "
                 "source='fixed' → YOU pin `value` (constant or {{chat_id}}/{{user_id}}/"
-                "{{state_<key>}} placeholder, engine resolves at runtime, whole-placeholder "
+                "{{<key>}} placeholder (saved public var; legacy {{state_<key>}} also works), "
+                "engine resolves at runtime, whole-placeholder "
                 "keeps RAW type so {{chat_id}} stays an int). The runtime AI CANNOT change a "
                 "fixed slot — use user_id=\"{{chat_id}}\" to lock the tool to the current user. "
                 "source='ai' → leave `value` empty and write `aiDescription`; the runtime AI "
@@ -864,13 +865,13 @@ def build_flow_action_tools() -> list[Tool]:
             name="flow.add_collection",
             type_name="CollectionNode",
             data_model=CollectionData,
-            description="Insert state into MongoDB. fieldMappings={col:state_key}. {{inserted_id}} after.",
+            description="Insert into MongoDB from saved vars. fieldMappings={col:var_key} (var_key — ochiq o'zgaruvchi nomi, prefiksiz). {{inserted_id}} after.",
         ),
         _make_popular_node_tool(
             name="flow.add_state",
             type_name="StateNode",
             data_model=StateData,
-            description="Save to state. type='Custom'+customType='{{expr}}' stores any expression.",
+            description="Save to public state (public_<key>, read as {{key}}). type='Custom'+customType='{{expr}}' stores any expression.",
         ),
         _make_popular_node_tool(
             name="flow.add_custom_code",
@@ -882,7 +883,7 @@ def build_flow_action_tools() -> list[Tool]:
             name="flow.add_http_request",
             type_name="HTTPRequestNode",
             data_model=HTTPRequestData,
-            description="HTTP call. url/method required. saveAs writes JSON response to state.",
+            description="HTTP call. url/method required. saveAs writes JSON response to public state (read as {{saveAs}}).",
         ),
     ]
     tools: list[Tool] = list(popular_tools)
