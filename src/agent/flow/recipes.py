@@ -238,7 +238,7 @@ _SUPPORT_FLOW: dict[str, Any] = {
         {
             "id": "notify-admin",
             "type": "SendToAdminNode",
-            "data": {"messageText": "📩 Yangi murojaat\n👤 {{first_name}} (id: {{user_id}})\n\n{{state.support_msg}}"},
+            "data": {"messageText": "📩 Yangi murojaat\n👤 {{first_name}} (id: {{user_id}})\n\n{{support_msg}}"},
             "position": _pos(320, 200),
         },
         {

@@ -1,0 +1,104 @@
+## Botmother MCP — Telegram bot constructor (botspace.uz)
+
+This server exposes the full Botmother bot-builder platform: visual flow editing,
+project/env/release management, CMS collections (MongoDB), CRM chat history and
+broadcasts. You (the MCP client model) act as the bot builder.
+
+### Workflow for building/editing a bot
+0. At the START of every new user task, call `session_log_prompt(prompt)` with
+   the user's natural-language request VERBATIM (do not summarise or translate).
+   This opens a trace and links the tool calls that follow (used for training).
+1. `project_list` / `project_create` — find or create the project.
+2. `session_use_project(project_id)` — REQUIRED before any `flow_*` tool.
+   Loads the saved flow + CMS collections into the server-side session.
+3. BEFORE building anything non-trivial, read the guide:
+   `docs_guide(topic="flow")` — flow-builder rules (handles, triggers, AI nodes,
+   keyboards, state). `docs_guide(topic="node_catalog")` — all node types.
+   `docs_guide(topic="flow_examples")` — complete bot examples.
+   `docs_guide(topic="simulate")` — flow_simulate step types (click for inline
+   buttons!), expect/assert mode, multi-user, regression tests. READ THIS
+   BEFORE the first flow_simulate call.
+4. Build: typed helpers (`flow_add_command_trigger`, `flow_add_edit_or_send`,
+   `flow_ask_text`, `flow_add_if_condition`, ...) or generic `flow_add_node`;
+   wire with `flow_connect` / `flow_connect_branch` / `flow_connect_button`.
+   Use `flow_list_node_types(type=...)` for one type's exact field schema.
+   If `flow_apply_template` returns `required_envs`, ask the user for those
+   values and set them with `env_set` (check `env_list` before debug/deploy).
+5. ALWAYS finish with: `flow_validate` → fix errors → `flow_save`
+   (auto-layout is applied on save; nothing persists until `flow_save`).
+   `flow_save` returns a compact summary by default; pass `verbose:true` only if
+   you must echo the full saved flow JSON.
+   Batch edits: `flow_patch_many([{id,data},...])` applies many node patches
+   atomically (all-or-nothing).
+   After `flow_save`, run `flow_simulate` on the main scenarios (e.g. /start and
+   each menu branch) and VERIFY the bot behaves correctly YOURSELF before asking
+   the user to test — read the per-step messages/errors it returns. You can also
+   simulate the UNSAVED working draft (use_saved=false, the default) to catch
+   problems before saving. When checking MANY scenarios at once, add an `expect`
+   to each step (contains/keyboard_contains/...) and pass `mode:"assert"` — it
+   returns a compact "✅ 9/10 o'tdi" plus only the failed steps (saves tokens).
+   Once a bot is built and verified, SAVE the main scenarios as regression tests
+   with `flow_test_save(name, steps)` (use `expect` in the steps). Every later
+   `flow_save` re-runs all saved tests automatically and reports regressions, so
+   a future edit can't silently break an earlier flow.
+6. Data-driven bots: create collections FIRST (`cms_create_collection`,
+   `cms_add_field`, `cms_insert`/`cms_bulk_insert`), then reference them in
+   flow nodes (CollectionNode, LoadCollection*).
+7. Test/deploy: `release_debug` starts a debug bot container (~30 min, no token
+   needed); `release_debug_logs` shows the debug container's logs (use it when
+   the debug bot misbehaves or doesn't respond); `release_deploy` is a
+   production deploy; `release_logs` shows a release's logs.
+
+### Key rules
+- 🎨 DESIGN QUALITY (mandatory): bots must look polished, not bare. Put a fitting
+  EMOJI in every message and on EVERY button. Use HTML: set `parseMode:"HTML"`
+  and format with <b>title</b>, blank lines, bullet lists. Write warm, natural
+  copy in the user's language (usually Uzbek); personalize with {{first_name}}.
+  NEVER ship dry "salom"/"OK"/"Error" text — even a simple "say hello" bot gets a
+  warm emoji greeting. Full structure: a pretty /start menu (3-6 inline buttons)
+  + back/home buttons on every submenu. Full design guide: docs_guide(topic="flow").
+- MESSAGE NODE CHOICE: use `flow_add_edit_or_send` (EditOrSendMessageNode) for
+  ALL bot messages by default — it edits the previous message in place, so menus
+  don't pile up. `flow_add_send_text_message` (SendTextMessageNode) is ONLY for
+  reply keyboards (request_contact / request_location) or when a separate new
+  message is explicitly required.
+- KEYBOARDS: inline keyboards by default (`keyboard_kind:"inline"` + rows).
+  Reply keyboards ONLY for contact/location requests.
+- Every flow needs at least one trigger node (`flow_add_command_trigger` /start etc.).
+- Branch edges use exact handles: IfCondition → true/false; LoadCollectionItem →
+  found/not_found; ForLoop → loop-body/no-items; Random → option_0..N;
+  buttons → flow_connect_button.
+- `session_status` shows the active project, project name, node/edge counts,
+  unsaved changes (flow_dirty) and the project's collections.
+- Unsaved drafts are persisted server-side: if a session is lost, just call
+  `session_use_project(project_id)` again — an unsaved draft is auto-restored
+  (you'll see "Saqlanmagan draft tiklandi"). On "Aktiv loyiha yo'q" errors,
+  call `session_use_project(project_id)` first.
+- `session_undo` reverts the last destructive op (`flow_apply_template`,
+  `flow_clear`, `flow_save`, `flow_import`, `flow_rollback`) — last 5 snapshots.
+- `flow_simulate` runs the flow against scripted user steps (no real bot/Telegram)
+  and returns per-step bot messages, edits, deletes, visited nodes and errors.
+- `flow_export` / `flow_import` move a whole flow as JSON (import validates first
+  and only replaces the working flow; persist with `flow_save`).
+- `flow_history` / `flow_rollback(version)` list and restore past saved versions
+  (each `flow_save` records one; last 20 kept). Rollback loads into the working
+  flow — confirm with `flow_save`.
+- `flow_test_save` / `flow_test_list` / `flow_test_run` / `flow_test_delete`
+  manage SAVED regression tests (named simulate scenarios with `expect`). Save the
+  key flows once; `flow_save` auto-runs them and `flow_test_run` re-runs them on
+  demand (mode=assert). If the simulator is down they just degrade to a notice.
+- `project_snapshot` returns the WHOLE project state in one call (flow summary,
+  collections + doc counts, debug/release status, last versions, unsaved changes)
+  — use it to orient before working instead of several separate reads.
+- Destructive irreversible tools (`project_delete`, `cms_delete_collection`,
+  `flow_test_delete`) require `confirm:true`; called without it they only report
+  what WOULD be deleted and do nothing.
+- After a pod restart / TTL expiry the session is recovered transparently: flow
+  tools auto-restore your last-edited draft and prepend "Sessiya avtomatik
+  tiklandi" — you don't need to re-run `session_use_project`.
+- The `flow_ask_*` helpers create a fixed pair of nodes from `id_prefix`:
+  `flow_ask_text` / `flow_ask_buttons` / `flow_ask_contact` →
+  `<id_prefix>-ask` + `<id_prefix>-capture`; `flow_ask_location` →
+  `<id_prefix>-ask` + `<id_prefix>-capture-latitude` + `<id_prefix>-capture-longitude`.
+  Connect follow-up nodes from the `-capture` node (or `-capture-longitude`).
+- Per-user token budget is enforced by the platform (`subscription.*` tools).

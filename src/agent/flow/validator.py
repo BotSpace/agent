@@ -654,8 +654,13 @@ _STANDARD_CONTEXT_VARS = frozenset(
 )
 
 # Prefixes/roots that are always allowed (namespaced runtime data).
-_ALLOWED_VAR_PREFIXES = ("state.", "env.", "collection_", "item.", "doc.", "loop.",
-                         "response.", "http_", "context.")
+# Variable model: `public.`/`vars.`/`state.` → public_<key> (legacy `state.` kept
+# for back-compat); `private.` → private_<key>; `callback_query.` → raw callback
+# query fields; `user.` → user_<key>.
+_ALLOWED_VAR_PREFIXES = ("state.", "public.", "private.", "vars.", "env.",
+                         "collection_", "item.", "doc.", "loop.",
+                         "response.", "http_", "context.", "callback_query.",
+                         "user.")
 
 # Only scan these node fields for {{var}} usage — text/code carrying templates.
 _TEMPLATE_TEXT_FIELDS = ("messageText", "text", "caption")
@@ -663,48 +668,74 @@ _TEMPLATE_TEXT_FIELDS = ("messageText", "text", "caption")
 # `{{ var }}` with a simple root token (letters/digits/_), optional .path / [i].
 _SIMPLE_VAR_RE = re.compile(r"\{\{\s*([A-Za-z_][\w]*)\b[^}]*\}\}")
 
-# #8 — CustomCodeNode jsCode writes state via set_context('key', value). Capture
-# every literal key it sets so {{key}} / {{state_key}} don't warn. Matches both
-# single- and double-quoted first arguments: set_context('enroll_id', ...).
-_SET_CONTEXT_RE = re.compile(r"""set_context\(\s*['"]([A-Za-z_]\w*)['"]""")
+# #8 — CustomCodeNode jsCode writes vars via set_context('key', ...) /
+# set_state('key', ...) / vars.key = ... / private.key = ... . Capture every
+# literal key it sets so {{key}} / {{public_key}} / {{state_key}} don't warn.
+# Matches single- or double-quoted first args of set_context/set_state, and
+# object-access assignments vars.x = / private.x = .
+_SET_CONTEXT_RE = re.compile(
+    r"""(?:set_context|set_state)\(\s*['"]([A-Za-z_]\w*)['"]"""
+)
+_OBJ_ASSIGN_RE = re.compile(
+    r"""\b(?:vars|private|state)\.([A-Za-z_]\w*)\s*="""
+)
 
 
 def _collect_state_keys(flow: FlowDocument) -> set[str]:
-    """Best-effort set of state keys a flow writes (so they're known to {{var}})."""
+    """Best-effort set of variable keys a flow writes (so they're known to {{var}}).
+
+    Each written key is registered under every prefix the engine can expose it as:
+    the bare key, plus `public_<key>` / `private_<key>` / legacy `state_<key>`. The
+    public/private/state prefixes all resolve to the same value families in the
+    engine, so accepting all of them avoids false `unknown_variable` warnings while
+    the bare `{{key}}` form (preferred) is also covered.
+    """
     keys: set[str] = set()
+
+    def _register(key: str) -> None:
+        if not key:
+            return
+        keys.add(key)
+        keys.add(f"public_{key}")
+        keys.add(f"private_{key}")
+        keys.add(f"state_{key}")  # legacy alias still resolved by the engine
+
     for n in flow.nodes:
         data = n.data if isinstance(n.data, dict) else {}
         # StateNode / capture: data.key
         k = data.get("key")
         if isinstance(k, str) and k:
-            keys.add(k)
+            _register(k)
         # Triggers auto-saving via data.state = {key, type}
         st = data.get("state")
         if isinstance(st, dict) and isinstance(st.get("key"), str):
-            keys.add(st["key"])
+            _register(st["key"])
         # HTTPRequest saveAs / Download saveAs / Google* responseVariable
         for f in ("saveAs", "contextKey", "outputKey", "responseVariable"):
             v = data.get(f)
             if isinstance(v, str) and v:
-                keys.add(v)
+                _register(v)
         # CreateInviteLinkNode writes the generated link to data.resultVar
         # (default `invite_link`) — so {{invite_link}} downstream is valid.
         if n.type == "CreateInviteLinkNode":
             rv = data.get("resultVar")
-            keys.add(rv if isinstance(rv, str) and rv else "invite_link")
-        # CollectionNode fieldMappings values are state keys; CollectionData too.
+            _register(rv if isinstance(rv, str) and rv else "invite_link")
+        # CollectionNode fieldMappings values are var keys; CollectionData too.
         fm = data.get("fieldMappings")
         if isinstance(fm, dict):
-            keys.update(v for v in fm.values() if isinstance(v, str) and v)
-        # #8 — CustomCodeNode jsCode sets state via set_context('key', ...). Each
-        # key it writes is then valid as {{key}} AND {{state_key}} downstream.
+            for v in fm.values():
+                if isinstance(v, str) and v:
+                    _register(v)
+        # #8 — CustomCodeNode jsCode sets vars via set_context/set_state or
+        # vars.x = / private.x = . Each written key is valid downstream as
+        # {{key}} / {{public_key}} / {{private_key}} / {{state_key}}.
         if n.type == "CustomCodeNode":
             code = data.get("jsCode")
             if isinstance(code, str) and code:
                 for m in _SET_CONTEXT_RE.finditer(code):
-                    key = m.group(1)
-                    keys.add(key)
-                    keys.add(f"state_{key}")
+                    _register(m.group(1))
+                for m in _OBJ_ASSIGN_RE.finditer(code):
+                    _register(m.group(1))
     return keys
 
 

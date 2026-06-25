@@ -8,7 +8,9 @@ def test_custom_code_topic_registered():
     text = mcp_server._load_guide("custom_code").lower()
     assert "edit_or_send" in text
     assert "callback_query.message.message_id" in text
-    assert "state_" in text  # state_ prefiks tushuntirilgan
+    assert "public_" in text  # yangi public_ prefiks (vars) tushuntirilgan
+    assert "private" in text  # maxfiy o'zgaruvchilar tushuntirilgan
+    assert "state_" in text  # legacy state_ prefiks ham eslatilgan
 
 
 def test_simulate_step_shows_edit_text():

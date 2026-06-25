@@ -62,9 +62,15 @@ exit('new');
   obyekt-access** `context.<key>` (`context.first_name`, `context.user_id`,
   `context.sheets_response_rows`, `context.collection_<key>`,
   `context.message_id_<nodeId>` — har send-node yuborgan xabar id). Qisqa va toza.
-- `state` (object) — state qiymatlari. **AFZAL: `state.<key>`** — `state_`
-  prefiks AVTOMATIK qo'shiladi (toza nom yoz). `state.user_phone` ≡
-  `context.state_user_phone`. Node maydonidagi `{{state.user_phone}}` bilan bir xil.
+- `vars` (object) — OCHIQ (public) saqlangan qiymatlar. **AFZAL: `vars.<key>`** —
+  ichida `public_` prefiks AVTOMATIK qo'shiladi (toza nom yoz). `vars.user_phone` ≡
+  `context.public_user_phone`. Node maydonidagi `{{user_phone}}` (yoki
+  `{{public.user_phone}}`) bilan bir xil. O'qish HAM yozish: `vars.x = v`.
+- `state` (object) — `vars` ning LEGACY aliasi, HALI ishlaydi (`public_` ga map
+  qiladi). Yangi kodda `vars.<key>` yoz; `state.<key>` faqat orqaga moslik uchun.
+- `private` (object) — MAXFIY (private) qiymatlar (token, parol, sirli kod).
+  `private.api_token` ≡ `context.private_api_token`, node'da `{{private.api_token}}`.
+  Maxfiy ma'lumotni shu yerda saqla, ochiq `vars`ga emas.
 - `command_args` (string) — `/start ABC` da "ABC" (argumentsiz "")
 
 ## Flow boshqaruv
@@ -73,19 +79,33 @@ exit('new');
   ishga tushadi — step'ni `set_context` bilan saqla)
 - `sleep(ms)`
 
-## State (TAVSIYA — prefiks avtomatik)
-StateNode/trigger saqlagan qiymatlar node maydonlarida `{{name}}` / `{{state.name}}`
-ko'rinishida o'qiladi (ichida `state_` prefiks bilan saqlanadi).
-**O'QISH — `state.<key>` obyekt-access afzal** (qisqa, toza):
+## Ochiq o'zgaruvchilar (vars — TAVSIYA, prefiks avtomatik)
+StateNode/trigger saqlagan OCHIQ qiymatlar node maydonlarida `{{name}}` (yoki
+`{{public.name}}` / legacy `{{state.name}}`) ko'rinishida o'qiladi (ichida
+`public_` prefiks bilan saqlanadi).
+**O'QISH/YOZISH — `vars.<key>` obyekt-access afzal** (qisqa, toza):
 ```javascript
-const phone = state.user_phone;      // ≡ get_state("user_phone")
-const code = state.movie_code;
+const phone = vars.user_phone;       // ≡ get_state("user_phone")
+const code = vars.movie_code;
+vars.movie_code = code;              // yozish — node'da {{movie_code}}
 ```
-- YOZISH: `set_state(key, value)` → bool  (`set_state("movie_code", x)` ⇒ node'da `{{movie_code}}`)
-- O'QISH (muqobil funksiya): `get_state("movie_code")` — obyekt-access bilan bir xil
+- YOZISH: `set_state(key, value)` → bool yoki `vars.key = value` (`public_` ga
+  yoziladi ⇒ node'da `{{key}}`)
+- O'QISH (muqobil funksiya): `get_state("movie_code")` — `vars.movie_code` bilan bir xil
 - `has_state(key)`, `delete_state(key)`
-- Prefiksni QO'LDA yozma — `state.x` / `set_state("x", ...)` ikkalasi ham
-  `state_` ni avtomatik qo'shadi (toza nom ber).
+- Prefiksni QO'LDA yozma — `vars.x` / `set_state("x", ...)` ikkalasi ham
+  `public_` ni avtomatik qo'shadi (toza nom ber).
+- `state.x` — `vars.x` ning LEGACY aliasi, HALI ishlaydi (ikkalasi `public_` ga;
+  legacy `state_` prefiks ham hanuz o'qiladi). Yangi kodda `vars.x` afzal.
+
+## Maxfiy o'zgaruvchilar (private)
+Token, parol, sirli/bir martalik kod — `vars` (ochiq) emas, `private` ga saqla:
+```javascript
+private.api_token = token;           // public_ EMAS, private_ ga yoziladi
+const token = private.api_token;     // o'qish
+```
+Node maydonida `{{private.api_token}}` bilan o'qiladi. Maxfiy qiymatni xabar
+matnida yalang'och `{{api_token}}` bilan AKS ETTIRMA.
 
 ## Kontekst (xom kalit — prefiks YO'Q)
 **O'QISH — `context.<key>` obyekt-access afzal** (qisqa, toza):
@@ -96,7 +116,8 @@ const rows = context.sheets_response_rows;
 - YOZISH: `set_context(key, value)` → bool (kalitni o'zgartirmaydi; node'da `{{key}}`)
 - O'QISH (muqobil funksiya): `get_context("first_name")` — obyekt-access bilan bir xil
 - `has_context(key)`, `delete_context(key)`, `get_all_context()`
-- Eslatma: `state.x` ≡ `context.state_x`; `set_state("x", v)` ≡ `set_context("state_x", v)`
+- Eslatma: `vars.x` ≡ `context.public_x` (legacy `state.x` ham `public_x` ga);
+  `private.x` ≡ `context.private_x`; `set_state("x", v)` ≡ `set_context("public_x", v)`
 
 ## Xabar yuborish / tahrirlash
 - `send_message("matn")` yoki `send_message("matn", {parse_mode, inline_keyboard, reply_keyboard, remove_keyboard})`
@@ -202,7 +223,7 @@ tahrirlaydi (yangi xabar yubormaydi). Sir: callback'da `edit_or_send` yoki
 // show-list node (kod kiritilganda VA page: callback'da — ikkala holatda ishlaydi)
 const PAGE_SIZE = 5;
 const callbackParts = (callback_query && (callback_query.data || '').split(':')) || [];
-const code = String(state.movie_code || callbackParts[1] || '').trim();  // o'qish: obyekt-access
+const code = String(vars.movie_code || callbackParts[1] || '').trim();  // o'qish: obyekt-access (vars afzal)
 const requestedPage = parseInt(callbackParts[2] || 1, 10);
 
 const movie = db_find_one('movies', { code: code });

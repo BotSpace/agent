@@ -60,8 +60,8 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "Xabar turini kutib trigger. type: text/photo/video/audio/voice/video_note/document/contact/location/sticker/animation. "
             "filter: any/equals/contains/starts_with/regex. context.value: filter qiymati. "
             "global:false bo'lsa faqat pauzada ishlaydi (foydalanuvchi javobini kutish). "
-            "state: {key, type} — kelgan ma'lumotni AVTOMATIK saqlaydi, alohida StateNode KERAK EMAS. "
-            "Misol: state:{key:'user_name', type:'text'} → {{state.user_name}} orqali foydalaniladi."
+            "state: {key, type} — kelgan ma'lumotni AVTOMATIK saqlaydi (public_<key>), alohida StateNode KERAK EMAS. "
+            "Misol: state:{key:'user_name', type:'text'} → {{user_name}} (yoki {{public.user_name}}) orqali foydalaniladi."
         ),
         required_data=["type"],
         optional_data=["filter", "context", "global", "state"],
@@ -174,7 +174,8 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "keyboard.inline: [[{text,type:'callback'/'url'/'web_app',value}]] (web_app value=https URL). "
             "keyboard.reply: [[{id:'btn-xxx',text,type:'reply'/'request_contact'/'request_location'}]]. "
             "recipients: {sendToSender:bool, additionalIds:[chatId]}. "
-            "{{state.key}} — saqlangan qiymat, {{first_name}} — user ismi. "
+            "{{key}} (yoki {{public.key}}) — saqlangan ochiq qiymat, {{first_name}} — user ismi, "
+            "{{callback_data}} — bosilgan tugma callback'i, {{private.key}} — maxfiy qiymat. "
             "TUGMA ROUTING (yangi usul): har reply/inline tugma o'zidan edge chiqaradi. "
             "flow.connect da source_handle='target-handler-{nodeId}-{buttonText}' formatidan foydalaniladi. "
             "Alohida ReplyButtonTriggerNode KERAK EMAS."
@@ -424,7 +425,8 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         type="CollectionNode",
         category="data",
         description=(
-            "MongoDB collection'ga document qo'shish. fieldMappings: {db_field: state_key}. "
+            "MongoDB collection'ga document qo'shish. fieldMappings: {db_field: var_key} "
+            "(var_key — saqlangan ochiq o'zgaruvchi nomi, prefiksiz). "
             "Saqlangandan keyin context'da '{{inserted_id}}' mavjud bo'ladi."
         ),
         required_data=["collection_name", "fieldMappings"],
@@ -482,8 +484,9 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "source handle orqali tarmoqlanadi. data.terminal=true — node leaf "
             "(o'zi javob yuborib oqimni tugatadi), keyingi edge yo'qligi normal "
             "(validator 'dead-end' ogohlantirishini o'chiradi). State/context'dan "
-            "O'QISH uchun obyekt-access AFZAL: context.<key> va state.<key> (state_ "
-            "prefiks avto) — masalan state.user_phone, context.first_name. jsCode'ni "
+            "O'QISH uchun obyekt-access AFZAL: vars.<key> (ochiq, public_ ga map; "
+            "state.<key> — legacy alias, hali ishlaydi) va private.<key> (maxfiy), "
+            "context.<key> (xom kalit) — masalan vars.user_phone, context.first_name. jsCode'ni "
             "TOZA, ko'p qatorli yoz (engine verbatim saqlaydi) — docs_guide(topic='custom_code')."
         ),
         required_data=["jsCode"],
@@ -604,8 +607,9 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "READ FILTER (in-memory, STATIK — AI-slot YO'Q): faqat ayrim qatorlar kerak bo'lsa "
             "filterConditions bilan rowsni field/op/value bo'yicha filterla, filterMatch ('and'|'or', "
             "default 'and') ularni birlashtiradi. op ∈ eq|ne|gt|gte|lt|lte|in|nin|contains|exists; "
-            "field — ustun nomi (1-qator sarlavhasi); value'da {{chat_id}}/{{state_*}} ishlaydi "
-            "(masalan price>100000 yoki category=={{state_category}}). Filterlangan natija ham "
+            "field — ustun nomi (1-qator sarlavhasi); value'da {{chat_id}}/{{<key>}} (saqlangan "
+            "ochiq qiymat; legacy {{state_<key>}} ham) ishlaydi "
+            "(masalan price>100000 yoki category=={{category}}). Filterlangan natija ham "
             "rowsVariable'ga yoziladi. "
             "CREDENTIAL: qurishdan OLDIN credentials.list(type_key='google_sheets'); yo'q bo'lsa "
             "credentials.connect_oauth(type_key='google_sheets') bilan ULASH linkini ber "

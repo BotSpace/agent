@@ -1,0 +1,130 @@
+replicaCount: 1
+
+image:
+  repository: registry.iprogrammer.uz/botspace/agent
+  tag: "758e79c"
+  pullPolicy: Always
+
+imagePullSecrets:
+  - name: iprogrammer-registry
+
+fullnameOverride: "agent"
+
+serviceAccount:
+  create: false
+  name: ""
+
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+service:
+  name: http
+  enabled: true
+  type: ClusterIP
+  port: 8100
+  targetPort: 8100
+
+# ConfigMap managed by this chart — will be named agent-config
+configMaps:
+  config:
+    AGENT_HOST: "0.0.0.0"
+    AGENT_PORT: "8100"
+    AGENT_LOG_LEVEL: "INFO"
+    AGENT_CORS_ORIGINS: "https://botspace.uz,https://botmother.uz,https://beta.botmother.uz"
+    AGENT_LLM_PROVIDER: "bedrock"
+    AGENT_MODEL_PLANNER: "qwen.qwen3-coder-480b-a35b-v1:0"
+    AGENT_MODEL_EXECUTOR: "qwen.qwen3-coder-480b-a35b-v1:0"
+    AGENT_MODEL_CRITIC: "qwen.qwen3-coder-480b-a35b-v1:0"
+    # Embedding model'lar OpenRouter'da yo'q — text-embedding endpoint'lari
+    # uchun alohida OpenAI client ishlatiladi (kerak bo'lganida).
+    AGENT_MODEL_EMBEDDING: "text-embedding-3-small"
+    OPENROUTER_SITE_URL: "https://botspace.uz"
+    OPENROUTER_APP_NAME: "Botmother Agent"
+    AWS_REGION: "us-west-2"
+    AGENT_MAX_INPUT_TOKENS: "200000"
+    AGENT_MAX_OUTPUT_TOKENS: "16384"
+    AGENT_MAX_TOOL_CALLS: "80"
+    AGENT_MAX_WALL_SECONDS: "900"
+    BACKEND_BASE_URL: "http://web:8000"
+    MONGO_BASE_URL: "mongodb://mongodb:27017"
+    ENGINE_BASE_URL: "http://engine-plugin:8090"
+    AGENT_RAG_ENABLED: "true"
+    AGENT_RAG_TOP_K: "6"
+    # Template vector index re-sync every N hours (0 = disabled).
+    # Background scheduler runs ingest_templates() in the API pod.
+    AGENT_TEMPLATE_SYNC_INTERVAL_HOURS: "6"
+    AGENT_TEMPLATE_SYNC_INITIAL_DELAY_SECONDS: "60"
+    JWT_ALGORITHM: "RS256"
+    JWT_PUBLIC_KEY_PATH: "/app/keys/public.pem"
+    # LangSmith tracing — API key lives in agent-runtime-secret as LANGSMITH_API_KEY
+    LANGSMITH_TRACING: "true"
+    LANGSMITH_ENDPOINT: "https://api.smith.langchain.com"
+    LANGSMITH_PROJECT: "botspace"
+
+# References to EXISTING secrets NOT managed by this chart
+envFrom:
+  - secretRef:
+      name: agent-runtime-secret
+  - secretRef:
+      name: agent-secret
+      optional: true
+
+probes:
+  startup:
+    enabled: true
+    type: httpGet
+    httpGet:
+      path: /health
+      port: 8100
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 24
+  readiness:
+    enabled: true
+    type: httpGet
+    httpGet:
+      path: /health
+      port: 8100
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  liveness:
+    enabled: true
+    type: httpGet
+    httpGet:
+      path: /health
+      port: 8100
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: name
+              operator: NotIn
+              values:
+                - base
+
+prometheus:
+  scrape: true
+  port: 8100
+  path: /metrics
+
+terminationGracePeriodSeconds: 30
