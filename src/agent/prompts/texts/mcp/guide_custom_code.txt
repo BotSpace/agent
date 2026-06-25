@@ -156,6 +156,17 @@ reply ikkalasida) — `value` URL string yoki `{url:"..."}`:
 ## HTTP
 - `http_request({url, method, headers?, body?})`, `http_get/http_post/http_put/http_delete`
 
+## Alert (kuzatuv — constructor "Xabarlar" paneli)
+Debug "Xabarlar" paneliga leveled signal yuboradi. Flow ijrosiga TA'SIR QILMAYDI
+(fire-and-forget — xato qaytarmaydi, oqimni to'xtatmaydi). Kuzatuv (observability)
+uchun: muhim hodisa → info, shubhali holat → warning, jiddiy muammo → error.
+- `alert.info(msg, detail?)`, `alert.warning(msg, detail?)`, `alert.error(msg, detail?)`
+- `detail` ixtiyoriy (texnik tafsilot/stack). Obyekt/array berilsa JSON ko'rinishida chiqadi.
+```javascript
+alert.info('Foydalanuvchi ro'yxatdan o'tdi: ' + user_id);
+try { http_post(url, body); } catch (e) { alert.error('To'lov xatosi', e.message); }
+```
+
 ## Stdlib
 `date_today, date_now, date_format, date_parse, date_add, date_diff, hash_md5,
 hash_sha256, hmac_sha256, base64_encode, base64_decode, url_encode, random,
