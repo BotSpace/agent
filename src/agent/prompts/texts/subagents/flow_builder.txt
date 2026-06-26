@@ -639,7 +639,11 @@ engine collection'dan har document uchun tugma generatsiya qiladi (pagination ha
 `text` (`{{field}}` template), `callbackDataPattern` (`{id}`/`{value}`/`{field}`),
 `filterType` ("static"|"state") + `filterField` + `filterValue`/`stateKey`,
 `enablePagination`, `layout:{rows,columns}`. Tanlangan tugma callback'ini
-`CallbackQueryTriggerNode(filter:"starts_with", context:{value:"course:"})` ushlaydi.
+`CallbackQueryTriggerNode(data:{global: true, filter:"starts_with", context:{value:"course:"}})` ushlaydi.
+⚠️ **`global: true` MAJBURIY** — dinamik tugmalar runtime'da generatsiya qilingani uchun
+engine ularni NON-global (`global: false`) trigger orqali TRACK QILA OLMAYDI: tugma
+bosilganda hech narsa bo'lmaydi. Dinamik `collectionData` tugmalari uchun trigger DOIM
+`global: true` + `filter:"starts_with"` bo'lsin.
 (Bu DINAMIK tugma istisnosi: qiymatlar runtime'da yaratilgani uchun button-edge
 mumkin emas — shu yerda trigger TO'G'RI. Statik tugmaga esa button-edge ishlat.)
 CustomCode dinamik klaviatura faqat juda murakkab shartli logikada kerak.
