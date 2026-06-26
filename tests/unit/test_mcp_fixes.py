@@ -52,6 +52,23 @@ def test_normalize_legacy_string_collection():
 
 
 def test_normalize_noop_when_already_flat():
+    # Already canonical: LoadCollectionListNode now requires an output key
+    # (contextKey), so a node that already has collection_name AND contextKey is
+    # fully flat → normalize must be a no-op.
+    raw = {
+        "nodes": [
+            {"id": "list", "type": "LoadCollectionListNode",
+             "data": {"collection_name": "products", "contextKey": "products"}},
+        ],
+        "edges": [],
+    }
+    assert normalize_legacy_flow(raw) == 0
+
+
+def test_normalize_loadlist_defaults_missing_context_key():
+    # Legacy LoadCollectionListNode omitted the (now required) output key.
+    # Migration defaults contextKey to collection_name so the node validates and
+    # the list lands at {{<collection_name>}}.
     raw = {
         "nodes": [
             {"id": "list", "type": "LoadCollectionListNode",
@@ -59,7 +76,8 @@ def test_normalize_noop_when_already_flat():
         ],
         "edges": [],
     }
-    assert normalize_legacy_flow(raw) == 0
+    assert normalize_legacy_flow(raw) == 1
+    assert raw["nodes"][0]["data"]["contextKey"] == "products"
 
 
 # ── #13: project.create installs a clean default flow ────────────────────────

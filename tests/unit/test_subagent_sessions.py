@@ -317,3 +317,116 @@ async def test_nested_delegation_threads_depth_and_identity(patched):
     assert cfg.services["current_sub_agent_id"].startswith("sa-flow-builder-")
     # Checkpointer is propagated downstream for nested persistence.
     assert cfg.services["checkpointer"] is cp
+
+
+# ── token usage aggregation (DELTA, resume-safe) ─────────────────────────────
+
+
+class _TokenGraph:
+    """ainvoke returns a final state carrying the sub-graph's CUMULATIVE token
+    totals (total_in/total_out are set by the test per call)."""
+
+    def __init__(self) -> None:
+        self.total_in = 0
+        self.total_out = 0
+        self.invoked_with: list[dict] = []
+
+    async def ainvoke(self, base, config=None):
+        self.invoked_with.append({"base": base, "config": config})
+        return {
+            "messages": [
+                *(base.get("messages") or []),
+                Message(role="assistant", content=[TextPart(text="done")]),
+            ],
+            "total_input_tokens": self.total_in,
+            "total_output_tokens": self.total_out,
+        }
+
+
+class _TokenCheckpointer:
+    """aget returns a snapshot with channel_values (prior cumulative tokens) for
+    threads marked seen (resume); None otherwise (fresh)."""
+
+    def __init__(self) -> None:
+        self.seen: dict[str, tuple[int, int]] = {}
+
+    async def aget(self, config):
+        tid = config["configurable"]["thread_id"]
+        if tid in self.seen:
+            pin, pout = self.seen[tid]
+            return {"channel_values": {"total_input_tokens": pin, "total_output_tokens": pout}}
+        return None
+
+
+@pytest.fixture()
+def token_patched(monkeypatch):
+    """Offline graph + hermetic LLM/config (no env or network)."""
+    graph = _TokenGraph()
+    monkeypatch.setattr(graph_mod, "build_graph", lambda cfg, checkpointer=None: graph)
+
+    import agent.integrations.dynamic_config as dyn
+    from agent.llm import ModelRoles
+
+    roles = ModelRoles(planner="m", executor="m", critic="m", embedding="m")
+
+    async def _roles():
+        return roles
+
+    async def _client():
+        return object()
+
+    monkeypatch.setattr(dyn, "effective_model_roles", _roles)
+    monkeypatch.setattr(dyn, "build_effective_client", _client)
+    return graph
+
+
+@pytest.mark.asyncio
+async def test_subagent_token_delta_surfaced_for_parent_aggregation(token_patched):
+    """A fresh sub-agent's full token usage lands in ToolResult.data as
+    input_tokens/output_tokens — the exact keys the parent tool_exec node reads
+    (builder.py) to aggregate sub-agent tokens into the main report."""
+    graph = token_patched
+    graph.total_in, graph.total_out = 120, 45
+    ctx = _ctx(_TokenCheckpointer())
+    res = await _handler(
+        TaskRunInput(subagent_type="flow-builder", prompt="build"), ctx
+    )
+    assert not res.is_error
+    # Fresh: prior = 0 → delta == full usage.
+    assert res.data["input_tokens"] == 120
+    assert res.data["output_tokens"] == 45
+
+
+@pytest.mark.asyncio
+async def test_subagent_token_delta_not_double_counted_on_resume(token_patched):
+    """On resume the sub-graph's total_* is CUMULATIVE (checkpointer reloads prior
+    turns). Only the per-call DELTA must be reported, never the cumulative — else
+    every resume re-counts all earlier tokens."""
+    graph = token_patched
+    cp = _TokenCheckpointer()
+
+    # Turn 1 (fresh): sub-graph used 120/45.
+    graph.total_in, graph.total_out = 120, 45
+    ctx1 = _ctx(cp)
+    res1 = await _handler(
+        TaskRunInput(subagent_type="flow-builder", prompt="build"), ctx1
+    )
+    sid = res1.data["session_id"]
+    thread = res1.data["sub_thread_id"]
+    assert res1.data["input_tokens"] == 120  # fresh full usage
+
+    # Persist prior cumulative as the checkpointer would after that turn.
+    cp.seen[thread] = (120, 45)
+
+    # Turn 2 (resume, new main turn): cumulative grows to 200/80.
+    graph.total_in, graph.total_out = 200, 80
+    ctx2 = _ctx(cp)
+    ctx2.run_id = "run-DIFFERENT"
+    res2 = await _handler(
+        TaskRunInput(subagent_type="flow-builder", prompt="more", session_id=sid),
+        ctx2,
+    )
+    assert res2.data["resumed"] is True
+    # DELTA only (200-120, 80-45) — NOT the cumulative 200/80.
+    assert res2.data["input_tokens"] == 80
+    assert res2.data["output_tokens"] == 35
