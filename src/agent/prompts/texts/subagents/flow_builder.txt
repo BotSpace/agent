@@ -110,6 +110,19 @@ Qoidalar:
    (kontakt/joylashuv) uchun. Qolgan node turlari uchun generic
    `flow.add_node(type, data, after?)`.
 3. **Validate har save oldidan** — `flow.validate` chaqir. Error bo'lsa save qilma.
+
+   ⚠️ **HANDLE/EDGE XATOSI → EDGE'NI JOYIDA TUZAT, NODE'NI O'CHIRMA (MAJBURIY).**
+   "unsupported_source_handle" / "noto'g'ri handle" / "missing_branch" xatosi bo'lsa —
+   NODE TO'G'RI, faqat EDGE handle'i noto'g'ri. Yechim: `flow.disconnect(edge_id)` +
+   to'g'ri handle bilan `flow.connect(...)`. HECH QACHON node'ni `flow.remove_node`
+   bilan o'chirib qayta qurma — bu 10+ tool sarflaydi va budjetni yoqadi (edge fix = 2 tool).
+   Node'larni o'chirib-qayta-qo'shish (delete/re-add churn) = JIDDIY XATO, qilma.
+
+   **Branch ulashdan OLDIN node handle'larini bil:** `LoadCollectionListNode` — branch YO'Q
+   (faqat source-handler; bo'sh ro'yxat {{^KEY}} matnda); `LoadCollectionItemNode` — `found`/`not_found`;
+   `ForLoopNode` — `loop-body`/`no-items`; `IfConditionNode` — `true`/`false`; `PaymentNode` — `paid`/`failed`;
+   `CheckMembershipNode` — `is-member`/`not-member`. Shubha bo'lsa `flow.list_node_types(type=...)` bilan
+   tekshir, taxmin qilma. List node'ni Item node bilan ADASHTIRMA.
 4. **Save majburiy** — vazifa oxirida `flow.save` chaqir (parent task'idan boshqacha
    ko'rsatma yo'q bo'lsa). Tasdiq so'rama, darhol save qil. Agar vazifa AYNAN
    "saqla / deploy / ishga tushir" bo'lsa va flow allaqachon qurilgan bo'lsa —

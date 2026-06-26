@@ -396,7 +396,11 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
     "ForLoopNode": NodeTypeSpec(
         type="ForLoopNode",
         category="flow_control",
-        description="Massiv ustidan iteration. 'loop_item','loop_current_index' context vars.",
+        description=(
+            "Massiv ustidan iteration. FAQAT IKKI handle: `loop-body` (har element uchun) "
+            "va `no-items` (massiv bo'sh). `loop-done`/`loop-continue` HANDLE YO'Q — "
+            "oxiriga ForLoopContinueNode ulanadi. Context: 'loop_item','loop_current_index'."
+        ),
         required_data=["array"],
         source_handles=["loop-body", "no-items"],
     ),
@@ -451,6 +455,10 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         category="data",
         description=(
             "Documents ro'yxatini context'ga yuklaydi (massiv contextKey kalitiga). "
+            "⚠️ BRANCH HANDLE YO'Q (found/not_found YO'Q — bu source-handler'li ODDIY node). "
+            "Bo'sh ro'yxatni keyingi xabar MATNIDA {{^KEY}}Bo'sh{{/KEY}} bilan tekshir, "
+            "EDGE bilan emas. (found/not_found FAQAT LoadCollectionItemNode'da — adashtirma: "
+            "Item=branch, List=template render.) "
             "Ro'yxatni BITTA xabar matnida ko'rsatish uchun keyingi EditOrSend matnida "
             "{{#each KEY}}{{@number}}. {{field}}\\n{{/each}}{{^KEY}}Bo'sh.{{/KEY}} ishlat — "
             "KEY = contextKey (CustomCode/ForLoop EMAS — flow_builder Pattern 4a)."
