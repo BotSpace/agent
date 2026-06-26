@@ -170,7 +170,20 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
     # `thread_id`'si (run_id har main turn'da o'zgaradi; thread_id butun
     # suhbat davomida bir xil qoladi). Sub-agent state ham `thread_id` saqlaydi,
     # shuning uchun nested chaqiruvda ham o'sha turg'un asosga bog'lanamiz.
-    session_id = input.session_id or uuid.uuid4().hex[:12]
+    # Auto-resume: the dispatcher prompt asks the model to pass session_id back,
+    # but models forget — and a forgotten session spawns a FRESH amnesiac
+    # sub-agent every turn that re-plans (plan thrashing) and re-seeds (duplicate
+    # demo data). So we also TRACK the last session_id per (project, subagent) in
+    # the MAIN agent state and reuse it when the model omits session_id. Explicit
+    # input.session_id still wins (lets the model intentionally start fresh by
+    # passing a new id, or resume a specific one).
+    session_key = f"{ctx.project_id or 'global'}:{spec.name}"
+    tracked_sessions: dict[str, str] = dict(ctx.state.get("subagent_sessions") or {})
+    session_id = input.session_id or tracked_sessions.get(session_key) or uuid.uuid4().hex[:12]
+    tracked_sessions[session_key] = session_id
+    # Persisted on every return below so continuity survives across main turns
+    # (checkpointer) and is visible to later same-turn task.run calls.
+    session_track_update = {"subagent_sessions": tracked_sessions}
     main_thread = ctx.state.get("thread_id") or ctx.run_id or "main"
     sub_thread_id = f"{main_thread}:sub:{spec.name}:{session_id}"
 
@@ -464,6 +477,7 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
         return ToolResult.error(
             f"[sub-agent {spec.name}] crashed: {type(e).__name__}: {e}",
             data={"subagent": spec.name, "sub_agent_id": sub_id, "session_id": session_id},
+            state_updates=session_track_update,
         )
 
     # ── sub-graph interrupt bubbling (FALLBACK only) ────────────────────
@@ -524,6 +538,7 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
                 "pending": ikind,
                 "interrupt": ipayload,
             },
+            state_updates=session_track_update,
         )
 
     messages = result.get("messages") or []
@@ -553,10 +568,11 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
             f"[{spec.name}] terminated without a final answer after {tool_call_count} tool call(s). "
             "Task may be incomplete — verify state before reporting success to the user.",
             data={"subagent": spec.name, "sub_agent_id": sub_id, "session_id": session_id},
+            state_updates=session_track_update,
         )
 
     # Flow o'zgargan bo'lsa — working_flow'ni qaytarish (UI panel uchun)
-    state_updates: dict[str, Any] = {}
+    state_updates: dict[str, Any] = dict(session_track_update)
     sub_working = result.get("working_flow")
     if sub_working:
         state_updates["working_flow"] = sub_working

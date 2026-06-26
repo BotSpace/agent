@@ -451,8 +451,8 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "{{#each KEY}}{{@number}}. {{field}}\\n{{/each}}{{^KEY}}Bo'sh.{{/KEY}} ishlat — "
             "KEY = contextKey (CustomCode/ForLoop EMAS — flow_builder Pattern 4a)."
         ),
-        required_data=["collection_name"],
-        optional_data=["filter", "sort", "limit", "contextKey"],
+        required_data=["collection_name", "contextKey"],
+        optional_data=["filters", "sorts", "limit", "skip"],
     ),
     "UpdateCollectionNode": NodeTypeSpec(
         type="UpdateCollectionNode",
