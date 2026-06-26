@@ -902,14 +902,14 @@ def build_flow_action_tools() -> list[Tool]:
             ),
             Tool(
                 name="flow.connect_button",
-                description="Connect an exact reply/inline keyboard button using target-handler-{nodeId}-{buttonText}. Works for any keyboard-bearing node: SendTextMessageNode, EditOrSendMessageNode, EditMessageNode, MessageNode.",
+                description="PREFERRED way to wire a screen-local forward-navigation button (menu→section, 'Buy', course pick): connect the exact reply/inline keyboard button straight to the next node via a button-edge (target-handler-{nodeId}-{buttonText}). The engine pauses on the keyboard-bearing node and routes the button press through this edge — do NOT create a CallbackQueryTriggerNode for such buttons. Works for any keyboard-bearing node: SendTextMessageNode, EditOrSendMessageNode, EditMessageNode, MessageNode. (Reserve a global CallbackQueryTriggerNode only for buttons that repeat across screens / must work anywhere, e.g. Back/Home.)",
                 input_model=ConnectButtonInput,
                 handler=flow_connect_button,
                 tags=["flow", "safe-edge"],
             ),
             Tool(
                 name="flow.connect_branch",
-                description="Connect a branch edge with an exact engine handle such as true, false, found, not_found, is-member, not-member, loop-body, no-items, loop-continue, loop-done, option_0.",
+                description="Connect a branch edge with an exact engine handle such as true, false, found, not_found, is-member, not-member, loop-body, no-items, loop-continue, loop-done, option_0, paid, failed (PaymentNode result — react to a payment ONLY via paid/failed, never with a PaymentStatusTriggerNode).",
                 input_model=ConnectBranchInput,
                 handler=flow_connect_branch,
                 tags=["flow", "safe-edge"],

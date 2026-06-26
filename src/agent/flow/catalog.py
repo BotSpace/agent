@@ -144,9 +144,13 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         type="PaymentStatusTriggerNode",
         category="trigger",
         description=(
-            "Botspace Payment Link status trigger. AI payment_link tool order yaratganda "
-            "tool natijasida order_id qaytadi; backend to'lov callback yuborganda shu trigger "
-            "ishga tushadi. status: paid/failed/any, orderId/provider ixtiyoriy filter. "
+            "FAQAT TASHQI to'lov status trigger'i (Botspace Payment Link / flow tashqarisida "
+            "yaratilgan order). AI payment_link tool order yaratganda tool natijasida order_id "
+            "qaytadi; backend to'lov callback yuborganda shu trigger ishga tushadi. Doim "
+            "GLOBAL/ROOT trigger va faqat kutib turgan PaymentNode flow'i YO'Q paytda ishlaydi. "
+            "⚠️ PaymentNode bilan BIRGA ISHLATMA: PaymentNode to'lovga `paid`/`failed` "
+            "tarmoqlari orqali reaksiya qiladi, engine uning callback'ini o'zi yutadi va bu "
+            "trigger ishga TUSHMAYDI. status: paid/failed/any, orderId/provider ixtiyoriy filter. "
             "Context: payment_order_id, payment_status, payment_amount, payment_net, "
             "payment_commission, payment_comment, payment_provider; aliaslar: order_id, "
             "status, amount, provider."

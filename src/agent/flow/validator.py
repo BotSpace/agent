@@ -457,6 +457,7 @@ def validate(
         "LoadCollectionItemNode": {"found", "not_found"},
         "CheckMembershipNode": {"is-member", "not-member"},
         "ForLoopNode": {"loop-body", "no-items"},
+        "PaymentNode": {"paid", "failed"},
     }
     edges_by_source: dict[str, set[str]] = {}
     for e in flow.edges:
