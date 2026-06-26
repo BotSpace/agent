@@ -328,9 +328,22 @@ class OpenAIClient(LLMClient):
                 )
             )
 
+        # OpenAI/OpenRouter report cached prompt tokens under
+        # prompt_tokens_details.cached_tokens — surface them as cache_read so
+        # the event/display reflects the (already working) prompt caching
+        # instead of showing the full input as if nothing were cached.
+        cached_read = 0
+        if response.usage is not None:
+            details = getattr(response.usage, "prompt_tokens_details", None)
+            if details is not None:
+                cached_read = getattr(details, "cached_tokens", 0) or 0
+            elif isinstance(getattr(response.usage, "model_extra", None), dict):
+                pd = response.usage.model_extra.get("prompt_tokens_details") or {}
+                cached_read = (pd or {}).get("cached_tokens", 0) or 0
         usage = Usage(
             input_tokens=response.usage.prompt_tokens if response.usage else 0,
             output_tokens=response.usage.completion_tokens if response.usage else 0,
+            cache_read_tokens=cached_read,
         )
         return GenerateResult(
             message=Message(role="assistant", content=parts),
@@ -367,9 +380,12 @@ class OpenAIClient(LLMClient):
             yield StreamStart()
             async for chunk in stream:
                 if chunk.usage:
+                    details = getattr(chunk.usage, "prompt_tokens_details", None)
+                    cached_read = (getattr(details, "cached_tokens", 0) or 0) if details is not None else 0
                     usage = Usage(
                         input_tokens=chunk.usage.prompt_tokens,
                         output_tokens=chunk.usage.completion_tokens,
+                        cache_read_tokens=cached_read,
                     )
                     try:
                         raw_usage_dict = chunk.usage.model_dump()
