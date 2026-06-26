@@ -84,6 +84,46 @@ async def _checkpointer_has_state(checkpointer: Any, config: dict[str, Any]) -> 
     return snapshot is not None
 
 
+async def _prior_token_totals(
+    graph: Any, checkpointer: Any, config: dict[str, Any], *, resuming: bool
+) -> tuple[int, int]:
+    """Sub-graph'ning SHU task.run'dan OLDINGI kumulyativ token totallari.
+
+    Token aggregatsiyasini DELTA bo'yicha qilish uchun kerak. `total_input_tokens`
+    sub-graph state'da kumulyativ (har LLM chaqiruvda o'sadi) — resume'da
+    checkpointer eski qiymatni yuklaydi, shuning uchun `result["total_input_tokens"]`
+    oldingi turnlar tokenini ham o'z ichiga oladi. Faqat shu chaqiruvdagi o'sishni
+    (delta) parent'ga qo'shamiz: `delta = result_total - prior_total`. Yangi
+    (fresh) sessiyada prior = 0. Resume'da prior'ni checkpointer state'idan o'qiymiz.
+    """
+    if not resuming:
+        return (0, 0)
+    # Production: compiled graph state API beradi (channel qiymatlari materializ.).
+    aget_state = getattr(graph, "aget_state", None)
+    if callable(aget_state):
+        try:
+            snap = await aget_state(config)
+            vals = getattr(snap, "values", None) or {}
+            return (
+                int(vals.get("total_input_tokens", 0) or 0),
+                int(vals.get("total_output_tokens", 0) or 0),
+            )
+        except Exception:  # noqa: BLE001
+            pass
+    # Fallback: xom checkpointer snapshot channel_values'i.
+    if checkpointer is not None:
+        try:
+            snap = await checkpointer.aget(config)
+            cv = snap.get("channel_values", {}) if isinstance(snap, dict) else {}
+            return (
+                int(cv.get("total_input_tokens", 0) or 0),
+                int(cv.get("total_output_tokens", 0) or 0),
+            )
+        except Exception:  # noqa: BLE001
+            pass
+    return (0, 0)
+
+
 @tool(
     name="task.run",
     description=(
@@ -309,6 +349,13 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
     # bo'lsa (fresh): system/spec + task seed qilamiz.
     resuming = await _checkpointer_has_state(checkpointer, invoke_config)
 
+    # Token aggregatsiya uchun: SHU chaqiruvdan oldingi kumulyativ totallarni o'qib
+    # ol — keyin result'dagi yangi kumulyativdan ayirib DELTA olamiz (resume'da
+    # ikki marta sanamaslik uchun). Fresh sessiyada prior = (0, 0).
+    prior_in, prior_out = await _prior_token_totals(
+        graph, checkpointer, invoke_config, resuming=resuming
+    )
+
     try:
         if resuming:
             base: dict[str, Any] = {
@@ -480,6 +527,19 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
             state_updates=session_track_update,
         )
 
+    # ── token usage (DELTA) ─────────────────────────────────────────────
+    # Sub-agent (va uning nested bolalari) shu chaqiruvda sarflagan tokenlar.
+    # `result["total_*"]` kumulyativ → prior'ni ayiramiz (resume double-count'siz).
+    # Nested: bola task.run o'z delta'sini ToolResult.data'ga qo'yadi → sub-graph
+    # tool_exec uni `total_*`ga aggregat qiladi → bu yerda delta unga ham tegishli
+    # bo'ladi (zanjir yuqoriga to'g'ri ko'tariladi). `max(0,...)` salbiy bo'lmasin.
+    _res = result if isinstance(result, dict) else {}
+    delta_in = max(0, int(_res.get("total_input_tokens", 0) or 0) - prior_in)
+    delta_out = max(0, int(_res.get("total_output_tokens", 0) or 0) - prior_out)
+    token_usage: dict[str, int] = {}
+    if delta_in or delta_out:
+        token_usage = {"input_tokens": delta_in, "output_tokens": delta_out}
+
     # ── sub-graph interrupt bubbling (FALLBACK only) ────────────────────
     # The resume loop above drives sub-graph interrupts interactively when the
     # worker-provided store + MAIN request_id + a running loop are present
@@ -537,6 +597,7 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
                 "sub_thread_id": sub_thread_id,
                 "pending": ikind,
                 "interrupt": ipayload,
+                **token_usage,
             },
             state_updates=session_track_update,
         )
@@ -567,7 +628,12 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
         return ToolResult.error(
             f"[{spec.name}] terminated without a final answer after {tool_call_count} tool call(s). "
             "Task may be incomplete — verify state before reporting success to the user.",
-            data={"subagent": spec.name, "sub_agent_id": sub_id, "session_id": session_id},
+            data={
+                "subagent": spec.name,
+                "sub_agent_id": sub_id,
+                "session_id": session_id,
+                **token_usage,
+            },
             state_updates=session_track_update,
         )
 
@@ -607,6 +673,7 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
             "sub_thread_id": sub_thread_id,
             "resumed": resuming,
             "tool_calls": tool_call_count,
+            **token_usage,
         },
         state_updates=state_updates,
     )
