@@ -42,6 +42,14 @@ class AgentState(TypedDict, total=False):
     # ── planner ─────────────────────────────────────────────────────────
     current_plan: list[dict[str, Any]] | None
 
+    # ── sub-agent session continuity ────────────────────────────────────
+    subagent_sessions: dict[str, str]
+    """Last session_id per "{project_id}:{subagent_type}". task.run auto-resumes
+    the tracked session when the model omits session_id, so a forgotten session
+    no longer spawns a fresh amnesiac sub-agent (which re-plans and re-seeds —
+    duplicate demo data + plan thrashing). Replace-on-write (no reducer); the
+    tool always merges the full map before returning it."""
+
     # ── interrupts ──────────────────────────────────────────────────────
     pending_approval: dict[str, Any] | None
     pending_clarification: dict[str, Any] | None

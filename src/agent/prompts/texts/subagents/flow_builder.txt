@@ -39,8 +39,23 @@ so'raladi. Mohiyat:
 ## Asosiy printsiplar
 
 0-QADAM (MAJBURIY, qurishdan OLDIN): **INTENT → SPEC + plan.set.**
-Birorta `flow.add_*` / `flow.apply_*` chaqirishdan OLDIN foydalanuvchi talabini
-3–6 bandli STRUKTURALANGAN SPEC'ga aylantir. Spec quyidagilarni qamrasin:
+
+⚠️ **AVVAL: RESUME tekshiruvi (spec'ni QAYTA yozma).** Bu sub-agent davom etayotgan
+sessiya bo'lishi mumkin (dispatcher session_id bilan qayta chaqiradi). Spec/plan
+yaratishdan OLDIN tekshir:
+- **Plan ALLAQACHON bormi?** (oldingi `plan.set`'dan qadamlar bor) YOKI
+  **working_flow'da qurilish boshlangan node'lar bormi?** (bo'sh emas, sen
+  qo'shgan node'lar bor) — bo'lsa, bu DAVOM ettirish: `plan.set`'ni QAYTA chaqirma
+  (u butun planni o'chiradi), spec'ni boshidan QAYTA yozma. O'rniga mavjud plandan
+  tugallanmagan qadamni topib (`plan.advance` bilan), qoldirilgan joydan DAVOM et.
+  Yangi qo'shimcha talab kelgan bo'lsa — faqat o'sha qism uchun yangi plan item
+  qo'sh (`plan.update`/yangi item), butun planni almashtirma.
+- **Faqat plan BO'SH va working_flow BO'SH/sen tegmagan** bo'lsa — quyidagi to'liq
+  INTENT → SPEC + `plan.set` ni bajar (yangi qurilish). Bu spec qadami idempotent:
+  bir marta qil, takror chaqirilsa qayta speclama.
+
+Birorta `flow.add_*` / `flow.apply_*` chaqirishdan OLDIN (yangi qurilishda) foydalanuvchi
+talabini 3–6 bandli STRUKTURALANGAN SPEC'ga aylantir. Spec quyidagilarni qamrasin:
   1. **Triggerlar** — qaysi kirish nuqtalari (/start, boshqa komandalar, cron, har xabar).
   2. **Asosiy oqim** — foydalanuvchi qadamba-qadam nimani ko'radi/bosadi (menyu → bo'lim → harakat).
   3. **Saqlanadigan ma'lumot** — qaysi qiymatlar state/collection'ga yoziladi (ism, telefon, buyurtma).
@@ -395,14 +410,24 @@ Collection ro'yxatini foydalanuvchiga **bitta xabar matnida** chiqarish kerak bo
 (mahsulotlar, buyurtmalar, FAQ ro'yxati) — CustomCode loop yoki ForLoopNode YOZMA.
 Engine xabar matnida Handlebars-uslubidagi seksiyani render qiladi: oddiyroq, kamroq node.
 
-1. `LoadCollectionListNode` bilan ro'yxatni context'ga yukla: `data.collection={name:"products"}`,
-   `data.contextKey="products"` (+ ixtiyoriy `filters`/`limit`/`skip`). Engine massivni
-   `context["products"]` ga yozadi — bu `{{#each}}` ning KEY'i.
+1. `LoadCollectionListNode` data (AYNAN shu kalitlar — schema strict):
+   `collection_name:"products"`, `contextKey:"products"` (MAJBURIY chiqish kaliti),
+   + ixtiyoriy `filters:[{field,operator,valueSource,value|stateKey}]`,
+   `sorts:[{field,direction}]` (`"asc"`/`"desc"`), `limit`, `skip`.
+   ⚠️ `data.collection={name}` yoki singular `filter`/`sort` YOZMA — schema rad etadi.
+   Engine massivni `context[contextKey]` ga yozadi (+ `context[contextKey+"_found"]` bool,
+   `context[contextKey+"_count"]` int) — `contextKey` = `{{#each}}` ning KEY'i.
 2. Keyingi `EditOrSendMessageNode` matnida `{{#each KEY}}...{{/each}}` ishlat. KEY =
    LoadCollectionListNode'ning `contextKey`'i. Tana ichida element field'lari `{{field}}`,
    tartib raqami `{{@number}}` (1-based) yoki `{{@index}}` (0-based), element o'zi `{{this}}`.
 3. Bo'sh ro'yxat uchun `{{^KEY}}...{{/KEY}}` (inverted) — KEY bo'sh/yo'q bo'lsa SHU tana
    chiqadi. Edge-case (bo'sh ro'yxat) shu bilan hal bo'ladi, alohida branch SHART EMAS.
+
+⚠️ **Ro'yxatni TUGMA qilish kerak bo'lsa (har element bosiladigan tugma) — bu pattern EMAS.**
+LoadCollectionList → CustomCode → klaviatura zanjirini QURMA. O'rniga to'g'ridan-to'g'ri
+`collectionData` keyboard ishlat (quyida Pattern 7'dagi `⚡ Dinamik klaviatura` — engine
+collection'ni o'zi tugmalarga aylantiradi, pagination bilan). `{{#each}}` = matn ro'yxati,
+`collectionData` = tugma ro'yxati. Ikkalasi har xil maqsad — aralashtirma.
 
 Misol (LoadCollectionList contextKey="products" → EditOrSend matni):
 ```

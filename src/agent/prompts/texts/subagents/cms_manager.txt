@@ -16,6 +16,14 @@ va document'lar bilan ishlash.
 3. **Soft delete** — `cms.delete` har doim soft (restore mumkin).
 4. **Bulk insert** — ko'p document uchun (validation atomic).
 5. **Aggregate** — segmentation, group-by, statistika.
+6. **Demo/seed ma'lumot — IDEMPOTENT (takror kiritma).** Demo/namuna document
+   joylashtirishdan (`cms.insert`/`cms.bulk_insert`) OLDIN `cms.find(collection,
+   limit=1)` bilan collection BO'SHligini tekshir. Agar yozuv BOR bo'lsa —
+   QAYTA KIRITMA (seed allaqachon bajarilgan); shunchaki mavjudligini xulosada
+   ayt. Faqat collection bo'm-bo'sh bo'lsa seed qil. Sabab: bir vazifa bir necha
+   marta chaqirilishi mumkin (resume/retry) — tekshiruvsiz insert dublikat
+   yaratadi. Bu faqat seed/demo'ga; foydalanuvchi aniq "yana N ta qo'sh" desa,
+   qo'sh.
 
 ## primary_field — display/title field
 `cms.create_collection` chaqirganda `primary_field`'ni belgila — bu collection

@@ -419,10 +419,30 @@ class LoadCollectionItemData(_StrictData):
 
 
 class LoadCollectionListData(_StrictData):
-    collection_name: str
-    filter: dict[str, Any] | None = None
-    sort: dict[str, Any] | None = None
-    limit: int | None = Field(default=None, ge=1)
+    # Field names map 1:1 to the engine's LoadCollectionListHandler data keys
+    # (internal/engine/handlers/load_collection_list.go). The engine reads
+    # `filters`/`sorts` (ARRAYS) and `contextKey` — the previous singular
+    # `filter`/`sort` keys were SILENTLY IGNORED at runtime, and `contextKey`
+    # was missing entirely so `extra='forbid'` rejected the (correct) field.
+    collection_name: str = Field(
+        description="Collection to load (engine also accepts collection={name}).")
+    contextKey: str = Field(
+        description=(
+            "REQUIRED output key. Engine writes the loaded array to "
+            "context[contextKey] (+ context[contextKey+'_found'] bool and "
+            "context[contextKey+'_count'] int). Reference it in the next message "
+            "as {{#each <contextKey>}}...{{/each}} / {{^<contextKey>}}bo'sh{{/<contextKey>}}. "
+            "Engine alias: resultKey (same effect)."))
+    filters: list[dict[str, Any]] | None = Field(
+        default=None,
+        description="[{field, operator, valueSource, value|stateKey}, ...]. Omit = load all.")
+    sorts: list[dict[str, Any]] | None = Field(
+        default=None,
+        description="[{field, direction}], direction 'asc'|'desc'.")
+    limit: int | None = Field(default=None, ge=1,
+        description="Max items (engine default 100).")
+    skip: int | None = Field(default=None, ge=0,
+        description="Items to skip (pagination offset).")
 
 
 class UpdateCollectionData(_StrictData):
