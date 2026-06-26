@@ -191,14 +191,24 @@ async def run_agent(
             if getattr(m, "role", None) == "assistant":
                 final_text = getattr(m, "text", "")
                 break
+        # Token usage for THIS run (includes sub-agents). Emit it in the
+        # completion event so the chat UI can show per-prompt token usage.
+        total_in = result.get("total_input_tokens", 0)
+        total_out = result.get("total_output_tokens", 0)
         # Emit the completion event BEFORE closing subscribers — otherwise the
         # SSE stream sees only `close` and the UI never marks the run complete.
-        await emit("run_completed", {"final_response": final_text})
+        await emit(
+            "run_completed",
+            {
+                "final_response": final_text,
+                "input_tokens": total_in,
+                "output_tokens": total_out,
+                "total_tokens": total_in + total_out,
+            },
+        )
         await store.complete(request_id, final_text)
 
         # Record token usage
-        total_in = result.get("total_input_tokens", 0)
-        total_out = result.get("total_output_tokens", 0)
         await store.record_tokens(request_id, total_in, total_out)
 
         try:
