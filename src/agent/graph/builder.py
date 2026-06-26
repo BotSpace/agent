@@ -444,6 +444,10 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
             "⚠️ Oylik token limitingiz tugadi — bu amalni yakunlay olmadim. "
             "Tarifni yangilang yoki keyingi oyda davom eting."
         )
+        # Emit as a normal assistant_message so the chat UI renders it (the
+        # limit_exceeded event alone isn't shown as a chat turn), plus the
+        # limit_exceeded signal for clients that handle it specially.
+        await _emit(cfg.emit, "assistant_message", {"text": note})
         await _emit(cfg.emit, "limit_exceeded", {"message": note})
         return {"messages": [Message.assistant_text(note)]}
 
@@ -524,6 +528,13 @@ def initial_state(
         "user_id": user_id,
         "thread_id": thread_id,
         "messages": [Message.user_text(user_prompt)],
+        # Reset per-run token counters. These are plain (last-value-wins)
+        # channels; on a resumed conversation thread the checkpointer would
+        # otherwise KEEP the previous turns' totals, so the run would report,
+        # display and limit-check the conversation-cumulative instead of this
+        # run's own usage (over-counting + false "limit exceeded").
+        "total_input_tokens": 0,
+        "total_output_tokens": 0,
     }
     if baseline_flow:
         state["baseline_flow"] = baseline_flow
