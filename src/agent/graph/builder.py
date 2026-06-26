@@ -542,6 +542,10 @@ def initial_state(
         # (e.g. from the old cumulative-token bug) persists in the thread state
         # and after_llm keeps routing every later run to the limit_exceeded node.
         "limit_exceeded": False,
+        # Reset the tool-call budget counter per run. It's a plain channel; if
+        # not reset it accumulates across conversation turns and every later
+        # run hits "Tool-call budget exhausted" (the budget is meant per run).
+        "tool_calls_used": 0,
     }
     if baseline_flow:
         state["baseline_flow"] = baseline_flow
