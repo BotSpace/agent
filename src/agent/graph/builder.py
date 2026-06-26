@@ -544,6 +544,10 @@ def initial_state(
         # run's own usage (over-counting + false "limit exceeded").
         "total_input_tokens": 0,
         "total_output_tokens": 0,
+        # Reset the limit flag too — otherwise a True set on a previous turn
+        # (e.g. from the old cumulative-token bug) persists in the thread state
+        # and after_llm keeps routing every later run to the limit_exceeded node.
+        "limit_exceeded": False,
     }
     if baseline_flow:
         state["baseline_flow"] = baseline_flow
