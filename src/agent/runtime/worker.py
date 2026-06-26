@@ -138,6 +138,20 @@ async def run_agent(
             user_prompt=rec.prompt,
             baseline_flow=baseline_flow,
         )
+        # Snapshot the user's REMAINING monthly token budget ONCE at run start.
+        # llm_call compares this run's own tokens against it and stops gracefully
+        # when exhausted. FAIL OPEN: any error → remaining=None → no enforcement
+        # (a failed usage fetch must never block a run).
+        pre_run_remaining: int | None = None
+        try:
+            from ..integrations.backend import get_backend_client
+            usage = await get_backend_client().subscription_usage(auth_claims=auth_claims)
+            remaining = (usage.get("ai_token_usage") or {}).get("remaining")
+            pre_run_remaining = int(remaining) if remaining is not None else None
+        except Exception:
+            logger.warning("Pre-run token budget fetch failed; running without mid-run enforcement", exc_info=True)
+            pre_run_remaining = None
+        state["pre_run_tokens_remaining"] = pre_run_remaining
         if auth_claims:
             state["auth_claims"] = auth_claims  # type: ignore[typeddict-unknown-key]
         if collections:

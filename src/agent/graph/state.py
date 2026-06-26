@@ -70,6 +70,18 @@ class AgentState(TypedDict, total=False):
     total_input_tokens: int
     total_output_tokens: int
 
+    # ── mid-run token-limit enforcement ─────────────────────────────────
+    pre_run_tokens_remaining: int | None
+    """User's REMAINING monthly token budget snapshotted at run START
+    (ai_token_usage.remaining). The pre-run usage is already subtracted, so a
+    run is over budget when its OWN tokens (total_input+total_output) reach this
+    number. None = no enforcement (fetch failed → fail open, never block)."""
+
+    limit_exceeded: bool
+    """Set True by llm_call when this run's own tokens reach
+    pre_run_tokens_remaining. Routes the graph to the `limit_exceeded` node which
+    appends a user-facing message, then ends as a NORMAL completion."""
+
     # ── tool-call budget ────────────────────────────────────────────────
     tool_calls_used: int
     """Run davomida bajarilgan tool chaqiruvlari soni. cfg.max_tool_calls ga
