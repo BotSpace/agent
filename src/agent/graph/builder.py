@@ -14,12 +14,15 @@ Graph topology:
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Literal
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
+
+logger = logging.getLogger(__name__)
 
 try:
     from langgraph.checkpoint.memory import InMemorySaver as MemorySaver
@@ -195,6 +198,12 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
         # at run start — NOT the absolute monthly limit. pre_run_tokens_remaining
         # is None when the usage fetch failed (fail open → no enforcement).
         pre_remaining = state.get("pre_run_tokens_remaining")
+        logger.info(
+            "token-limit check: cumulative=%s pre_remaining=%s user=%s",
+            cumulative_in + cumulative_out,
+            pre_remaining,
+            state.get("user_id"),
+        )
         if pre_remaining is not None and (cumulative_in + cumulative_out) >= pre_remaining:
             updates["limit_exceeded"] = True
         return updates
