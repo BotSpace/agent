@@ -681,6 +681,60 @@ async def flow_layout_auto(_: FlowLayoutInput, ctx: ToolContext) -> ToolResult:
     return ToolResult.ok("Auto-layout applied.", state_updates=_set_working_flow(flow))
 
 
+# ── flow.set_languages ───────────────────────────────────────────────────────
+
+
+class FlowSetLanguagesInput(BaseModel):
+    languages: list[str] = Field(
+        min_length=1,
+        description=(
+            "Bot tillari — ISO kodlari, masalan ['uz','ru','en']. Engine faqat shu "
+            "ro'yxatdagi tilni public_lang / Telegram language_code sifatida tanlaydi — "
+            "i18n marker ({\"__i18n\":...}) umuman ishlashi uchun MAJBURIY."
+        ),
+    )
+    default_language: str = Field(
+        description=(
+            "Asosiy til kodi (languages ichidan). Saqlangan public_lang yoki Telegram "
+            "language_code ro'yxatda bo'lmasa shu til ishlatiladi."
+        ),
+    )
+
+
+@tool(
+    name="flow.set_languages",
+    description=(
+        "Set the flow's supported languages + default language (top-level "
+        "`languages` / `defaultLanguage`). REQUIRED before any i18n marker "
+        '({"__i18n": true, "en": "..", "uz": ".."}) works — call it FIRST when '
+        "building a multilingual bot. Runtime active language: saved public_lang → "
+        "Telegram language_code → defaultLanguage → 'en' (only codes listed in "
+        "`languages` are ever picked). See docs_guide('i18n')."
+    ),
+    input_model=FlowSetLanguagesInput,
+)
+async def flow_set_languages(input: FlowSetLanguagesInput, ctx: ToolContext) -> ToolResult:
+    flow = _load_working_flow(ctx)
+    langs = [code.strip() for code in input.languages if code and code.strip()]
+    if not langs:
+        return ToolResult.error("languages bo'sh bo'lmasin — kamida bitta til kodi bering.")
+    default = input.default_language.strip()
+    if default and default not in langs:
+        langs = [default, *langs]
+    default = default or langs[0]
+    # FlowDocument `extra='allow'` — top-level languages/defaultLanguage saqlanadi
+    # va flow.save (model_dump) orqali saqlangan flow JSON'ga yetib boradi.
+    data = flow.model_dump()
+    data["languages"] = langs
+    data["defaultLanguage"] = default
+    return ToolResult.ok(
+        f"Tillar o'rnatildi: {langs} (default: {default}). Endi foydalanuvchiga "
+        "ko'rinadigan matnlarni i18n marker obyekt bilan yoz.",
+        state_updates={"working_flow": data, "flow_dirty": True},
+        data={"languages": langs, "defaultLanguage": default},
+    )
+
+
 # ── flow.list_node_types ─────────────────────────────────────────────────────
 
 
@@ -1119,6 +1173,7 @@ def build_flow_tools() -> list[Tool]:
         flow_disconnect,
         flow_validate,
         flow_layout_auto,
+        flow_set_languages,
         flow_list_node_types,
         flow_diff,
         flow_save,

@@ -186,6 +186,7 @@ _GUIDE_TOPICS = {
     "simulate": "Bot simulyatsiyasi qo'llanmasi (flow_simulate step turlari, expect/assert, multi-user, regression testlar)",
     "custom_code": "CustomCodeNode JS API to'liq ma'lumotnoma (send/edit_or_send, db_*, callback_query.message.message_id, pagination edit-in-place namunasi)",
     "modules": "Tashqi MODULE tizimi: modul node turlari (moduleId.NodeName), modul triggerlari (+global), dinamik credential type'lar, Result.Error xato surface, self-hosted modullar",
+    "i18n": "Ko'p tilli (i18n) botlar: __i18n marker obyekt, languages/defaultLanguage, flow_set_languages, engine til tanlash tartibi, custom code t()/lang",
 }
 
 
@@ -194,7 +195,7 @@ def _load_guide(topic: str) -> str:
     from ..prompts.loader import load_prompt
 
     if topic == "node_catalog":
-        return render_compact_catalog() + _MODULE_CATALOG_NOTE
+        return render_compact_catalog() + _MODULE_CATALOG_NOTE + _I18N_CATALOG_NOTE
     files = {
         "flow": "subagents/flow_builder.txt",
         "flow_examples": "subagents/flow_builder_examples.txt",
@@ -204,6 +205,7 @@ def _load_guide(topic: str) -> str:
         "simulate": "mcp/guide_simulate.txt",
         "custom_code": "mcp/guide_custom_code.txt",
         "modules": "mcp/guide_modules.txt",
+        "i18n": "mcp/guide_i18n.txt",
     }
     return load_prompt(files[topic])
 
@@ -222,6 +224,19 @@ _MODULE_CATALOG_NOTE = (
     "`flow_list_node_types` natijasida ko'rinadi. Qo'shish: "
     "`flow_add_node(type='moduleId.NodeName', data={...})`. Batafsil: "
     "`docs_guide(topic='modules')`.\n"
+)
+
+# Lokalizatsiya eslatmasi — yuqoridagi node'lardagi user-facing matn maydonlari
+# (messageText/newText, caption, tugma yorliqlari, poll question, venue
+# title/address, PaymentNode buttonText) i18n marker obyektni qabul qiladi.
+_I18N_CATALOG_NOTE = (
+    "\n\n### KO'P TILLI (i18n) MATN\n"
+    "Yuqoridagi node'lardagi foydalanuvchiga ko'rinadigan matn maydonlari "
+    "(messageText / newText, caption, klaviatura tugma yorliqlari, poll question, "
+    'venue title/address, PaymentNode buttonText) marker obyektni qabul qiladi: '
+    '{"__i18n": true, "en": "..", "uz": "..", "ru": ".."}. Engine ishga tushganda '
+    "aktiv tilga yassilaydi. Ishlashi uchun AVVAL `flow_set_languages(languages, "
+    "default_language)` chaqir. Batafsil: `docs_guide(topic='i18n')`.\n"
 )
 
 

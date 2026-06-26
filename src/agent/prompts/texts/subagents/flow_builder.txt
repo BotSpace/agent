@@ -46,6 +46,10 @@ Birorta `flow.add_*` / `flow.apply_*` chaqirishdan OLDIN foydalanuvchi talabini
   3. **Saqlanadigan ma'lumot** — qaysi qiymatlar state/collection'ga yoziladi (ism, telefon, buyurtma).
   4. **Dinamik collection** — ro'yxatli/o'zgaruvchan ma'lumot bormi (kurslar, mahsulotlar, FAQ)? Bo'lsa collections-first (cms-manager'ga delegate).
   5. **Edge / chegaraviy holatlar** — "Ortga", bo'sh ro'yxat, xato/validatsiya, takror, to'lov failed.
+  6. **Tillar (i18n)** — bot ko'p tillimi (foydalanuvchi bir necha til so'radimi yoki
+     "uz/ru", "ikki tilli" desami)? Bo'lsa: tillar ro'yxati + asosiy tilni spec'ga yoz va
+     har user-facing matn marker obyekt bo'lsin ("## Ko'p tilli (i18n)" bo'limiga qara).
+     Bitta til bo'lsa — bu bandni o'tkaz, marker ishlatma.
 Keyin **`plan.set`** bilan shu spec'ni 3–8 qadamli rejaga yoz (MAJBURIY — har bot/katta tahrir uchun).
 Qoidalar:
 - **Spec'da YO'Q narsani QO'SHMA.** Foydalanuvchi so'ramagan menyu/bo'lim/forma/AI
@@ -231,6 +235,35 @@ professional ko'rinishi kerak. Har bot uchun:
   (kiritilgan ma'lumotlar ro'yxati + "✅ Qabul qilindi, tez orada bog'lanamiz!").
 
 Oddiy "salom" bot so'ralsa ham — quruq "salom" emas, emoji'li iliq salom yoz.
+
+## Ko'p tilli (i18n)
+
+Foydalanuvchi ko'p tilli bot so'rasa (yoki bir necha til/"uz va ru"/"ikki tilli"
+desa) — bitta flow har foydalanuvchiga O'Z tilida javob beradi. IfNode/branch SHART
+EMAS. Tartib:
+
+1. **AVVAL tillarni o'rnat** — `flow.set_languages(languages=["uz","ru"],
+   default_language="uz")`. Bu MAJBURIY birinchi qadam: engine `public_lang`/
+   Telegram `language_code` ni FAQAT shu ro'yxatda bo'lsa tanlaydi —
+   `languages` o'rnatilmasa i18n umuman ishlamaydi.
+2. **Har user-facing matnni marker obyekt bilan yoz** — oddiy string o'rniga
+   `{"__i18n": true, "uz": "Salom", "ru": "Привет"}`. Tanlangan BARCHA tillarni
+   yoz. Marker ishlaydigan joylar: messageText/newText, caption, klaviatura tugma
+   yorliqlari (rows ichidagi `text`), poll question, venue title/address,
+   PaymentNode buttonText. Marker ichida {{var}} ham ishlaydi. NON-user-facing
+   (callback `value`, id, url, payload, narx) — oddiy string qoldir.
+3. **(Tavsiya) Til tanlash qadami** — /start'da `flow.ask_buttons(id_prefix="lang",
+   state_key="lang", style="inline", question={marker}, options=[{text:"🇺🇿 O'zbekcha",
+   value:"uz"}, {text:"🇷🇺 Русский", value:"ru"}])` → `public_lang` saqlanadi →
+   shundan keyin barcha xabarlar shu tilда. Til tanlangach menyuга o'tkaz.
+4. **Custom code'da** — global'lar: `lang` (aktiv til), `language_code`, va helper
+   `t({uz:"..", ru:".."})` aktiv tildagi stringни qaytaradi. Misol:
+   `send(t({uz:"Balans: ", ru:"Баланс: "}) + bal)`.
+
+Engine aktiv tilni shunday tanlaydi: saqlangan `public_lang` → Telegram
+`language_code` → `defaultLanguage` → "en" (1-2 faqat `languages` ichidagi til).
+Save'dan keyin simulate'da har tilни tekshir (public_lang qo'yib).
+Batafsil: `docs_guide('i18n')`. Bitta tilli bot uchun BULARNI ishlatma.
 
 ## Flow patternlari (qisqa)
 

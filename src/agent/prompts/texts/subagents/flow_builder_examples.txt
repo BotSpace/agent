@@ -301,6 +301,56 @@ trigger'i flow giriş nuqtasi, mantiqan oqlanadi.
 
 
 ════════════════════════════════════════════════════════════════════════════
+MISOL 4 — Ko'p tilli bot (i18n: uz + ru, til tanlash)
+════════════════════════════════════════════════════════════════════════════
+TALAB: "ikki tilli (o'zbek/rus) bot, /start'da til so'rasin, keyin salom".
+SPEC: tillar ["uz","ru"], default "uz"; /start → til tanlash (public_lang) →
+marker-obyekt salom. Har user-facing matn marker. (0-QADAM 6-band: i18n.)
+
+```python
+# Turn 0: tillarni o'rnat — MAJBURIY BIRINCHI (aks holda i18n ishlamaydi)
+flow.set_languages(languages=["uz", "ru"], default_language="uz")
+
+# Turn 1: /start → til tanlash (public_lang ga saqlaydi)
+flow.add_command_trigger(id="start", data={"command": "/start", "global": True})
+flow.ask_buttons(
+    id_prefix="lang",
+    state_key="lang",            # → public_lang
+    style="inline",
+    after="start",
+    question={"__i18n": True, "uz": "Tilni tanlang:", "ru": "Выберите язык:"},
+    options=[
+        {"text": "🇺🇿 O'zbekcha", "value": "uz"},
+        {"text": "🇷🇺 Русский", "value": "ru"}
+    ]
+)
+# Til tanlangach — marker-obyekt salom (engine public_lang bo'yicha yassilaydi)
+flow.add_node(
+    id="welcome",
+    type="EditOrSendMessageNode",
+    data={
+        "parseMode": "HTML",
+        "messageText": {
+            "__i18n": True,
+            "uz": "<b>Assalomu alaykum, {{first_name}}! 👋</b>\n\nBotga xush kelibsiz.",
+            "ru": "<b>Здравствуйте, {{first_name}}! 👋</b>\n\nДобро пожаловать в бот."
+        }
+    }
+)
+
+# Turn 2: edge — til capture'dan salomga
+flow.connect(source="lang-capture", target="welcome")
+
+# Turn 3
+flow.validate()
+flow.save()
+```
+
+Root node soni: 1 (start). Eslatma: callback `value` ("uz"/"ru") va id'lar
+marker EMAS — faqat oddiy string. Salom matni marker → har user o'z tilida ko'radi.
+
+
+════════════════════════════════════════════════════════════════════════════
 ROOT NODE TEKSHIRUVI (har bot uchun yakunda o'zingni tekshir)
 ════════════════════════════════════════════════════════════════════════════
 flow.save oldidan o'zingga savol ber:
