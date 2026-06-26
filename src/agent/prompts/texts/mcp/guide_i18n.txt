@@ -1,0 +1,78 @@
+Ko'p tilli (i18n) botlar — qo'llanma
+
+Bitta bot bir necha tilda javob bera oladi. Har foydalanuvchi O'Z tilini ko'radi —
+sen tarjimani node data ichida "marker obyekt" sifatida yozasan, engine ishga
+tushganda aktiv tilga "yassilaydi". Hech qanday IfNode/branch shart EMAS.
+
+## 1. Marker obyekt — lokalizatsiyalanadigan matn
+
+Foydalanuvchiga ko'rinadigan har matn YO oddiy string, YOKI i18n marker obyekt:
+
+    {"__i18n": true, "en": "Hello", "uz": "Salom", "ru": "Привет"}
+
+Engine bu obyektni aktiv tilga almashtiradi — node data ichida HAR JOYDA ishlaydi.
+Marker ichida {{var}} ham ishlaydi (har til o'z matni ichida).
+
+Lokalizatsiyalanadigan maydonlar (shu yerga marker yoz):
+  • xabar matni — messageText / newText
+  • media izohi — caption (photo/video/audio/document)
+  • klaviatura tugma yorliqlari (rows ichidagi tugma "text")
+  • so'rovnoma savoli — question
+  • venue title / address
+  • bitta tugma matni — PaymentNode buttonText
+NON-user-facing (string qoldir, marker YO'Q): id, url, callback `value`, payload,
+token, kod, narx/summa, telefon.
+
+## 2. languages + defaultLanguage — i18n ishlashi uchun MAJBURIY
+
+Flow top-level'ida ikkita maydon bo'ladi:
+  • languages: string[]      — botning tillari, masalan ["uz","ru","en"]
+  • defaultLanguage: string  — asosiy til (languages ichidan)
+
+⚠️ MUHIM: engine `public_lang` / Telegram `language_code` ni FAQAT shu til
+`languages` ro'yxatida bo'lsa tanlaydi. languages O'RNATILMASA i18n umuman
+ishlamaydi (hamma narsa default/en'da qoladi). Shuning uchun BIRINCHI qadam —
+tilларни o'rnatish.
+
+Sozlash (flow.* tool'laridan biri sifatida MAJBURIY birinchi chaqir):
+  flow_set_languages(languages=["uz","ru"], default_language="uz")
+Bu top-level `languages`/`defaultLanguage` yozadi va saqlangan flow JSON'ga
+yetib boradi.
+
+## 3. Engine aktiv tilni qanday tanlaydi (tartib)
+
+  1. saqlangan public_lang   (foydalanuvchi tanlagan — eng ustun)
+  2. Telegram language_code   (foydalanuvchi profil tili)
+  3. defaultLanguage
+  4. "en"
+2 va 1 faqat `languages` ro'yxatida bo'lsa qo'llaniladi.
+
+## 4. Til tanlash qadami (tavsiya etiladi)
+
+Foydalanuvchi tilni o'zi tanlasin — `public_lang` ga yoz. flow_ask_buttons bilan:
+  flow_ask_buttons(
+    id_prefix="lang", state_key="lang", style="inline",
+    question={"__i18n": true, "uz": "Tilni tanlang:", "ru": "Выберите язык:"},
+    options=[{"text": "🇺🇿 O'zbekcha", "value": "uz"},
+             {"text": "🇷🇺 Русский", "value": "ru"}],
+  )
+state_key="lang" → public_lang saqlanadi → shundan keyin barcha xabarlar shu tilда.
+Til tanlangach menyuга o'tkaz.
+
+## 5. Custom code'da i18n
+
+CustomNode ichida global'lar bor:
+  • lang           — aktiv til kodi (masalan "uz")
+  • language_code  — Telegram profil tili
+  • t({en:"..", uz:"..", ru:".."}) — aktiv tildagi stringni qaytaradi (helper)
+
+Misol:
+  send(t({en: "Your balance: ", uz: "Balansingiz: ", ru: "Ваш баланс: "}) + bal)
+
+## 6. Qisqa qurish tartibi (ko'p tilli bot)
+
+  1. flow_set_languages([...], default) — BIRINCHI.
+  2. (ixtiyoriy) /start → til tanlash (flow_ask_buttons, public_lang) → menyu.
+  3. Har user-facing matnni marker obyekt bilan yoz (tanlangan barcha tillar).
+  4. Custom code'da t()/lang ishlat.
+  5. validate → save. Simulate'da ikkala tilni ham tekshir (public_lang qo'yib).

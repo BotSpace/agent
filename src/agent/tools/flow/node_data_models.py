@@ -28,6 +28,21 @@ class _StrictData(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
+# Localizable text — foydalanuvchiga ko'rinadigan matn. Qiymat YO oddiy string,
+# YOKI i18n marker obyekt: {"__i18n": true, "en": "Hello", "uz": "Salom",
+# "ru": "Привет"}. Engine ishga tushganda markerni aktiv tilga "yassilaydi"
+# (node data ichida HAR JOYDA ishlaydi). Ko'p tilli bot uchun marker ishlat.
+# Aktiv til: public_lang → Telegram language_code → flow.defaultLanguage → "en"
+# (faqat flow.languages ro'yxatidagi tillar tanlanadi). Batafsil: docs_guide('i18n').
+LocalizedText = str | dict[str, Any]
+
+_I18N_NOTE = (
+    " i18n: oddiy string YOKI marker obyekt "
+    '{"__i18n": true, "en": "...", "uz": "...", "ru": "..."} — '
+    "ko'p tilli botda marker ishlat (flow.set_languages oldin chaqirilsin)."
+)
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # TRIGGER
 # ═════════════════════════════════════════════════════════════════════════════
@@ -174,33 +189,34 @@ class _SendBase(_StrictData):
 
 
 class SendTextMessageData(_SendBase):
-    messageText: str = Field(description="Message text. Supports {{var}} substitutions.")
+    messageText: LocalizedText = Field(
+        description="Message text. Supports {{var}} substitutions." + _I18N_NOTE)
     parseMode: _PARSE_MODE | None = None
     disableWebPagePreview: bool = False
 
 
 class SendPhotoData(_SendBase):
     photo: str = Field(description="Photo URL or {{file_id}}.")
-    caption: str | None = None
+    caption: LocalizedText | None = Field(default=None, description="Photo caption." + _I18N_NOTE)
     parseMode: _PARSE_MODE | None = None
 
 
 class SendVideoData(_SendBase):
     video: str = Field(description="Video URL or {{file_id}}.")
-    caption: str | None = None
+    caption: LocalizedText | None = Field(default=None, description="Video caption." + _I18N_NOTE)
     parseMode: _PARSE_MODE | None = None
 
 
 class SendAudioData(_SendBase):
     audio: str = Field(description="Audio URL or {{file_id}}.")
-    caption: str | None = None
+    caption: LocalizedText | None = Field(default=None, description="Audio caption." + _I18N_NOTE)
     title: str | None = None
     performer: str | None = None
 
 
 class SendFileData(_SendBase):
     file: str = Field(description="Document/file URL or {{file_id}}.")
-    caption: str | None = None
+    caption: LocalizedText | None = Field(default=None, description="Document caption." + _I18N_NOTE)
     parseMode: _PARSE_MODE | None = None
 
 
@@ -228,8 +244,8 @@ class SendLocationData(_SendBase):
 class SendVenueData(_SendBase):
     latitude: float
     longitude: float
-    title: str
-    address: str
+    title: LocalizedText = Field(description="Venue title." + _I18N_NOTE)
+    address: LocalizedText = Field(description="Venue address." + _I18N_NOTE)
 
 
 class SendContactData(_SendBase):
@@ -238,7 +254,7 @@ class SendContactData(_SendBase):
 
 
 class SendPollData(_SendBase):
-    question: str
+    question: LocalizedText = Field(description="Poll question." + _I18N_NOTE)
     options: list[str] = Field(description="2-10 poll option strings.")
 
 
@@ -281,7 +297,7 @@ class SendInvoiceData(_StrictData):
 
 
 class EditOrSendMessageData(_SendBase):
-    messageText: str
+    messageText: LocalizedText = Field(description="Message text. {{var}} supported." + _I18N_NOTE)
     parseMode: _PARSE_MODE | None = None
     targetMessageNodeId: str | None = Field(default=None,
         description="If set, edit that node's previous message. Else send new.")
@@ -293,7 +309,7 @@ class EditOrSendMessageData(_SendBase):
 
 
 class EditMessageData(_StrictData):
-    newText: str
+    newText: LocalizedText = Field(description="New message text." + _I18N_NOTE)
     messageIdSource: Literal["this_message", "previous_node", "state_key"] | None = None
     keyboard_kind: Literal["inline", "reply"] | None = None
     rows: list[dict[str, Any]] | None = None  # [{columns:[btn,...]}, ...]
@@ -620,9 +636,9 @@ class PaymentNodeData(_StrictData):
         default=None,
         description="To'lov izohi. {{}} o'zgaruvchilar qo'llab-quvvatlanadi.",
     )
-    buttonText: str = Field(
+    buttonText: LocalizedText = Field(
         default="💳 To'lash",
-        description="Mijozga ko'rinadigan 'To'lash' tugmasi matni.",
+        description="Mijozga ko'rinadigan 'To'lash' tugmasi matni." + _I18N_NOTE,
     )
 
 
