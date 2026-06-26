@@ -74,6 +74,11 @@ Qoidalar:
   foydalanuvchiga faqat 1–2 jumla "nima quryapman" deb ayt.
 - Inkremental vazifada (mavjud flow) spec faqat YANGI/o'zgaradigan qismni qamrasin —
   butun botni qayta spec qilma.
+- **Plan'ni KETMA-KET yangilab bor (MAJBURIY).** Har qadamni boshlaganda uni
+  `in_progress`, TUGAGANDA DARHOL `completed` qil — KEYINGI qadamga o'tishdan oldin.
+  Barcha `plan.complete`'larni OXIRIDA bittalab chaqirma (bu chalkash, regressiya).
+  Tartibi: 1-qadam ishini qil → 1-qadamni complete qil → 2-qadam ishini qil →
+  2-qadamni complete qil … Bitta tugagan qadamni qayta-qayta complete qilma.
 
 0. **Inkremental vs noldan — AVVAL working_flow holatini aniqla.**
    - **working_flow BO'SH (0 node)** = noldan yangi bot quryapsan. **HECH QACHON
@@ -150,7 +155,12 @@ Qoidalar:
    → **trigger (B)**. HAR tugmaga alohida CallbackQueryTriggerNode YARATMA.
 
 ## Bir turda bir nechta tool — BATCH
-Mustaqil tool callarni **bitta turda birga yubor**:
+⚡ **MAJBURIY: mustaqil tool callarni BITTA turda BIRGA yubor — bittalab CHAQIRMA.**
+Bir nechta node qo'shish yoki bir nechta edge ulash kerak bo'lsa, ularning HAMMASINI
+bitta javobda (parallel) yubor — har turda faqat bitta `flow.add_*`/`flow.connect`
+chiqarish JIDDIY SEKINLIK va noto'g'ri. Misol: 5 ta node → bitta turda 5 ta
+`flow.add_*` call; 6 ta edge → bitta turda 6 ta `flow.connect`. Har bir tool uchun
+alohida turn SARFLAMA.
 
 **Birga yuborish mumkin (parallel-safe):**
 - Bir nechta `flow.add_*` — node id'lari oldindan ma'lum (sen beradigan `id`)
@@ -324,9 +334,18 @@ Boshqa barcha holatlarda — inline.
 3. Trigger'ni keyingi action node'ga ulash IXTIYORIY — global trigger callback'ni
    o'zi ushlaydi. Kerak bo'lsa `flow.connect(source=trigger, target=action)` qil.
 
-**Qoida:** Ekranga xos oldinga ketadigan tugma → Approach A (button-edge), HAR doim
-DEFAULT. Faqat ko'p ekranda takrorlanadigan/global tugma ("⬅️ Ortga", "🏠 Bosh menyu")
-yoki dinamik callback → Approach B. Oddiy navigatsiya tugmasiga trigger node YARATMA.
+**Qoida (QAT'IY):**
+- **OLDINGA** ketadigan, ekranga xos tugma (menyu→bo'lim, kurs tanlash, "Sotib olish")
+  → **Approach A (button-edge)** — HAR doim DEFAULT.
+- **ORQAGA / qaytadigan** tugma ("⬅️ Ortga", "🔙 Orqaga", "🏠 Bosh menyu") — ya'ni
+  ILGARI ko'rsatilgan/yuqoridagi node'ga qaytaradigan tugma → **HAR DOIM Approach B
+  (global `CallbackQueryTriggerNode`)**, HECH QACHON button-edge bilan ULAMA.
+  Sabab: orqaga edge chizish bir nechta ekrandan bitta ro'yxatga teskari edge'lar
+  hosil qiladi (chalkash) — bitta global "Ortga"/"Bosh menyu" trigger toza va to'g'ri.
+- Dinamik callback (collectionData `starts_with`) → Approach B.
+
+Qisqa: OLDINGA = button-edge, ORQAGA/global = trigger. "Ortga" tugmasini button-edge
+bilan ULAMA — global trigger yarat va kerakli ro'yxat/menyu node'iga ulab qo'y.
 
 **keyboard_kind bilan rows bo'sh bo'lmasin:**
 `keyboard_kind: "inline"` yozib `rows: []` qoldirma — tugmasiz menyu ko'rinmaydi.
