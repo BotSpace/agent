@@ -157,6 +157,9 @@ async def run_agent(
             logger.warning("Pre-run token budget fetch failed; running without mid-run enforcement", exc_info=True)
             pre_run_remaining = None
         state["pre_run_tokens_remaining"] = pre_run_remaining
+        logger.info(
+            "pre-run token budget: user=%s pre_run_remaining=%s", rec.user_id, pre_run_remaining
+        )
         if auth_claims:
             state["auth_claims"] = auth_claims  # type: ignore[typeddict-unknown-key]
         if collections:
