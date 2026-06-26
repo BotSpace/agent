@@ -1465,6 +1465,7 @@ class BackendClient:
         user_id: str | int,
         input_tokens: int,
         output_tokens: int,
+        cache_read_tokens: int = 0,
         project_id: str | int | None = None,
         *,
         auth_claims: dict | None = None,  # noqa: ARG002 — interface uchun saqlangan, bu endpoint ishlatmaydi
@@ -1502,6 +1503,7 @@ class BackendClient:
                 "user_id": int(user_id) if str(user_id).strip().isdigit() else user_id,
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
+                "cache_read_tokens": cache_read_tokens,
                 "project_id": pid_payload,
             },
             user_id=str(user_id),

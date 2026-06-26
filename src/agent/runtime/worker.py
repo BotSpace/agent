@@ -214,6 +214,7 @@ async def run_agent(
         # completion event so the chat UI can show per-prompt token usage.
         total_in = result.get("total_input_tokens", 0)
         total_out = result.get("total_output_tokens", 0)
+        total_cache = result.get("total_cache_read_tokens", 0)
         # Emit the completion event BEFORE closing subscribers — otherwise the
         # SSE stream sees only `close` and the UI never marks the run complete.
         await emit(
@@ -222,6 +223,7 @@ async def run_agent(
                 "final_response": final_text,
                 "input_tokens": total_in,
                 "output_tokens": total_out,
+                "cache_read_tokens": total_cache,
                 "total_tokens": total_in + total_out,
             },
         )
@@ -237,6 +239,7 @@ async def run_agent(
                 user_id=rec.user_id or "",
                 input_tokens=total_in,
                 output_tokens=total_out,
+                cache_read_tokens=total_cache,
                 project_id=rec.project_id,
                 auth_claims=auth_claims,
             )
