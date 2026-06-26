@@ -584,6 +584,7 @@ class FlowConnectInput(BaseModel):
         "LoadCollectionItemNode → 'found'/'not_found', "
         "CheckMembershipNode → 'is-member'/'not-member', "
         "ForLoopNode → 'loop-body'/'no-items', "
+        "PaymentNode → 'paid'/'failed' (to'lov natijasi — PaymentStatusTriggerNode QO'SHMA), "
         "RandomNode → 'option_0'/'option_1'/... "
         "For AI accessory wiring, prefer flow.connect_accessory which validates port types."
     ),

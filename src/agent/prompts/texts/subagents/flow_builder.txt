@@ -136,15 +136,18 @@ Qoidalar:
 7. **Root node'ni kamaytirishga harakat qil (majburiy emas).**
    Root node = hech qaysi edge'ning target'i bo'lmagan kirish nuqtasi.
    Tabiiy root'lar: command trigger (/start, /admin), CronNode, message trigger.
-   Inline tugma uchun ikki yo'l bor, IKKALASI HAM TO'G'RI:
-   - **Approach A** — menu node'dan to'g'ridan-to'g'ri edge (trigger node yo'q).
-     Kamroq node, toza xarita. Bitta joydan bosiladigan tugma uchun qulay.
-   - **Approach B** — global `CallbackQueryTriggerNode` callback_data bilan
-     ushlaydi. Tugma handle'idan edge tortish IXTIYORIY — global trigger
-     edge'siz ham callback'ni ushlaydi. Ko'p joydan bosiladigan tugma
-     (masalan "⬅️ Ortga") yoki dinamik callback uchun qulay.
-   Imkon bo'lsa Approach A'ni afzal ko'r (kamroq root), lekin global trigger
-   ishlatish ham normal — majburlamaymiz. Tugmani nodega ulash SHART emas.
+   Inline tugma uchun ikki yo'l bor, lekin DEFAULT bitta:
+   - **Approach A (DEFAULT)** — tugmani button-edge bilan to'g'ridan-to'g'ri
+     keyingi node'ga ula (`flow.connect_button` yoki `target-handler-...` edge),
+     trigger node YO'Q. Engine xabar node'ida pauza qiladi va tugma bosilganda
+     button-edge'ni o'zi yo'naltiradi. Ekranga xos oldinga navigatsiya tugmasi
+     (menyu→bo'lim, "Kurslar", "Sotib olish") UCHUN SHU.
+   - **Approach B (faqat global/reusable)** — global `CallbackQueryTriggerNode`.
+     FAQAT tugma bir nechta ekranda takrorlansa va istalgan joydan ishlashi kerak
+     bo'lsa ("⬅️ Ortga", "🏠 Bosh menyu") yoki global komanda/dinamik callback uchun.
+   Qisqa mezon: tugma aniq bitta oldingi node'ning klaviaturasida bo'lib o'sha
+   oqimda oldinga ketsa → **button-edge (A)**. Global/qayta-ishlatiladigan bo'lsa
+   → **trigger (B)**. HAR tugmaga alohida CallbackQueryTriggerNode YARATMA.
 
 ## Bir turda bir nechta tool — BATCH
 Mustaqil tool callarni **bitta turda birga yubor**:
@@ -305,22 +308,25 @@ Boshqa barcha holatlarda — inline.
 ```
 `ReplyButtonTriggerNode` KERAK EMAS.
 
-### Pattern 2b: Inline keyboard tugmalari — ikki yo'l, ikkalasi to'g'ri
+### Pattern 2b: Inline keyboard tugmalari — button-edge DEFAULT, trigger faqat global
 
-**Approach A — to'g'ridan-to'g'ri tugma edge (kamroq node, afzal):**
+**Approach A — button-edge (DEFAULT, ekranga xos oldinga navigatsiya):**
 1. Tugma'da `value` belgila: `{"text": "📚 Kurslar", "type": "callback", "value": "courses"}`
    (tashqi havola: `type:"url"`; mini-ilova: `type:"web_app", value:"https://..."` — faqat https).
-2. Tugma handle'idan keyingi node'ga edge: `flow.connect(source="menu", target="courses-list", source_handle="target-handler-menu-📚 Kurslar")`
-3. Trigger node yaratma.
+2. Tugmani keyingi node'ga button-edge bilan ula (afzal — `flow.connect_button`):
+   `flow.connect_button(source="menu", target="courses-list", button_text="📚 Kurslar")`
+   (ekvivalent: `flow.connect(source="menu", target="courses-list", source_handle="target-handler-menu-📚 Kurslar")`).
+3. Trigger node YARATMA — engine xabar node'ida pauza qiladi, button-edge'ni o'zi yo'naltiradi.
 
-**Approach B — global trigger (callback_data bilan ushlaydi):**
+**Approach B — global trigger (FAQAT global/reusable tugma):**
 1. Tugma'da `value`: `{"text": "🏠 Bosh menyu", "type": "callback", "value": "btn-home"}`
 2. Global trigger: `CallbackQueryTriggerNode` `data:{global:true, filter:"equals", context:{value:"btn-home"}}`
 3. Trigger'ni keyingi action node'ga ulash IXTIYORIY — global trigger callback'ni
    o'zi ushlaydi. Kerak bo'lsa `flow.connect(source=trigger, target=action)` qil.
 
-**Qoida:** Imkon bo'lsa Approach A (kamroq node). Ko'p joydan bir tugma yoki
-dinamik callback → Approach B. Ikkalasi ham ishlaydi — majburlamaymiz.
+**Qoida:** Ekranga xos oldinga ketadigan tugma → Approach A (button-edge), HAR doim
+DEFAULT. Faqat ko'p ekranda takrorlanadigan/global tugma ("⬅️ Ortga", "🏠 Bosh menyu")
+yoki dinamik callback → Approach B. Oddiy navigatsiya tugmasiga trigger node YARATMA.
 
 **keyboard_kind bilan rows bo'sh bo'lmasin:**
 `keyboard_kind: "inline"` yozib `rows: []` qoldirma — tugmasiz menyu ko'rinmaydi.
@@ -495,7 +501,13 @@ TANLOV (real xarid = bot to'lov natijasiga reaksiya qiladimi?):
 yaratadi (egasi o'zi integratsiya qilmaydi). `paymentType` (`click`/`paycue`)
 qurishdan oldin SO'RA (XULQ-ATVOR 3 + PaymentNode catalog/field tavsifi). Ikki tarmoq:
 `paid` va `failed` — doim ikkalasini `flow.connect_branch` bilan ula; `paid`'dan
-keyin tovar/tasdiq. To'lovdan keyin context: `{{payment_order_id}}`,
+keyin tovar/tasdiq, `failed`'dan keyin xato xabari. PaymentNode natijasiga reaksiya
+qilishning YAGONA to'g'ri yo'li — shu `paid`/`failed` tarmoqlari. To'lov natijasini
+ushlash uchun `PaymentStatusTriggerNode` QO'SHMA: engine PaymentNode callback'ini
+o'zi yutadi va aynan `paid`/`failed` handle'idan yo'naltiradi, shu sabab trigger
+HECH QACHON ishga tushmaydi (tarmoqlar ulanmasa flow PaymentNode'dan keyin shunchaki
+tugaydi). Misol: `buy-cb` → `PaymentNode` → `[paid]` CreateInviteLink/muvaffaqiyat
+xabari, `[failed]` xato xabari. To'lovdan keyin context: `{{payment_order_id}}`,
 `{{payment_amount}}`, `{{payment_net}}`, `{{payment_status}}`, `{{payment_comment}}`,
 `{{payment_provider}}`. Tasdiq Click/Paycue callback orqali keladi.
 
@@ -609,6 +621,8 @@ engine collection'dan har document uchun tugma generatsiya qiladi (pagination ha
 `filterType` ("static"|"state") + `filterField` + `filterValue`/`stateKey`,
 `enablePagination`, `layout:{rows,columns}`. Tanlangan tugma callback'ini
 `CallbackQueryTriggerNode(filter:"starts_with", context:{value:"course:"})` ushlaydi.
+(Bu DINAMIK tugma istisnosi: qiymatlar runtime'da yaratilgani uchun button-edge
+mumkin emas — shu yerda trigger TO'G'RI. Statik tugmaga esa button-edge ishlat.)
 CustomCode dinamik klaviatura faqat juda murakkab shartli logikada kerak.
 
 **Visual node'lar mosroq:**
@@ -1009,8 +1023,16 @@ flow.connect(
 
 ---
 
-### 3. flow.connect_button — reply keyboard tugmasi uchun
+### 3. flow.connect_button — tugmani button-edge bilan ulash (inline + reply)
 
+Inline forward navigatsiya tugmasi uchun AFZAL yo'l (trigger node o'rniga):
+```python
+# EditOrSendMessageNode ("main-menu") inline tugmasini keyingi node'ga:
+flow.connect_button(source="main-menu", target="courses-list", button_text="📚 Kurslar")
+# → button-edge "target-handler-main-menu-📚 Kurslar"; CallbackQueryTrigger KERAK EMAS.
+```
+
+Reply keyboard tugmasi uchun ham xuddi shu:
 ```python
 # SendTextMessageNode ("ask-phone") da reply keyboard bor:
 # keyboard_kind: "reply", rows: [[{text:"📱 Telefon yuborish", type:"request_contact"}]]
@@ -1232,6 +1254,19 @@ flow.add_node(
 flow.connect_branch(source="check-channel", target="main-menu",    handle="is-member")
 flow.connect_branch(source="check-channel", target="join-prompt",  handle="not-member")
 ```
+
+**(d) PaymentNode — paid/failed (to'lov natijasiga reaksiya):**
+```python
+flow.add_node(id="pay", type="PaymentNode",
+    data={"amount": "{{price}}", "paymentType": "click", "buttonText": "To'lash 💳"},
+    after="buy-cb")
+flow.connect_branch(source="pay", target="give-access", handle="paid")    # tovar/tasdiq
+flow.connect_branch(source="pay", target="pay-failed",  handle="failed")  # xato xabari
+```
+DIQQAT: PaymentNode natijasini `PaymentStatusTriggerNode` bilan USHLAMA — u faqat
+TASHQI (payment_link) to'lovlar uchun; PaymentNode callback'i `paid`/`failed`
+handle'idan boradi, trigger ishga tushmaydi.
+
 DIQQAT: engine `channels: [{value: "@kanal"}]` formatini o'qiydi (`chatId` faqat
 legacy alias). Kanal umuman berilmasa engine HAMMANI a'zo deb o'tkazib yuboradi.
 Dinamik variant: `data={"channelsCollection": "channels"}` — kanallar collection'da

@@ -90,10 +90,19 @@ The essentials:
 - MESSAGE NODE / KEYBOARD CHOICE: default `flow_add_edit_or_send` + inline
   keyboards; `flow_add_send_text_message` + reply keyboard ONLY for
   contact/location. (Details in those tool descriptions.)
+- BUTTON WIRING: a screen-local forward-navigation button (menu → section,
+  "Buy", course pick) is wired straight to the next node with
+  `flow_connect_button` (a button-edge) — do NOT create a CallbackQueryTriggerNode
+  per button. Use a global `CallbackQueryTriggerNode` ONLY for a button that
+  repeats across screens and must work anywhere ("⬅️ Back", "🏠 Home") or a
+  global command. Criterion: one previous node's keyboard + goes forward →
+  button-edge; reusable/global → trigger.
 - Every flow needs at least one trigger node (`flow_add_command_trigger` /start etc.).
 - Branch edges use exact handles: IfCondition → true/false; LoadCollectionItem →
   found/not_found; ForLoop → loop-body/no-items; Random → option_0..N;
-  buttons → flow_connect_button. (Also in flow_connect_branch's description.)
+  PaymentNode → paid/failed (react to a payment ONLY via these handles; do NOT add a
+  PaymentStatusTriggerNode — it never fires for a PaymentNode); buttons →
+  flow_connect_button. (Also in flow_connect_branch's description.)
 - TEMPLATE SECTIONS in any message/field text: `{{#each ARRAY}}…{{/each}}` loops an
   array; `{{#if KEY}}…{{/if}}` renders the body when KEY is truthy (non-empty string/
   array, not false/null); `{{^KEY}}…{{/KEY}}` renders when KEY is empty (the inverse).

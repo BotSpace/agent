@@ -103,6 +103,16 @@ def normalize_legacy_flow(flow: dict[str, Any]) -> int:
                 # they require collection_name, not the object form.
                 data.pop("collection", None)
                 node_changed = True
+        # LoadCollectionListNode now requires an output key (contextKey). Legacy
+        # nodes omitted it; default it to the collection name so the migrated
+        # node is valid and the list lands at {{<collection_name>}}.
+        if node_type == "LoadCollectionListNode" and not (
+            data.get("contextKey") or data.get("resultKey")
+        ):
+            cn = data.get("collection_name")
+            if isinstance(cn, str) and cn:
+                data["contextKey"] = cn
+                node_changed = True
         if node_changed:
             changed += 1
     return changed
