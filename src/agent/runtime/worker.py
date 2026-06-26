@@ -145,7 +145,12 @@ async def run_agent(
         pre_run_remaining: int | None = None
         try:
             from ..integrations.backend import get_backend_client
-            usage = await get_backend_client().subscription_usage(auth_claims=auth_claims)
+            # Read the budget for the BILLED user — i.e. rec.user_id, the same
+            # user tokens are reported to (report_token_usage below). Always
+            # prefer it over auth_claims so we don't check the budget against a
+            # different (chatter) user or fail when auth_claims is absent.
+            fetch_claims = {"user_id": str(rec.user_id)} if rec.user_id else auth_claims
+            usage = await get_backend_client().subscription_usage(auth_claims=fetch_claims)
             remaining = (usage.get("ai_token_usage") or {}).get("remaining")
             pre_run_remaining = int(remaining) if remaining is not None else None
         except Exception:
