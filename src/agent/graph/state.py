@@ -69,6 +69,9 @@ class AgentState(TypedDict, total=False):
     # ── token accounting ────────────────────────────────────────────────
     total_input_tokens: int
     total_output_tokens: int
+    # Cached prompt tokens (subset of input) — reported separately so the
+    # backend can discount them against the user's quota per the plan rate.
+    total_cache_read_tokens: int
 
     # ── mid-run token-limit enforcement ─────────────────────────────────
     pre_run_tokens_remaining: int | None

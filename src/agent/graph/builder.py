@@ -187,10 +187,14 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
         )
         cumulative_in = state.get("total_input_tokens", 0) + (result.usage.input_tokens or 0)
         cumulative_out = state.get("total_output_tokens", 0) + (result.usage.output_tokens or 0)
+        cumulative_cache = state.get("total_cache_read_tokens", 0) + (
+            getattr(result.usage, "cache_read_tokens", 0) or 0
+        )
         updates: dict[str, Any] = {
             "messages": [result.message],
             "total_input_tokens": cumulative_in,
             "total_output_tokens": cumulative_out,
+            "total_cache_read_tokens": cumulative_cache,
         }
         # ── mid-run token-limit enforcement ─────────────────────────────
         # Compare this run's OWN tokens (incl. sub-agent deltas already
@@ -538,6 +542,7 @@ def initial_state(
         # run's own usage (over-counting + false "limit exceeded").
         "total_input_tokens": 0,
         "total_output_tokens": 0,
+        "total_cache_read_tokens": 0,
         # Reset the limit flag too — otherwise a True set on a previous turn
         # (e.g. from the old cumulative-token bug) persists in the thread state
         # and after_llm keeps routing every later run to the limit_exceeded node.
