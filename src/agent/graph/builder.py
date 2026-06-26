@@ -182,11 +182,22 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
             "assistant_message",
             {"text": result.message.text, "model": model, "usage": result.usage.__dict__},
         )
-        return {
+        cumulative_in = state.get("total_input_tokens", 0) + (result.usage.input_tokens or 0)
+        cumulative_out = state.get("total_output_tokens", 0) + (result.usage.output_tokens or 0)
+        updates: dict[str, Any] = {
             "messages": [result.message],
-            "total_input_tokens": state.get("total_input_tokens", 0) + (result.usage.input_tokens or 0),
-            "total_output_tokens": state.get("total_output_tokens", 0) + (result.usage.output_tokens or 0),
+            "total_input_tokens": cumulative_in,
+            "total_output_tokens": cumulative_out,
         }
+        # ── mid-run token-limit enforcement ─────────────────────────────
+        # Compare this run's OWN tokens (incl. sub-agent deltas already
+        # aggregated into the totals) against the REMAINING budget snapshotted
+        # at run start — NOT the absolute monthly limit. pre_run_tokens_remaining
+        # is None when the usage fetch failed (fail open → no enforcement).
+        pre_remaining = state.get("pre_run_tokens_remaining")
+        if pre_remaining is not None and (cumulative_in + cumulative_out) >= pre_remaining:
+            updates["limit_exceeded"] = True
+        return updates
 
     async def tool_exec(state: AgentState) -> dict[str, Any]:
         history = state.get("messages") or []
@@ -425,12 +436,26 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
         )
         return {"messages": [reminder]}
 
+    async def limit_exceeded_node(_: AgentState) -> dict[str, Any]:
+        # Graceful stop: the run hit the user's remaining monthly token budget
+        # mid-flight. Append a user-facing assistant message and let the graph
+        # fall through to `final` → END as a NORMAL completion (not a crash).
+        note = (
+            "⚠️ Oylik token limitingiz tugadi — bu amalni yakunlay olmadim. "
+            "Tarifni yangilang yoki keyingi oyda davom eting."
+        )
+        await _emit(cfg.emit, "limit_exceeded", {"message": note})
+        return {"messages": [Message.assistant_text(note)]}
+
     async def final_response(_: AgentState) -> dict[str, Any]:
         return {}
 
     # ── routing ────────────────────────────────────────────────────────
 
-    def after_llm(state: AgentState) -> Literal["tool_exec", "plan_reminder", "final"]:
+    def after_llm(state: AgentState) -> Literal["tool_exec", "plan_reminder", "final", "limit_exceeded"]:
+        # Token budget gate takes precedence: stop BEFORE any further tool calls.
+        if state.get("limit_exceeded"):
+            return "limit_exceeded"
         msgs = state.get("messages") or []
         if msgs and isinstance(msgs[-1], Message) and msgs[-1].tool_calls:
             return "tool_exec"
@@ -452,6 +477,7 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
     builder.add_node("approval_interrupt", approval_interrupt)
     builder.add_node("clarify_interrupt", clarify_interrupt)
     builder.add_node("plan_reminder", plan_reminder)
+    builder.add_node("limit_exceeded", limit_exceeded_node)
     builder.add_node("final", final_response)
 
     builder.add_edge(START, "llm_call")
@@ -462,6 +488,7 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
             "tool_exec": "tool_exec",
             "plan_reminder": "plan_reminder",
             "final": "final",
+            "limit_exceeded": "limit_exceeded",
         },
     )
     builder.add_conditional_edges(
@@ -476,6 +503,7 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
     builder.add_edge("approval_interrupt", "llm_call")
     builder.add_edge("clarify_interrupt", "llm_call")
     builder.add_edge("plan_reminder", "llm_call")
+    builder.add_edge("limit_exceeded", "final")
     builder.add_edge("final", END)
 
     return builder.compile(checkpointer=checkpointer or MemorySaver())
