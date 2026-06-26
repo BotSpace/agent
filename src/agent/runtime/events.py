@@ -27,6 +27,7 @@ EventType = Literal[
     "sub_agent_finished",
     "run_completed",
     "run_failed",
+    "limit_exceeded",
     "error",
 ]
 
