@@ -85,6 +85,11 @@ FLOW_BUILDER = SubAgentSpec(
         "plan.*",
         "ask_user",
         "flow.*",
+        # Read-only credential lookup — the flow-builder needs to check whether
+        # a payment/http credential exists (e.g. Click) when wiring/debugging a
+        # PaymentNode or http_request. Create/delete stay OUT of this scope.
+        "credentials.list",
+        "credentials.list_types",
         "task.run",
     ],
     model_hint="executor",
