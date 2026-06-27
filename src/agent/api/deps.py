@@ -51,24 +51,44 @@ async def get_current_user(
     if creds is None or not creds.credentials:
         raise HTTPException(status_code=401, detail="Missing bearer token")
 
-    try:
+    def _decode(token: str, *, verify_exp: bool = True) -> dict:
+        """Decode a backend JWT (access or refresh) with the configured alg.
+        Signature is always verified; only `exp` can be relaxed."""
+        opts = {"verify_aud": False, "verify_exp": verify_exp}
         if settings.jwt_algorithm == "RS256":
-            public_key = _load_public_key(settings.jwt_public_key_path)
-            claims = jwt.decode(
-                creds.credentials,
-                public_key,
+            return jwt.decode(
+                token,
+                _load_public_key(settings.jwt_public_key_path),
                 algorithms=["RS256"],
-                options={"verify_aud": False},
+                options=opts,
             )
-        else:
-            claims = jwt.decode(
-                creds.credentials,
-                settings.session_secret,
-                algorithms=[settings.jwt_algorithm],
-                options={"verify_aud": False},
-            )
+        return jwt.decode(
+            token,
+            settings.session_secret,
+            algorithms=[settings.jwt_algorithm],
+            options=opts,
+        )
+
+    refresh_header = (
+        request.headers.get("X-Refresh-Token")
+        or request.headers.get("x-refresh-token")
+    )
+    try:
+        claims = _decode(creds.credentials)
     except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
+        # Access token expired. A long-open dashboard tab still holds a valid
+        # refresh token — accept the run if that refresh is itself signature- and
+        # exp-valid (the session is alive). The access JWT is decoded with `exp`
+        # relaxed (signature still verified, so it's authentic), and downstream
+        # BackendClient refreshes the access on its first 401. Without a valid
+        # refresh, the session really is over → 401.
+        if not refresh_header:
+            raise HTTPException(status_code=401, detail="Token expired")
+        try:
+            _decode(refresh_header)  # validates signature + exp
+            claims = _decode(creds.credentials, verify_exp=False)
+        except jwt.PyJWTError:
+            raise HTTPException(status_code=401, detail="Token expired") from None
     except jwt.PyJWTError as exc:
         raise HTTPException(status_code=401, detail=f"Invalid token: {exc}") from exc
 
@@ -83,11 +103,7 @@ async def get_current_user(
     # Refresh token JWT ichida bo'lishi shart emas (xavfsizroq) — frontend
     # uni X-Refresh-Token header'i orqali yuboradi. Header bo'lmasa, JWT
     # ichidagi `refresh` field'iga qaytamiz (eski mijozlar uchun).
-    refresh_token = (
-        request.headers.get("X-Refresh-Token")
-        or request.headers.get("x-refresh-token")
-        or claims.get("refresh")
-    )
+    refresh_token = refresh_header or claims.get("refresh")
     return CurrentUser(
         user_id=user_id,
         claims={
