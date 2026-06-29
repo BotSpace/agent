@@ -1,9 +1,10 @@
 """Tests for cms.create_collection primary_field passthrough.
 
-The agentv3 CreateCollectionInput must accept `primary_field` and forward it to
+The agent CreateCollectionInput must accept `primary_field` and forward it to
 the backend create body (backend serializer already accepts it). When it is not
 set, the key must be omitted from the body so the backend default is untouched.
 """
+
 import asyncio
 
 from agent.integrations.backend import BackendClient
@@ -48,11 +49,7 @@ def test_primary_field_in_input_model():
 
 def test_primary_field_forwarded_to_backend_body():
     backend = _CaptureBackend()
-    res = _run(
-        create_collection.run(
-            {"name": "products", "primary_field": "name"}, _ctx(backend)
-        )
-    )
+    res = _run(create_collection.run({"name": "products", "primary_field": "name"}, _ctx(backend)))
 
     assert not res.is_error
     assert len(backend.bodies) == 1

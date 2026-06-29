@@ -1,4 +1,4 @@
-# agentv3 — REST API
+# agent — REST API
 
 Base URL: `http://localhost:8100` (dev), `https://agent.botmother.uz` (prod).
 
@@ -14,7 +14,7 @@ Two modes:
 ## Endpoints
 
 ### `GET /health`
-Liveness/readiness. → `{ "status": "ok", "service": "agentv3", "provider": "..." }`
+Liveness/readiness. → `{ "status": "ok", "service": "agent", "provider": "..." }`
 
 ### `GET /tools`
 Tool introspection — JSON schema bilan.

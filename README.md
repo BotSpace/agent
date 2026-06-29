@@ -1,4 +1,4 @@
-# agentv3 — Botmother AI Agent
+# agent — Botmother AI Agent
 
 Claude Code darajasidagi autonomous AI agent. Foydalanuvchi bilan tabiiy tilda
 gaplashib, **visual bot flow** yaratadi, **botlarni deploy qiladi**, **CRM**
@@ -20,11 +20,11 @@ boshqaradi.
 ## Loyihaning fayl tuzilishi
 
 ```
-src/agentv3/
+src/agent/
 ├── config.py             # pydantic-settings
 ├── logging.py            # structlog
 ├── main.py               # ASGI entry (uvicorn)
-├── cli.py                # `agentv3 serve|tools|chat`
+├── cli.py                # `agent serve|tools|chat`
 │
 ├── llm/                  # provider abstraction
 │   ├── base.py           # Message, ToolSpec, GenerateOptions, LLMClient protocol
@@ -92,7 +92,7 @@ src/agentv3/
 
 ```bash
 # 1) Dependencies
-cd agentv3
+cd agent
 pip install -e ".[dev]"
 
 # 2) Env
@@ -103,8 +103,8 @@ cp .env.example .env
 docker compose up -d postgres redis
 
 # 4) Dev server
-agentv3 serve --reload
-# yoki: uvicorn agentv3.main:app --reload --port 8100
+agent serve --reload
+# yoki: uvicorn agent.main:app --reload --port 8100
 ```
 
 `http://localhost:8100/health` → `{"status":"ok"}`
@@ -113,8 +113,8 @@ agentv3 serve --reload
 ### CLI smoke test
 
 ```bash
-agentv3 tools                              # tool ro'yxati
-agentv3 chat "Build a /start flow that greets the user"
+agent tools                              # tool ro'yxati
+agent chat "Build a /start flow that greets the user"
 ```
 
 ## Implementation phases

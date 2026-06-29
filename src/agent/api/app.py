@@ -6,7 +6,7 @@ import asyncio
 import logging
 from contextlib import AsyncExitStack, asynccontextmanager
 
-from fastapi import FastAPI, Response
+from fastapi import Depends, FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
@@ -14,8 +14,6 @@ from ..config import Settings, get_settings
 from ..logging import configure_logging
 from ..runtime.store import get_run_store
 from ..tools import build_default_registry
-from fastapi import Depends
-
 from .deps import CurrentUser, get_current_user
 from .routes.runs import router as runs_router
 from .routes.threads import router as threads_router
@@ -165,7 +163,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 except (asyncio.CancelledError, Exception):  # noqa: BLE001
                     pass
 
-    app = FastAPI(title="Botmother AgentV3 API", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Botmother agent API", version="0.1.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=s.cors_origins_list,
