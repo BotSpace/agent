@@ -1465,6 +1465,16 @@ class AIPaymentLinkToolData(_StrictData):
             "huge sum. Default 100000000."
         ),
     )
+    paramConfig: dict[str, dict] | None = Field(
+        default=None,
+        description=(
+            "Per-parameter AI/fixed override set by the builder UI switch: "
+            "{param: {source:'ai'|'fixed', value, aiDescription}}. source='fixed' "
+            "REMOVES the param from the LLM schema and injects `value`; source='ai' "
+            "keeps it ('aiDescription' overrides the schema description if non-empty). "
+            "Omit to let the AI fill every param. Params: amount, description."
+        ),
+    )
 
 
 class AIPaymentStatusToolData(_StrictData):
@@ -1487,6 +1497,17 @@ class AIPaymentStatusToolData(_StrictData):
 
     tool: Literal["payment_status"] = "payment_status"
     toolName: str = Field(default="payment_status", description="Function name given to the LLM (^[a-zA-Z0-9_]+$).")
+    paramConfig: dict[str, dict] | None = Field(
+        default=None,
+        description=(
+            "Per-parameter AI/fixed override set by the builder UI switch: "
+            "{param: {source:'ai'|'fixed', value, aiDescription}}. source='fixed' "
+            "REMOVES the param from the LLM schema and injects `value`; source='ai' "
+            "keeps it ('aiDescription' overrides the schema description if non-empty). "
+            "Omit to let the AI fill the param. Param: order_id (fix it to always "
+            "check a specific order, or leave AI/empty to use the last link)."
+        ),
+    )
 
 
 # ═════════════════════════════════════════════════════════════════════════════
