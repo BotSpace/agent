@@ -10,7 +10,7 @@ dist/
 *.egg
 MANIFEST
 
-# Virtualenv (top-level only — don't shadow the agentv3.tools.env module)
+# Virtualenv (top-level only — don't shadow the agent.tools.env module)
 /.venv/
 # symlinked .venv inside .worktrees-* worktrees
 /.venv

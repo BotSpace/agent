@@ -1,4 +1,5 @@
 """Tests for per-node Pydantic data validators."""
+
 import pytest
 
 from agent.flow.catalog import NODE_TYPES
@@ -119,7 +120,7 @@ def test_collection_tool_data_operations_allow_list():
     # Engine (AICollectionToolNode / mongoQueryTool) reads searchFields as
     # [{"field": str, "description"?: str}]. Legacy {"name","type"} keys are
     # NOT understood by the engine, so the model normalises name→field and drops
-    # the unknown `type` key. This keeps agentv3 / engine in lockstep (#4).
+    # the unknown `type` key. This keeps agent / engine in lockstep (#4).
     inst = Model.model_validate(
         {
             "collection": "orders",
@@ -144,9 +145,7 @@ def test_collection_tool_data_search_fields_engine_shape():
     assert canon["searchFields"] == [{"field": "status", "description": "order status"}]
 
     # Plain string array → coerced to {field}.
-    arr = Model.model_validate(
-        {"collection": "c", "searchFields": ["chat_id", "kind"]}
-    ).model_dump()
+    arr = Model.model_validate({"collection": "c", "searchFields": ["chat_id", "kind"]}).model_dump()
     assert arr["searchFields"] == [{"field": "chat_id"}, {"field": "kind"}]
 
 
@@ -170,8 +169,12 @@ def test_collection_tool_template_read_with_fixed_and_ai_slots():
             "filterMatch": "and",
             "filterConditions": [
                 {"field": "user_id", "op": "eq", "source": "fixed", "value": "{{chat_id}}"},
-                {"field": "status", "op": "eq", "source": "ai",
-                 "aiDescription": "qaysi holatdagi qarzlar (masalan active)"},
+                {
+                    "field": "status",
+                    "op": "eq",
+                    "source": "ai",
+                    "aiDescription": "qaysi holatdagi qarzlar (masalan active)",
+                },
             ],
         }
     )
@@ -209,8 +212,11 @@ def test_collection_tool_template_invalid_op_rejected():
     Model = NODE_DATA_MODELS["AICollectionToolNode"]
     with pytest.raises(Exception):
         Model.model_validate(
-            {"collection": "c", "operation": "read",
-             "filterConditions": [{"field": "x", "op": "between", "source": "ai"}]}
+            {
+                "collection": "c",
+                "operation": "read",
+                "filterConditions": [{"field": "x", "op": "between", "source": "ai"}],
+            }
         )
 
 
@@ -299,6 +305,7 @@ def test_knowledge_tool_node_in_registry():
 
 # ── Payment tools ────────────────────────────────────────────────────────────
 
+
 def test_payment_link_tool_data_keys_and_max_amount_default():
     from agent.tools.flow.node_data_models import AIPaymentLinkToolData
 
@@ -315,9 +322,7 @@ def test_payment_link_tool_data_keys_and_max_amount_default():
 def test_payment_link_tool_data_accepts_custom_max_amount():
     from agent.tools.flow.node_data_models import AIPaymentLinkToolData
 
-    inst = AIPaymentLinkToolData.model_validate(
-        {"paymentType": "paycue", "maxAmount": 50000}
-    )
+    inst = AIPaymentLinkToolData.model_validate({"paymentType": "paycue", "maxAmount": 50000})
     assert inst.model_dump(by_alias=True)["maxAmount"] == 50000
 
 
