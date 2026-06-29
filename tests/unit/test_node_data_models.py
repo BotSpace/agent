@@ -295,3 +295,61 @@ def test_knowledge_tool_data_requires_collection():
 def test_knowledge_tool_node_in_registry():
     assert "AIKnowledgeToolNode" in NODE_DATA_MODELS
     assert "AIKnowledgeToolNode" in NODE_TYPES
+
+
+# ── Payment tools ────────────────────────────────────────────────────────────
+
+def test_payment_link_tool_data_keys_and_max_amount_default():
+    from agent.tools.flow.node_data_models import AIPaymentLinkToolData
+
+    inst = AIPaymentLinkToolData.model_validate({"paymentType": "click"})
+    dumped = inst.model_dump(by_alias=True)
+    # Cross-stream keys the engine reads.
+    assert dumped["tool"] == "payment_link"
+    assert dumped["toolName"] == "payment_link"
+    assert dumped["paymentType"] == "click"
+    # Injection-guard default ceiling.
+    assert dumped["maxAmount"] == 100000000
+
+
+def test_payment_link_tool_data_accepts_custom_max_amount():
+    from agent.tools.flow.node_data_models import AIPaymentLinkToolData
+
+    inst = AIPaymentLinkToolData.model_validate(
+        {"paymentType": "paycue", "maxAmount": 50000}
+    )
+    assert inst.model_dump(by_alias=True)["maxAmount"] == 50000
+
+
+def test_payment_link_tool_data_rejects_bad_provider():
+    from agent.tools.flow.node_data_models import AIPaymentLinkToolData
+
+    with pytest.raises(Exception):
+        AIPaymentLinkToolData.model_validate({"paymentType": "payme"})
+
+
+def test_payment_status_tool_data_keys_and_no_required_config():
+    from agent.tools.flow.node_data_models import AIPaymentStatusToolData
+
+    # No build-time config required (order_id is a runtime arg, project from engine).
+    inst = AIPaymentStatusToolData.model_validate({})
+    dumped = inst.model_dump(by_alias=True)
+    assert dumped["tool"] == "payment_status"
+    assert dumped["toolName"] == "payment_status"
+
+
+def test_payment_status_tool_data_forbids_extra_fields():
+    from agent.tools.flow.node_data_models import AIPaymentStatusToolData
+
+    with pytest.raises(Exception):
+        AIPaymentStatusToolData.model_validate({"unknown_key": "y"})
+
+
+def test_payment_status_tool_node_in_registry_and_catalog():
+    assert "AIPaymentStatusToolNode" in NODE_DATA_MODELS
+    assert "AIPaymentStatusToolNode" in NODE_TYPES
+
+
+def test_payment_status_tool_has_named_mcp_action():
+    tools = _tools()
+    assert "flow.add_ai_payment_status_tool" in tools

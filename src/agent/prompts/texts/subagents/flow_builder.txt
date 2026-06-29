@@ -232,6 +232,10 @@ talab qilinmagan node'ni QO'SHMA.
   unda to'lov tasdig'i YO'Q (fire-and-forget), bot to'langanini bilmaydi.
 - **To'lov — shunchaki HAVOLA ko'rsat** (AI sotuv-agent narx aytib hisob chiqarsin, reaksiya
   shart emas) → `AIPaymentLinkToolNode` (`flow.add_ai_payment_link_tool`).
+  **To'lov holatini AI TEKSHIRSIN** ('to'ladim' deganda paid/pending/failed) →
+  `AIPaymentStatusToolNode` (`flow.add_ai_payment_status_tool`, order_id runtime). Ikkalasini
+  birga ulab sotuv-agent havola berib so'ng tasdiqlay oladi. Injection-guard: payment_link'da
+  `paymentType`/`maxAmount` build-time, AI faqat amount/description beradi.
   Ikki tizimni ARALASHTIRMA: PaymentNode (Click/Paycue, callback) ≠ SendInvoice
   (Telegram-native, PreCheckout+SuccessfulPayment trigger). `payme` O'YLAB TOPMA.
 - **Kanal a'zoligini tekshir** → `CheckMembershipNode`.
@@ -831,10 +835,32 @@ na `credential_id` na `apiKey` bo'lmasa xato (`ai_provider_missing_credential`).
 Ixtiyoriy. Tool'lar: `flow.add_ai_http_tool`, `flow.add_ai_collection_tool`,
 `flow.add_ai_custom_code_tool`, `flow.add_ai_knowledge_tool`,
 `flow.add_ai_datetime_tool`,
-`flow.add_ai_google_sheets_tool`, `flow.add_ai_payment_link_tool`. QAYSI tool QACHON
+`flow.add_ai_google_sheets_tool`, `flow.add_ai_payment_link_tool`,
+`flow.add_ai_payment_status_tool`. QAYSI tool QACHON
 ishlatilishi (va credential/Qdrant talablari) har bir tool'ning O'Z description'ida
 va AIAgentNode catalog tavsifida — bu yerda qaytarmaymiz. Umumiy tamoyil: agent
 real ma'lumot/harakat kerak bo'lsa tool ula, toza matnga tayanma.
+
+**To'lov tool'lari — `payment_link` vs `payment_status`:**
+- `flow.add_ai_payment_link_tool` faqat to'lov HAVOLASINI yaratadi (fire-and-forget,
+  tasdiq YO'Q). `flow.add_ai_payment_status_tool` esa to'lov BUYURTMASI holatini
+  tekshiradi (`paid`/`pending`/`failed`) — LLM `order_id` beradi, engine joriy
+  loyihaga cheklaydi. Sotuv-agent narx aytib havola berib, keyin 'to'ladim' deganda
+  tasdiqlashi kerak bo'lsa — IKKALASINI ham shu agentga ula.
+- ⚠️ XAVFSIZLIK (injection-guard): `payment_link`'da `paymentType` VA `maxAmount`
+  BUILD-TIME'da SEN (builder) belgilaysan — runtime AI ularni O'ZGARTIRA OLMAYDI.
+  AI faqat `amount`/`description` beradi; engine `amount`ni `maxAmount`'ga clamp
+  qiladi, shuning uchun prompt-injektsiya qilingan user ulkan summa to'lattirolmaydi.
+  `maxAmount`'ni use-case'ga mos shiftga qo'y (default 100000000).
+- HARD 'to'lasa-tovar' branch (bot to'lov natijasiga qat'iy reaksiya qiladi) kerak
+  bo'lsa baribir `PaymentNode` (paid/failed) afzal — agent tool MASLAHATCHI, eshik EMAS.
+
+**Modul tool'lari (DINAMIK):** modul yoqilgan bo'lsa (`modules.enable`), u engine'ga
+o'z node turlarini beradi va ba'zilari `ai_tool` accessory bo'lishi mumkin. Bunday
+modul tool'larini ham xuddi shu tarzda AIAgentNode'ning `acc:ai_tool` portiga ulash
+mumkin — ular ro'yxati statik EMAS, modul manifestidan keladi (`flow.list_node_types`
+yoqilgan modul tool'larini ko'rsatadi). Agent kerakli modul yoqilganini tekshirib,
+mos tool'ni ulaydi.
 
 `flow.add_ai_collection_tool` — **TEMPLATE (gibrid) model**. Har node BITTA
 `operation` (create|read|update|delete). read+create kerak bo'lsa BIR agentga

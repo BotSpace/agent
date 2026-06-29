@@ -26,6 +26,7 @@ from .node_data_models import (
     AIHTTPToolData,
     AIKnowledgeToolData,
     AIPaymentLinkToolData,
+    AIPaymentStatusToolData,
     AIOllamaProviderData,
     AIOpenAIProviderData,
     CallbackQueryTriggerData,
@@ -547,6 +548,7 @@ _ACC_PORT_ACCEPTS: dict[str, frozenset[str]] = {
         "AIHTTPToolNode", "AICollectionToolNode", "AICustomCodeToolNode",
         "AIKnowledgeToolNode", "AIDateTimeToolNode",
         "AIGoogleSheetsToolNode", "AIPaymentLinkToolNode",
+        "AIPaymentStatusToolNode",
     }),
 }
 
@@ -804,7 +806,27 @@ def build_flow_action_tools() -> list[Tool]:
                 "branches) or a Telegram invoice (SendInvoiceNode → PreCheckoutTriggerNode → "
                 "SuccessfulPaymentTriggerNode). "
                 "REQUIRED data paymentType — ASK the user first (like PaymentNode): "
-                "'click' or 'paycue' ONLY, never invent 'payme'. Connect to acc:ai_tool."
+                "'click' or 'paycue' ONLY, never invent 'payme'. INJECTION GUARD: "
+                "optional maxAmount (default 100000000) caps the runtime amount the LLM "
+                "can bill — set a sane ceiling for the use-case. Connect to acc:ai_tool."
+            ),
+        ),
+        _make_popular_node_tool(
+            name="flow.add_ai_payment_status_tool",
+            type_name="AIPaymentStatusToolNode",
+            data_model=AIPaymentStatusToolData,
+            description=(
+                "Add a payment-status tool sub-node for an AIAgentNode "
+                "(tool='payment_status'). Lets the agent CHECK whether a payment order "
+                "was paid (paid / pending / failed) — e.g. after a payment_link, the "
+                "user says 'I paid' and the agent verifies before delivering. The LLM "
+                "calls it with the runtime arg order_id (the id from an earlier "
+                "payment_link / PaymentNode); the engine scopes the lookup to the "
+                "current project. NO build config and NO credential. PAIRS WITH "
+                "payment_link (which only CREATES a link, no confirmation) — attach both "
+                "to a sales agent that bills then verifies. For a hard branch-on-payment "
+                "flow still prefer PaymentNode (paid/failed); an agent tool is advisory, "
+                "not a gate. Connect to acc:ai_tool."
             ),
         ),
         # ── Core popular nodes ──────────────────────────────────────────
