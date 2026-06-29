@@ -1438,11 +1438,18 @@ class AIPaymentLinkToolData(_StrictData):
     successful payment (deliver goods/service, grant access, confirm an order), do NOT
     use this tool — use PaymentNode (Click/Paycue, paid/failed branches; the bot waits
     and branches) OR a Telegram invoice (SendInvoiceNode -> PreCheckoutTriggerNode
-    [autoAnswer] -> SuccessfulPaymentTriggerNode).
+    [autoAnswer] -> SuccessfulPaymentTriggerNode). To later CHECK whether a created
+    link was paid, attach AIPaymentStatusToolData (tool='payment_status') to the same
+    agent — it reports paid/pending/failed for an order_id.
 
     BUILD RULE (like PaymentNode): ASK the user which provider before adding —
     'click' or 'paycue' ONLY. Do NOT invent 'payme'. A merchant/credential may be
     required by engine/backend later; for now paymentType is assumed sufficient.
+
+    INJECTION GUARD: `paymentType` AND `maxAmount` are fixed at build time and are NOT
+    chosen by the LLM. The engine clamps the runtime `amount` arg to `maxAmount`, so a
+    prompt-injected user cannot make the agent bill an arbitrarily huge sum. Set
+    maxAmount to a sane ceiling for the use-case; leave the default for a generous cap.
     """
 
     tool: Literal["payment_link"] = "payment_link"
@@ -1450,6 +1457,36 @@ class AIPaymentLinkToolData(_StrictData):
     paymentType: Literal["click", "paycue"] = Field(
         description="Payment provider (REQUIRED — ASK the user first): 'click' or 'paycue'. No 'payme'.",
     )
+    maxAmount: int = Field(
+        default=100000000,
+        description=(
+            "Build-time injection guard (NOT chosen by the LLM). Engine clamps the "
+            "runtime `amount` arg to this ceiling so an injected user cannot bill a "
+            "huge sum. Default 100000000."
+        ),
+    )
+
+
+class AIPaymentStatusToolData(_StrictData):
+    """Dynamic payment-status tool. tool='payment_status'. No build config required.
+
+    Lets the agent CHECK the status of a payment order on the fly (paid / pending /
+    failed) — e.g. after issuing a payment_link, the user says 'I paid', and the agent
+    verifies before delivering. The LLM calls it with the runtime arg `order_id`
+    (REQUIRED — the order id returned by an earlier payment_link / PaymentNode). The
+    engine scopes the lookup to the current project, so the agent cannot read another
+    project's orders. CROSS-STREAM CONTRACT with engine (AIPaymentStatusToolNode) —
+    keep keys exact.
+
+    PAIR WITH payment_link: payment_link only CREATES a link (fire-and-forget, no
+    confirmation); payment_status READS whether such an order was paid. They are
+    complementary — attach both to a sales agent that must bill and then verify. For a
+    hard, branch-on-payment flow (deliver goods strictly on paid) still prefer
+    PaymentNode (paid/failed branches) — an agent tool is advisory, not a gate.
+    """
+
+    tool: Literal["payment_status"] = "payment_status"
+    toolName: str = Field(default="payment_status", description="Function name given to the LLM (^[a-zA-Z0-9_]+$).")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1544,6 +1581,7 @@ NODE_DATA_MODELS: dict[str, type[_StrictData]] = {
     "AIDateTimeToolNode": AIDateTimeToolData,
     "AIGoogleSheetsToolNode": AIGoogleSheetsToolData,
     "AIPaymentLinkToolNode": AIPaymentLinkToolData,
+    "AIPaymentStatusToolNode": AIPaymentStatusToolData,
 }
 
 

@@ -709,7 +709,10 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "AIGoogleSheetsToolNode (type_key='google_sheets' OAuth credential, dashboard'da "
             "Connect with Google); "
             "• AI dinamik to'lov havolasi yaratsin (sotuv-agent narx aytib hisob chiqarsin) → "
-            "AIPaymentLinkToolNode (paymentType click|paycue — qurishdan oldin SO'RA, payme YO'Q). "
+            "AIPaymentLinkToolNode (paymentType click|paycue — qurishdan oldin SO'RA, payme YO'Q; "
+            "maxAmount build-time injection-guard); "
+            "• AI to'lov BUYURTMASI holatini tekshirsin (paid/pending/failed; 'to'ladim' deganda "
+            "tasdiq) → AIPaymentStatusToolNode (order_id runtime arg, konfiguratsiya/credential YO'Q); "
             "STRUCTURED JSON: agent JSON qaytarishi kerak bo'lsa systemPrompt'da 'JSON "
             "qaytar' DEMA (ishonchsiz) — `structuredOutput:true` + `jsonSchema` (schema "
             "string) qo'y. Engine model'ni provider darajasida shu schema'ga majburlaydi "
@@ -1005,10 +1008,39 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
             "o'tganda global trigger ishga tushadi). "
             "QURISH QOIDASI (PaymentNode kabi): qo'shishdan oldin foydalanuvchidan provayderni "
             "SO'RA — 'click' yoki 'paycue' FAQAT, 'payme' O'YLAB TOPMA. "
+            "⚠️ INJECTION-GUARD: paymentType VA maxAmount (default 100000000) qurish "
+            "vaqtida qotiriladi, LLM o'zgartira OLMAYDI — engine runtime `amount`ni "
+            "maxAmount'ga clamp qiladi (injektsiya qilingan user ulkan summa yozolmaydi). "
+            "Havola to'langan-to'lanmaganini KEYIN tekshirish kerak bo'lsa shu agentga "
+            "AIPaymentStatusToolNode (tool='payment_status') ham ula. "
             "Edge: source=<this_id>, sourceHandle='source-default', "
             "target=<agent_id>, targetHandle='acc:ai_tool'."
         ),
         required_data=["paymentType"],
+        optional_data=["tool", "toolName", "maxAmount"],
+        source_handles=["source-default"],
+        target_handles=[],
+        is_accessory=True,
+    ),
+    "AIPaymentStatusToolNode": NodeTypeSpec(
+        type="AIPaymentStatusToolNode",
+        category="ai",
+        description=(
+            "To'lov-status tool sub-node. AIAgentNode'ning acc:ai_tool portiga ulanadi. "
+            "tool='payment_status'. Agent to'lov BUYURTMASINING holatini tekshiradi "
+            "(paid/pending/failed) — masalan payment_link'dan keyin user 'to'ladim' "
+            "desa, tovar berishdan oldin agent TEKSHIRADI. LLM runtime arg: order_id "
+            "(MAJBURIY — oldingi payment_link / PaymentNode qaytargan order id). Engine "
+            "qidiruvni JORIY loyihaga cheklaydi (boshqa loyiha buyurtmalarini o'qiy "
+            "olmaydi). Qurish konfiguratsiyasi YO'Q, credential YO'Q. "
+            "payment_link bilan JUFT: payment_link faqat havola YARATADI (tasdiq yo'q), "
+            "payment_status esa to'langanini O'QIYDI — sotuv-agentga ikkalasini ham ula. "
+            "Qattiq 'to'lasa-tovar' branch kerak bo'lsa baribir PaymentNode (paid/failed) "
+            "afzal — agent tool maslahatchi, eshik EMAS. "
+            "Edge: source=<this_id>, sourceHandle='source-default', "
+            "target=<agent_id>, targetHandle='acc:ai_tool'."
+        ),
+        required_data=[],
         optional_data=["tool", "toolName"],
         source_handles=["source-default"],
         target_handles=[],
