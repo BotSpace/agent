@@ -11,9 +11,8 @@ from agent.flow.manifest_compiler.loader import load_node_manifests, manifest_ch
 
 _AGENT_ROOT = Path(__file__).resolve().parents[2]
 _WORKSPACE = _AGENT_ROOT.parent
-_FRONTEND_REGISTRY = (
-    _WORKSPACE / "bot-constructor-panel" / "src" / "features" / "bot-constructor"
-    / "manifest" / "runtime-node-registry.json"
+_BACKEND_REGISTRY = (
+    _WORKSPACE / "backend" / "core" / "apps" / "api" / "data" / "builtin_node_manifests.json"
 )
 
 
@@ -35,11 +34,11 @@ def test_manifest_entries_have_required_shape():
             assert isinstance(manifest["content"], list)
 
 
-@pytest.mark.skipif(not _FRONTEND_REGISTRY.exists(), reason="frontend repo yo'q")
-def test_vendored_matches_frontend():
-    """Vendored nusxa frontend manbasi bilan bayt-aniqlikda mos (drift detektori)."""
-    front_sha = hashlib.sha256(_FRONTEND_REGISTRY.read_bytes()).hexdigest()
-    assert manifest_checksum() == front_sha, (
-        "Vendored manifest frontend bilan mos emas — "
+@pytest.mark.skipif(not _BACKEND_REGISTRY.exists(), reason="backend repo yo'q")
+def test_vendored_matches_backend():
+    """Vendored nusxa backend kanonik manbasi bilan bayt-aniqlikda mos (drift detektori)."""
+    backend_sha = hashlib.sha256(_BACKEND_REGISTRY.read_bytes()).hexdigest()
+    assert manifest_checksum() == backend_sha, (
+        "Vendored manifest backend bilan mos emas — "
         "`python scripts/sync_manifest.py` ishga tushiring."
     )
