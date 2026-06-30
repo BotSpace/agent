@@ -61,6 +61,18 @@ ni sinash:
 ```
 Yakuniy contextda `public_episode_file_id = "BAAC_SIM_VIDEO"` bo'lishi kerak.
 
+## Obuna/a'zolik gate testi (member_status)
+`CheckMembershipNode` / custom code `get_chat_member` natijasi default'da `"member"`
+qaytadi (a'zo). NOT-member yo'lini (obunaga majburlash) sinash uchun TOP-LEVEL
+`member_status` ber (run bo'yicha bitta qiymat — `steps` yonida):
+```json
+{"member_status":"left",
+ "steps":[{"type":"command","text":"/start","expect":{"contains":"avval kanalga obuna","no_errors":true}}]}
+```
+Qiymatlar: a'zo — `creator`/`administrator`/`member`/`restricted`; a'zo EMAS —
+`left`/`kicked`. Bo'sh bo'lsa `member`. Ikkala tarmoqni ham sinash uchun ikki run:
+`member_status:"left"` → bloklash, default (yoki `"member"`) → o'tkazish.
+
 ## Regression testlar
 Ishlaydigan stsenariyni `flow_test_save(name, steps)` bilan saqlang — har
 `flow_save` ularni avtomatik ishga tushiradi va regressiyani ushlaydi.

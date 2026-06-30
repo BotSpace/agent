@@ -245,6 +245,14 @@ class FlowSimulateInput(BaseModel):
             "(javob tekshiruvi) qo'shsa bo'ladi."
         ),
     )
+    member_status: str | None = Field(
+        default=None,
+        description=(
+            "Obuna/a'zolik gate testi uchun get_chat_member mock holati (run-level). "
+            "A'zo EMAS yo'lini sinash: 'left' yoki 'kicked'. A'zo: "
+            "creator/administrator/member/restricted. Bo'sh — 'member' (a'zo)."
+        ),
+    )
     seed_collections: bool = Field(
         default=True,
         description=(
@@ -524,6 +532,7 @@ async def _run_simulation(
     seed_collections: bool,
     mode: str,
     project_id: str | None = None,
+    member_status: str | None = None,
 ) -> dict[str, Any]:
     """Thin wrapper around the simulator transport: seeds collections, fills the
     default chat, forwards `mode`. Raises SimulatorUnavailableError on outage."""
@@ -533,12 +542,15 @@ async def _run_simulation(
     collections: dict[str, list[dict]] = {}
     if seed_collections:
         collections = await _seed_collections(ctx, project_id)
+    chat = _default_chat(ctx)
+    if member_status:
+        chat["member_status"] = member_status
     return await simulate(
         simulator_url=get_settings().simulator_url,
         flow=flow,
         steps=steps,
         collections=collections,
-        chat=_default_chat(ctx),
+        chat=chat,
         mode=mode,
     )
 
@@ -588,6 +600,7 @@ async def flow_simulate(input: FlowSimulateInput, ctx: ToolContext) -> ToolResul
             seed_collections=input.seed_collections,
             mode=mode,
             project_id=project_id,
+            member_status=input.member_status,
         )
     except SimulatorUnavailableError:
         return ToolResult.error(
