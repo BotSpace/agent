@@ -583,3 +583,40 @@ def test_unset_variable_still_warns():
     )
     result = validate(flow)
     assert any(i.code == "unknown_variable" for i in result.warnings)
+
+
+def _btn_screen(node_id, value, text="📚 Kurslar"):
+    return FlowNode(id=node_id, type="EditOrSendMessageNode", data={
+        "messageText": "x", "keyboard_kind": "inline",
+        "rows": [{"columns": [{"text": text, "type": "callback", "value": value}]}]})
+
+
+def test_single_screen_button_global_trigger_warns():
+    """Bitta ekrandagi tugmani ushlovchi GLOBAL callback trigger → button-edge tavsiya."""
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="s", type="CommandTriggerNode", data={"command": "/start"}),
+            _btn_screen("menu", "courses"),
+            FlowNode(id="cb", type="CallbackQueryTriggerNode",
+                     data={"global": True, "filter": "equals", "context": {"value": "courses"}}),
+        ],
+        edges=[FlowEdge(id="e", source="s", target="menu")],
+    )
+    res = validate(flow)
+    assert any(i.code == "global_callback_should_be_button_edge" for i in res.issues)
+
+
+def test_reusable_back_button_global_trigger_ok():
+    """Ko'p ekranda takrorlanadigan (Ortga) tugma → global trigger to'g'ri, ogohlantirma."""
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="s", type="CommandTriggerNode", data={"command": "/start"}),
+            _btn_screen("scr1", "back", "⬅️ Ortga"),
+            _btn_screen("scr2", "back", "⬅️ Ortga"),
+            FlowNode(id="cb", type="CallbackQueryTriggerNode",
+                     data={"global": True, "filter": "equals", "context": {"value": "back"}}),
+        ],
+        edges=[FlowEdge(id="e", source="s", target="scr1")],
+    )
+    res = validate(flow)
+    assert not any(i.code == "global_callback_should_be_button_edge" for i in res.issues)

@@ -486,7 +486,59 @@ def validate(
     # ── 6. Unknown {{var}} references (#9b, conservative) ──────────────
     issues.extend(_unknown_variable_warnings(flow))
 
+    # ── 7. Screen-specific button → global trigger over-use ────────────
+    # AI tez-tez har inline tugma uchun root GLOBAL CallbackQueryTriggerNode
+    # yaratadi; ekranga xos (bitta node'dagi) tugma button-edge bilan ulanishi
+    # kerak. Faqat ko'p ekranda takrorlanadigan (Ortga/menyu) tugma global bo'lsin.
+    issues.extend(_screen_specific_global_callback_warnings(flow))
+
     return ValidationResult(ok=not any(i.severity == "error" for i in issues), issues=issues)
+
+
+def _screen_specific_global_callback_warnings(flow: FlowDocument) -> list[ValidationIssue]:
+    """Global CallbackQueryTriggerNode FAQAT BITTA ekrandagi statik tugmaga mos
+    kelsa — button-edge afzal (tugma o'sha node'ga bog'liq). Ko'p ekranda
+    takrorlanadigan (Ortga/menyu) yoki dinamik tugma uchun global to'g'ri."""
+    # callback value → o'sha qiymatli tugma turgan node id'lari (statik tugmalar)
+    value_nodes: dict[str, set[str]] = {}
+    value_text: dict[str, str] = {}
+    for node in flow.nodes:
+        for _handle, button in _button_source_handles_with_buttons(node):
+            btype = str(button.get("type") or "").strip().lower()
+            if btype not in ("callback", ""):
+                continue
+            val = str(button.get("value") or button.get("text") or "")
+            if not val:
+                continue
+            value_nodes.setdefault(val, set()).add(node.id)
+            value_text[val] = str(button.get("text") or val)
+
+    out: list[ValidationIssue] = []
+    for n in flow.nodes:
+        if n.type != "CallbackQueryTriggerNode" or not bool(n.data.get("global")):
+            continue
+        if str(n.data.get("filter") or "").strip().lower() != "equals":
+            continue  # faqat aniq-mos (bitta tugma); starts_with = dinamik, tegmaymiz
+        ctx = n.data.get("context")
+        val = str(ctx.get("value") or "") if isinstance(ctx, dict) else ""
+        owners = value_nodes.get(val)
+        if owners and len(owners) == 1:
+            owner = next(iter(owners))
+            label = value_text.get(val, val)
+            out.append(
+                ValidationIssue(
+                    "warning",
+                    "global_callback_should_be_button_edge",
+                    f"global CallbackQueryTriggerNode `{n.id}` `{label}` tugmasini "
+                    f"ushlaydi, lekin u FAQAT bitta ekranda (node `{owner}`). Root "
+                    f"global trigger O'RNIGA button-edge ishlat: "
+                    f"flow.connect_button(source='{owner}', target=<keyingi-node>, "
+                    f"button_text='{label}'). Global trigger faqat KO'P ekranda "
+                    f"takrorlanadigan (⬅️Ortga/🏠Menyu) yoki dinamik tugma uchun.",
+                    node_id=n.id,
+                )
+            )
+    return out
 
 
 # ── #4: filter value type vs collection field kind ───────────────────────────

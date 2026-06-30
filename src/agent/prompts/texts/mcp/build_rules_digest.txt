@@ -16,10 +16,17 @@
   keyboard (request_contact/request_location) kerak bo'lganda.
 • KEYBOARD: default INLINE (keyboard_kind:"inline"). Reply keyboard faqat
   kontakt/joylashuv so'rashda.
-• TUGMA ULASH: ekranga xos oldinga navigatsiya tugmasi → flow_connect_button bilan
-  to'g'ridan-to'g'ri keyingi node'ga ula (button-edge). HAR tugmaga alohida
-  CallbackQueryTriggerNode YARATMA. Global trigger FAQAT ko'p ekranda takrorlanadigan
-  tugma ("⬅️ Ortga"/"🏠 Bosh menyu") yoki global komanda uchun.
+• ⛔ TUGMA ULASH — INLINE tugma uchun ROOT/GLOBAL trigger YARATMA (eng ko'p xato!):
+  ekranga xos tugma (menyu→bo'lim, "Kurslar", "Sotib olish") → `flow_connect_button(
+  source="<tugma turgan node>", target="<keyingi node>", button_text="...")` —
+  button-edge AYNAN o'sha node'dan keyin bosilganda ishlaydi. HAR tugmaga alohida
+  CallbackQueryTriggerNode YOKI root global trigger QO'YMA. Global
+  `CallbackQueryTriggerNode` FAQAT: (a) KO'P ekranda takrorlanadigan tugma
+  ("⬅️Ortga"/"🏠Menyu"), (b) global komanda. Bitta ekrandagi tugmani global
+  trigger bilan ushlasang — flow_validate OGOHLANTIRADI (button-edge'ga o'tkaz).
+  Dinamik tugma (CustomCode/collectionData, runtime callback) → button-edge
+  bo'lmaydi; o'sha ekrandan keyin ulangan (reachable) CallbackQueryTriggerNode
+  ishlat, faqat hech qayerdan ushlay olmasang global qil.
 • rows formati: [{"columns":[{"text":"...","type":"callback","value":"cb"}]}] —
   har row OBJECT {columns:[...]}, 2D array EMAS.
 • Branch handle'lari aniq: IfCondition→true/false, LoadCollectionItem→found/not_found,
