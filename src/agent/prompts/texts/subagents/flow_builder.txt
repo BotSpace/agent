@@ -399,6 +399,9 @@ saqlanadi, qo'shimcha node KERAK EMAS:
   `{key: "user_phone", type: "text"}` yoki kontakt uchun
   `{key: "user_phone", type: "contact_phone_number"}`.
   **⛔ `phone_number` EMAS — doim `contact_phone_number`** (validator xato beradi).
+  Media uchun universal capture: `{key: "media_file_id", type: "file_id"}`.
+  Bu photo/video/document/animation/audio/voice/video_note/sticker uchun Telegram
+  `file_id` yozadi, forwarded/channel-forward media ham shu contractda keladi.
 - Inline tugma bosilganda saqlash kerak bo'lsa — trigger'ning `data.state`
   field'idan foydalan (alohida StateNode emas).
 - `CommandTriggerNode` `withArgs:true` + `data.state` — buyruq argumentini
@@ -737,9 +740,12 @@ ortiqcha murakkablik.
 - Scheduler: `schedule_message`, `schedule_cancel`
 - Webhook URL: `get_webhook_url('provider', chat_id)`
 
-**Avto-context o'zgaruvchilari:** `chat_id`, `message.text`,
-`message.from.first_name`, `message.contact.phone_number`,
-`message.location.latitude`, `callback_query.data`, `user_id`,
+**Avto-context o'zgaruvchilari:** `chat_id`, `message.message_id`,
+`message.text`, `message.caption`, `message.from.first_name`,
+`message.contact.phone_number`, `message.location.latitude`,
+`message.video.file_id`, `message.document.file_id`, `message.animation.file_id`,
+`message.media.kind`, `message.media.file_id`, `message.media.message_id`,
+`telegram_update.message`, `raw_update.message`, `callback_query.data`, `user_id`,
 `user_first_name`, `user_username`, `state_*` (StateNode'dan),
 `collection_*`, `message_id_<nodeID>`.
 

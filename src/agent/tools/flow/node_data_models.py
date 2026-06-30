@@ -68,6 +68,12 @@ class MessageTriggerData(_StrictData):
     global_: bool = Field(default=False, alias="global")
     state: dict[str, str] | None = Field(default=None,
         description="Auto-save: {key, type: 'text'|'phone_number'|'file_id'|...}.")
+    upload_file: bool = Field(default=False,
+        description="True bo'lsa media xabarni platformaga yuklaydi.")
+    file_key: str | None = Field(default=None,
+        description="upload_file=true bo'lganda fayl public_<file_key> ostida saqlanadi.")
+    ttl: int | None = Field(default=None, ge=1,
+        description="upload_file=true bo'lganda fayl necha sekunddan keyin o'chadi. None = doimiy.")
 
 
 class CallbackQueryTriggerData(_StrictData):
@@ -93,8 +99,15 @@ class CronTriggerData(_StrictData):
         description="Cron expression (5 fields: m h d m w). E.g. '0 9 * * 1' = every Monday 9am.")
 
 
-class ExternalWebhookTriggerData(_StrictData):
-    provider: str = Field(description="External webhook provider identifier.")
+class WebhookTriggerData(_StrictData):
+    chat_id: str | int | None = Field(default=None,
+        description="Optional literal chat id or {{webhook.body.user_id}} expression.")
+    wait_response: bool = Field(default=False,
+        description="If true, return response_variable value as HTTP response.")
+    response_variable: str | None = Field(default=None,
+        description="Context/state variable to return when wait_response=true.")
+    webhook_url: str | None = Field(default=None,
+        description="Read-only constructor-filled URL; accepted for round-trip compatibility.")
 
 
 _PAYLOAD_FILTER = Literal["any", "equals", "starts_with", "contains"]
@@ -355,6 +368,18 @@ class IfConditionData(_StrictData):
     operator: Literal["and", "or"] = "and"
 
 
+class SwitchCaseData(_StrictData):
+    id: str | None = ""
+    match: str = Field(description="Value to compare with resolved SwitchNode.value.")
+    label: str | None = ""
+
+
+class SwitchData(_StrictData):
+    value: str = Field(description="Expression/value to compare, e.g. {{state.status}}.")
+    cases: list[SwitchCaseData] = Field(default_factory=list)
+    default: bool = Field(default=False)
+
+
 class ElseIfData(_StrictData):
     pass
 
@@ -381,6 +406,10 @@ class ForLoopData(_StrictData):
 
 class ForLoopContinueData(_StrictData):
     pass
+
+
+class FormData(_StrictData):
+    items: list[dict[str, Any]] = Field(default_factory=list)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -567,6 +596,15 @@ class CheckMembershipData(_StrictData):
 class DownloadData(_StrictData):
     fileId: str = Field(description="Telegram file_id or {{file_id}} (saqlangan ochiq qiymat).")
     saveAs: str = Field(description="State key for the local file path / URL.")
+
+
+class DownloadFileData(_StrictData):
+    key: str = Field(description="State key prefix for uploaded file UUID/URL.")
+    messageType: str | None = None
+
+
+class SetLanguageData(_StrictData):
+    language: str = Field(default="", description="Language code or {{callback_data}}; empty only exposes language helpers.")
 
 
 class CronData(_StrictData):
@@ -857,6 +895,10 @@ class AnswerInlineQueryData(_StrictData):
 
 class SubFlowData(_StrictData):
     subflowId: str = Field(description="Id of the subflow to invoke.")
+
+
+class SubFlowExitData(_StrictData):
+    exitName: str = Field(default="success", description="Exit branch name returned to the parent flow.")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1522,7 +1564,7 @@ NODE_DATA_MODELS: dict[str, type[_StrictData]] = {
     "CallbackButtonTriggerNode": CallbackButtonTriggerData,
     "ReplyButtonTriggerNode": ReplyButtonTriggerData,
     "CronTriggerNode": CronTriggerData,
-    "ExternalWebhookTriggerNode": ExternalWebhookTriggerData,
+    "WebhookTriggerNode": WebhookTriggerData,
     "PreCheckoutTriggerNode": PreCheckoutTriggerData,
     "SuccessfulPaymentTriggerNode": SuccessfulPaymentTriggerData,
     "PaymentStatusTriggerNode": PaymentStatusTriggerData,
@@ -1560,8 +1602,10 @@ NODE_DATA_MODELS: dict[str, type[_StrictData]] = {
     "DelayNode": DelayData,
     "SchedulerNode": SchedulerData,
     "RandomNode": RandomData,
+    "SwitchNode": SwitchData,
     "ForLoopNode": ForLoopData,
     "ForLoopContinueNode": ForLoopContinueData,
+    "FormNode": FormData,
     # data
     "VariableNode": VariableData,
     "StateNode": StateData,
@@ -1576,6 +1620,8 @@ NODE_DATA_MODELS: dict[str, type[_StrictData]] = {
     "SendToAdminNode": SendToAdminData,
     "CheckMembershipNode": CheckMembershipData,
     "DownloadNode": DownloadData,
+    "DownloadFileNode": DownloadFileData,
+    "SetLanguageNode": SetLanguageData,
     "CronNode": CronData,
     "ApproveChatJoinRequestNode": ApproveChatJoinRequestData,
     "DeclineChatJoinRequestNode": DeclineChatJoinRequestData,
@@ -1589,6 +1635,7 @@ NODE_DATA_MODELS: dict[str, type[_StrictData]] = {
     "AnswerInlineQueryNode": AnswerInlineQueryData,
     # subflow
     "SubFlowNode": SubFlowData,
+    "SubFlowExitNode": SubFlowExitData,
     # ai — agent node + providers + tools
     "AIAgentNode": AIAgentData,
     "AIOpenAIProviderNode": AIOpenAIProviderData,

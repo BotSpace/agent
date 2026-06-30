@@ -44,6 +44,18 @@ def test_data_models_accept_alias_for_reserved_word():
     assert "global_" not in dumped
 
 
+def test_new_runtime_node_models_accept_constructor_shapes():
+    NODE_DATA_MODELS["MessageTriggerNode"].model_validate(
+        {"type": "voice", "upload_file": True, "file_key": "user_audio", "ttl": 86400}
+    )
+    NODE_DATA_MODELS["WebhookTriggerNode"].model_validate(
+        {"chat_id": "{{webhook.body.user_id}}", "wait_response": True, "response_variable": "response"}
+    )
+    NODE_DATA_MODELS["DownloadFileNode"].model_validate({"key": "uploaded_file"})
+    NODE_DATA_MODELS["SetLanguageNode"].model_validate({"language": "{{callback_data}}"})
+    NODE_DATA_MODELS["SubFlowExitNode"].model_validate({"exitName": "success"})
+
+
 @pytest.mark.asyncio
 async def test_add_node_reports_unknown_field():
     tools = _tools()

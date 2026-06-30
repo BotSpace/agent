@@ -89,6 +89,30 @@ def test_branch_source_handles_are_validated():
     assert any(i.code == "unsupported_source_handle" for i in result.errors)
 
 
+def test_switch_node_dynamic_case_handles_are_valid():
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="t", type="CommandTriggerNode", data={"command": "/start"}),
+            FlowNode(
+                id="sw",
+                type="SwitchNode",
+                data={"value": "{{status}}", "cases": [{"match": "paid", "label": "Paid"}], "default": True},
+            ),
+            FlowNode(id="paid", type="SendTextMessageNode", data={"messageText": "Paid"}),
+            FlowNode(id="other", type="SendTextMessageNode", data={"messageText": "Other"}),
+        ],
+        edges=[
+            FlowEdge(id="e1", source="t", target="sw"),
+            FlowEdge(id="e2", source="sw", target="paid", sourceHandle="output-case_0"),
+            FlowEdge(id="e3", source="sw", target="other", sourceHandle="output-default"),
+        ],
+    )
+
+    result = validate(flow)
+
+    assert result.ok, result.render()
+
+
 def test_training_center_form_flow_is_valid():
     flow = FlowDocument(
         nodes=[

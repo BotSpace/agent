@@ -213,6 +213,19 @@ async def test_docs_guide_returns_flow_guide():
         result2 = (await handler(req2)).root
         assert not result2.isError
         assert len(result2.content[0].text) > 1000
+        # all — agentlar yangi task boshida bitta chaqiriqda o'qiydigan umumiy guide
+        req_all = mtypes.CallToolRequest(
+            method="tools/call",
+            params=mtypes.CallToolRequestParams(
+                name="docs_guide", arguments={"topic": "all"}
+            ),
+        )
+        result_all = (await handler(req_all)).root
+        text_all = result_all.content[0].text.lower()
+        assert not result_all.isError
+        assert "# flow" in text_all
+        assert "# node_catalog" in text_all
+        assert "# deploy" in text_all
         # noma'lum topic — xato
         req3 = mtypes.CallToolRequest(
             method="tools/call",

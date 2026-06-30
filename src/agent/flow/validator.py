@@ -878,6 +878,16 @@ def _allowed_source_handles(node) -> set[str]:
             allowed.update({"option_0", "option_1"})
     if node.type == "ForLoopContinueNode":
         allowed.update({"loop-continue", "loop-done"})
+    if node.type == "SwitchNode":
+        cases = node.data.get("cases")
+        if isinstance(cases, list):
+            for index, case in enumerate(cases):
+                case_id = ""
+                if isinstance(case, dict):
+                    case_id = str(case.get("id") or "")
+                allowed.add(f"output-{case_id or f'case_{index}'}")
+        if node.data.get("default") is True:
+            allowed.add("output-default")
     # Nodes that declare named outputs (CustomCodeNode via exit("name"),
     # SubFlowNode, plugins) expose a dynamic `output-{name}` source handle per
     # declared output in data.outputs. The engine routes these via

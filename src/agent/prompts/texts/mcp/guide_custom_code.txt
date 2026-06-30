@@ -53,8 +53,17 @@ exit('new');
 
 ## Global o'zgaruvchilar
 - `chat_id` (number) — joriy chat id
-- `message` (object) — kelgan xabar: `.text`, `.first_name`, `.contact.phone_number`,
-  `.location.latitude/.longitude`, `.photo`, `.document` ...
+- `message` (object) — kelgan xabar: `.message_id`, `.chat_id`, `.text`,
+  `.caption`, `.first_name`, `.contact.phone_number`,
+  `.location.latitude/.longitude`, media uchun `.video.file_id`,
+  `.document.file_id`, `.animation.file_id`, `.photo[-1].file_id` va h.k.
+  Har qanday media uchun universal shortcut bor:
+  `message.media.kind`, `message.media.file_id`, `message.media.message_id`,
+  `message.media.caption`, `message.media.file_name`, `message.media.mime_type`.
+  Forward/channel-forward media ham shu contract bilan ko'rinishi kerak.
+- `telegram_update` / `raw_update` — normalized Telegram Update envelope:
+  `telegram_update.message` yoki `telegram_update.callback_query`. Workaround kerak
+  bo'lsa rawga yaqin payload shu yerda.
 - `callback_query` (object) — inline tugma bosilganda: `.data` (callback_data),
   `.message_id` va `.message.message_id` (TUGMA TURGAN XABAR id — edit uchun!),
   `.message.text`, `.first_name`
@@ -72,6 +81,18 @@ exit('new');
   `private.api_token` ≡ `context.private_api_token`, node'da `{{private.api_token}}`.
   Maxfiy ma'lumotni shu yerda saqla, ochiq `vars`ga emas.
 - `command_args` (string) — `/start ABC` da "ABC" (argumentsiz "")
+
+### Media/file_id contract
+Media qabul qiladigan flow uchun eng ishonchli yo'l:
+`MessageTriggerNode(type='video'|'document'|'animation'|'photo'|..., state={key:'media_file_id', type:'file_id'})`.
+Runtime `{{media_file_id}}` ga universal Telegram `file_id` yozadi. CustomCode'da
+ham shu qiymatni to'g'ridan-to'g'ri o'qish mumkin:
+```javascript
+const fileId = vars.media_file_id || (message.media && message.media.file_id);
+const sourceMessageId = message.message_id || (message.media && message.media.message_id);
+```
+Type-specific kerak bo'lsa: `message.video.file_id`, `message.document.file_id`,
+`message.animation.file_id`, `message.photo[message.photo.length - 1].file_id`.
 
 ## Flow boshqaruv
 - `exit(name)` — kodni to'xtatib `output-<name>` edge'iga yo'naltiradi
