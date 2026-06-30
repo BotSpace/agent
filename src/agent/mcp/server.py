@@ -192,7 +192,7 @@ _GUIDE_TOPICS = {
 
 
 def _load_guide(topic: str) -> str:
-    from ..flow.catalog import render_compact_catalog
+    from ..flow.manifest_compiler.node_catalog import render_compact_catalog
     from ..prompts.loader import load_prompt
 
     if topic == "all":

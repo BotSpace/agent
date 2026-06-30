@@ -29,7 +29,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from ..flow.catalog import render_compact_catalog
+from ..flow.manifest_compiler.node_catalog import render_compact_catalog
 from .loader import load_prompt
 from ..llm.base import Message
 

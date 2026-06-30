@@ -16,7 +16,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from ...flow.catalog import get_node_spec
+from ...flow.manifest_compiler.node_catalog import get_node_spec
 from ...integrations.backend import get_backend_client
 from ..base import Tool, ToolContext, ToolResult, tool
 

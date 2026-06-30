@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from .catalog import NODE_TYPES, get_node_spec, is_trigger
+from .manifest_compiler.node_catalog import NODE_TYPES, get_node_spec, is_trigger
 from .schema import FlowDocument
 
 

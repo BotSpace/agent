@@ -11,7 +11,7 @@ Verifies:
 
 from __future__ import annotations
 
-from agent.flow.catalog import NODE_TYPES, render_compact_catalog
+from agent.flow.manifest_compiler.node_catalog import NODE_TYPES, render_compact_catalog
 from agent.llm.anthropic import AnthropicClient
 from agent.llm.base import Message, TextPart
 from agent.llm.openai import OpenAIClient
