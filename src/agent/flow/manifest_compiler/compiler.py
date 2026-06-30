@@ -167,19 +167,49 @@ def compile_node_model(manifest: NodeManifest) -> type[BaseModel]:
         if not data_key or data_key in seen:
             continue
         seen.add(data_key)
-        name, alias = _safe_name(data_key)
-        kw: dict[str, Any] = {}
-        if alias:
-            kw["alias"] = alias
-        if desc:
-            kw["description"] = desc
-        if required:
-            ann = annotation
-        else:
-            ann = annotation | None
-            kw["default"] = default
-        fields[name] = (ann, Field(**kw))
+        _add_field(fields, data_key, annotation, desc, required, default)
+
+    # `defaults` ichidagi, lekin biror content-field qoplamagan kalitlar:
+    # engine-kontrakt default'lari (tool/toolName/maxAmount/embeddingProvider/...)
+    # ko'pincha shu yerda yashaydi (content'da emas). Ularni ixtiyoriy field
+    # sifatida tipi default qiymatdan chiqarib emit qilamiz — agent shu kalitlarni
+    # to'g'ri default bilan yozadi, engine esa baribir o'zi default beradi.
+    for data_key, value in defaults.items():
+        if data_key in seen:
+            continue
+        seen.add(data_key)
+        _add_field(fields, data_key, _infer_type(value), None, False, value)
 
     return create_model(  # type: ignore[call-overload]
         f"{node_type}Data", __base__=_StrictData, **fields
     )
+
+
+def _infer_type(value: Any):
+    """Default qiymatdan Python tip annotatsiyasi."""
+    if isinstance(value, bool):
+        return bool
+    if isinstance(value, (int, float)):
+        return int | float
+    if isinstance(value, str):
+        return str
+    if isinstance(value, list):
+        return list[Any]
+    if isinstance(value, dict):
+        return dict[str, Any]
+    return Any
+
+
+def _add_field(fields: dict, data_key: str, annotation: Any, desc, required, default) -> None:
+    name, alias = _safe_name(data_key)
+    kw: dict[str, Any] = {}
+    if alias:
+        kw["alias"] = alias
+    if desc:
+        kw["description"] = desc
+    if required:
+        ann = annotation
+    else:
+        ann = annotation | None
+        kw["default"] = default
+    fields[name] = (ann, Field(**kw))
