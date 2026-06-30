@@ -1,6 +1,6 @@
 import pytest
 
-from agent.flow.catalog import NODE_TYPES
+from agent.flow.manifest_compiler.node_catalog import NODE_TYPES
 from agent.integrations.backend import BackendClient
 from agent.tools.base import ToolContext
 from agent.tools.flow import build_flow_tools

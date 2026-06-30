@@ -25,16 +25,15 @@ def test_normalize_legacy_collection_object_to_name():
         ],
         "edges": [{"id": "e", "source": "t", "target": "list"}],
     }
-    # Before: validator flags the missing required collection_name.
+    # Manifest-driven contract: the `collection` object format is now CANONICAL
+    # (engine load_collection_list.go reads collection.name OR legacy
+    # collection_name). So it validates cleanly and needs NO normalisation.
     before = validate(FlowDocument.model_validate(raw))
-    assert any(i.code == "missing_required_field" for i in before.errors)
+    assert not any(i.code == "missing_required_field" for i in before.errors), before.render()
 
     changed = normalize_legacy_flow(raw)
-    assert changed == 1
-    assert raw["nodes"][1]["data"]["collection_name"] == "products"
-
-    after = validate(FlowDocument.model_validate(raw))
-    assert not any(i.code == "missing_required_field" for i in after.errors), after.render()
+    assert changed == 0  # already engine-compatible — no-op
+    assert raw["nodes"][1]["data"]["collection"] == {"name": "products"}
 
 
 def test_normalize_legacy_string_collection():

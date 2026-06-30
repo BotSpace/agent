@@ -144,7 +144,7 @@ def render_node_schema(node_type: str) -> dict[str, Any]:
 
 def render_summary_table() -> str:
     """BARCHA node'larning ixcham jadvali (flow-builder system prompt uchun)."""
-    from ...flow.catalog import NODE_TYPES
+    from ...flow.manifest_compiler.node_catalog import NODE_TYPES
 
     rows_by_cat: dict[str, list[str]] = {}
     for type_name, spec in NODE_TYPES.items():
