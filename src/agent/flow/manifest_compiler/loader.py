@@ -1,46 +1,66 @@
-"""Vendored node manifestni yuklash.
+"""Node manifestni YAGONA MANBADAN — backenddan — yuklaydi.
 
-`load_node_manifests()` → `{node_type: manifest_dict}`. Manifest dict frontend
-`NodeManifest` shaklida (type, category, content[], defaults, handles, ...).
-Modul loader patterniga o'xshash, lekin manba statik vendored fayl.
+Agent endi manifest nusxasini SAQLAMAYDI (yana bir "manba" chalg'itmasligi uchun):
+- Monorepo (lokal/test): backend kanonik faylini to'g'ridan-to'g'ri o'qiydi
+  (`../backend/core/apps/api/data/builtin_node_manifests.json`) — network'siz.
+- Prod konteyner: backend `GET /api/v1/shared/manifest/builtin-nodes/` dan
+  sinxron oladi (bir martalik, lru_cache).
+
+`load_node_manifests()` → `{node_type: manifest_dict}`. Manifest dict backend
+`NodeManifest` shaklida (type, category, content[], defaults, aiDoc, ...).
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import urllib.request
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-# Manifest dict — frontend NodeManifest (plain dict; tip-modeli shart emas).
+# Manifest dict — backend NodeManifest (plain dict).
 NodeManifest = dict[str, Any]
 
-_REGISTRY_PATH = Path(__file__).resolve().parent / "runtime-node-registry.json"
+_WORKSPACE = Path(__file__).resolve().parents[5]
+_BACKEND_SIBLING = (
+    _WORKSPACE / "backend" / "core" / "apps" / "api" / "data" / "builtin_node_manifests.json"
+)
+_BACKEND_PATH = "/api/v1/shared/manifest/builtin-nodes/"
 
 
-def _read_bytes() -> bytes:
-    return _REGISTRY_PATH.read_bytes()
+def _fetch_from_backend() -> list:
+    from ...config import get_settings
+
+    url = get_settings().backend_base_url.rstrip("/") + _BACKEND_PATH
+    with urllib.request.urlopen(url, timeout=15) as resp:  # noqa: S310 (trusted internal URL)
+        payload = json.loads(resp.read())
+    manifests = payload.get("manifests") if isinstance(payload, dict) else payload
+    if not isinstance(manifests, list):
+        raise RuntimeError(f"backend manifest javobi noto'g'ri: {url}")
+    return manifests
+
+
+@lru_cache(maxsize=1)
+def _raw_entries() -> list:
+    """Built-in manifest yozuvlari (monorepo fayl yoki backend fetch)."""
+    if _BACKEND_SIBLING.exists():
+        return json.loads(_BACKEND_SIBLING.read_bytes())
+    return _fetch_from_backend()
 
 
 @lru_cache(maxsize=1)
 def manifest_checksum() -> str:
-    """Vendored manifestning sha256'i (sync drift testi uchun)."""
-    return hashlib.sha256(_read_bytes()).hexdigest()
+    """Yuklangan manifestning sha256'i (sinxronlik/diagnostika uchun)."""
+    return hashlib.sha256(json.dumps(_raw_entries(), sort_keys=True).encode()).hexdigest()
 
 
 @lru_cache(maxsize=1)
 def load_node_manifests() -> dict[str, NodeManifest]:
-    """Node type → manifest dict. `status == "runtime"` yozuvlar indekslanadi.
-
-    Bir xil type ikki marta uchrasa — birinchisi (variant'lar emas, asosiy)
-    ustun; lekin registry'da type'lar noyob, shuning uchun amalda to'qnashuv yo'q.
-    """
-    entries = json.loads(_read_bytes())
+    """Node type → manifest dict. Type bo'yicha noyob (birinchisi ustun)."""
     out: dict[str, NodeManifest] = {}
-    for entry in entries:
+    for entry in _raw_entries():
         node_type = entry.get("type")
-        if not node_type or node_type in out:
-            continue
-        out[node_type] = entry
+        if node_type and node_type not in out:
+            out[node_type] = entry
     return out
