@@ -376,7 +376,10 @@ async def flow_ask_contact(input: AskContactInput, ctx: ToolContext) -> ToolResu
         },
     )
     _connect(flow, source=input.after, target=ask_id)
-    _connect(flow, source=ask_id, target=capture_id)
+    # Kontakt tugmasi (request_contact) O'Z button-edge'i orqali capture'ga ulanadi —
+    # engine kontaktni shu edge bo'yicha yo'naltiradi (base/source-handler emas).
+    _connect(flow, source=ask_id, target=capture_id,
+             source_handle=f"target-handler-{ask_id}-{input.button_text}")
     return ToolResult.ok(
         f"Contact question `{input.state_key}` added.",
         state_updates=_set_working_flow(flow),
@@ -413,7 +416,9 @@ async def flow_ask_location(input: AskLocationInput, ctx: ToolContext) -> ToolRe
     _node(flow, lat_id, "MessageTriggerNode", {"type": "location", "filter": "any", "global": False, "state": {"key": input.latitude_key, "type": "latitude"}})
     _node(flow, lon_id, "StateNode", {"key": input.longitude_key, "type": "longitude"})
     _connect(flow, source=input.after, target=ask_id)
-    _connect(flow, source=ask_id, target=lat_id)
+    # Lokatsiya tugmasi (request_location) O'Z button-edge'i orqali capture'ga ulanadi.
+    _connect(flow, source=ask_id, target=lat_id,
+             source_handle=f"target-handler-{ask_id}-{input.button_text}")
     _connect(flow, source=lat_id, target=lon_id)
     return ToolResult.ok(
         "Location question added.",
