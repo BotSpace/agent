@@ -33,10 +33,34 @@ __all__ = [
     "LocalizedText",
 ]
 
-# Cross-field post-processorlar: kompilyatsiya qilingan modelga validator/coercion
-# ulaydi. node_type → (model_cls) -> model_cls. Manifest ifoda eta olmaydigan
-# qoidalar shu yerga (hozircha hech biri — guard'lar engine'da).
-_ADDENDA: dict[str, Callable[[type[BaseModel]], type[BaseModel]]] = {}
+def _check_membership_addendum(model: type[BaseModel]) -> type[BaseModel]:
+    """CheckMembership: channels/channelsCollection/chatId — kamida bittasi shart.
+
+    Engine, hech qaysi manba bo'lmasa, HAMMANI a'zo deb o'tkazib yuboradi (gate
+    ochiq qoladi). Manifest "kamida bittasi" cross-field qoidasini ifoda eta
+    olmaydi — shu addendum bilan ushlaymiz.
+    """
+    from pydantic import model_validator
+
+    class CheckMembershipNodeData(model):  # type: ignore[valid-type,misc]
+        @model_validator(mode="after")
+        def _at_least_one_channel(self):
+            dumped = self.model_dump(by_alias=True, exclude_none=True)
+            if not (dumped.get("channels") or dumped.get("channelsCollection") or dumped.get("chatId")):
+                raise ValueError(
+                    "kamida bitta kanal manbasi kerak: channels / channelsCollection / chatId"
+                )
+            return self
+
+    return CheckMembershipNodeData
+
+
+# Cross-field post-processorlar: kompilyatsiya qilingan modelga validator ulaydi.
+# node_type → (model_cls) -> model_cls. Manifest ifoda eta olmaydigan qoidalar
+# shu yerga (xavfsizlik guard'lari ENGINE'da — bu yerda emas).
+_ADDENDA: dict[str, Callable[[type[BaseModel]], type[BaseModel]]] = {
+    "CheckMembershipNode": _check_membership_addendum,
+}
 
 
 class _CompiledRegistry(Mapping):
