@@ -248,17 +248,9 @@ def _make_popular_node_tool(
     )
 
 
-# Node types whose keyboard buttons route via button-edges
-# (`target-handler-{nodeId}-{text}`). Mirrors the engine controller pause list
-# and the validator's `_BUTTON_EDGE_NODE_TYPES` — keep in sync.
-_BUTTON_EDGE_NODE_TYPES = frozenset(
-    {
-        "SendTextMessageNode",
-        "EditOrSendMessageNode",
-        "EditMessageNode",
-        "MessageNode",
-    }
-)
+# Button-edge node turlari MANIFESTDAN — `button_edge_types()` (manifest
+# `buttonEdge` + legacy MessageNode). Qotirilgan/dublikat ro'yxat o'chirildi.
+from ...flow.manifest_compiler.node_catalog import acc_port_accepts, button_edge_types
 
 
 class ConnectButtonInput(BaseModel):
@@ -274,10 +266,10 @@ async def flow_connect_button(input: ConnectButtonInput, ctx: ToolContext) -> To
     source = flow.get_node(input.source)
     if source is None:
         return _node_missing(input.source, flow, role="Source node")
-    if source.type not in _BUTTON_EDGE_NODE_TYPES:
+    if source.type not in button_edge_types():
         return ToolResult.error(
             f"`{input.source}` is `{source.type}`; button edges start from a "
-            f"keyboard-bearing node ({', '.join(sorted(_BUTTON_EDGE_NODE_TYPES))}). "
+            f"keyboard-bearing node ({', '.join(sorted(button_edge_types()))}). "
             "Alternative: use flow.connect(source, target, "
             "source_handle='target-handler-{nodeId}-{buttonText}') directly."
         )
@@ -522,18 +514,8 @@ def _slug(text: str) -> str:
 # Accessory edge helper: connect provider/tool sub-nodes to AIAgentNode ports.
 # ─────────────────────────────────────────────────────────────────────────────
 
-_ACC_PORT_ACCEPTS: dict[str, frozenset[str]] = {
-    "acc:ai_model": frozenset({
-        "AIOpenAIProviderNode", "AIOllamaProviderNode",
-        "AIGeminiProviderNode", "AIAnthropicProviderNode",
-    }),
-    "acc:ai_tool": frozenset({
-        "AIHTTPToolNode", "AICollectionToolNode", "AICustomCodeToolNode",
-        "AIKnowledgeToolNode", "AIDateTimeToolNode",
-        "AIGoogleSheetsToolNode", "AIPaymentLinkToolNode",
-        "AIPaymentStatusToolNode",
-    }),
-}
+# Accessory port qabul-ro'yxati MANIFESTDAN — `acc_port_accepts()`
+# (AIAgentNode.accessoryPorts.accepts). Qotirilgan/dublikat o'chirildi.
 
 
 class ConnectAccessoryInput(BaseModel):
@@ -555,10 +537,10 @@ async def flow_connect_accessory(input: ConnectAccessoryInput, ctx: ToolContext)
         return _node_missing(input.agent_id, flow, role="AIAgentNode")
     if agent_node.type != "AIAgentNode":
         return ToolResult.error(f"`{input.agent_id}` is `{agent_node.type}`, expected AIAgentNode.")
-    accepted = _ACC_PORT_ACCEPTS.get(input.port)
+    accepted = acc_port_accepts().get(input.port)
     if accepted is None:
         return ToolResult.error(
-            f"Unknown accessory port `{input.port}`. Valid ports: {sorted(_ACC_PORT_ACCEPTS)}."
+            f"Unknown accessory port `{input.port}`. Valid ports: {sorted(acc_port_accepts())}."
         )
     if acc_node.type not in accepted:
         return ToolResult.error(
