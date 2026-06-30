@@ -196,21 +196,29 @@ def _load_guide(topic: str) -> str:
     from ..prompts.loader import load_prompt
 
     if topic == "all":
-        return "\n\n---\n\n".join(
-            f"# {name}\n\n{_load_guide(name)}"
-            for name in (
-                "flow",
-                "node_catalog",
-                "flow_examples",
-                "simulate",
-                "custom_code",
-                "modules",
-                "i18n",
-                "cms",
-                "crm",
-                "deploy",
-            )
+        # MCP klient natija limiti (~25k token) uchun IXCHAM "start here":
+        # kritik qoidalar digest'i + node katalog + kichik guide'lar inline.
+        # 3 ta KATTA deep-dive (flow 18k, custom_code 4k, flow_examples 4k token)
+        # shu yerga sig'maydi → ko'rsatkich orqali alohida docs_guide bilan o'qiladi.
+        parts = [
+            "# Botmother bot qurish — START HERE (ixcham).\n"
+            "Asosiy qoidalar + node katalog + kichik bo'limlar shu yerda. KATTA "
+            "bo'limlar (flow/custom_code/flow_examples) limitga sig'maydi — pastdagi "
+            "ko'rsatkich bo'yicha alohida `docs_guide(topic=...)` bilan o'qing.",
+            load_prompt("mcp/build_rules_digest.txt").strip(),
+            "# node_catalog\n\n" + _load_guide("node_catalog"),
+        ]
+        for name in ("simulate", "modules", "i18n", "cms", "crm", "deploy"):
+            parts.append(f"# {name}\n\n{_load_guide(name)}")
+        parts.append(
+            "# CHUQURROQ — alohida o'qing (katta, sig'maydi):\n"
+            "- `docs_guide(topic='flow')` — to'liq qurish qoidalari: handle'lar, "
+            "trigger ustunligi, AI nodes, keyboard/button-edge, state, patternlar.\n"
+            "- `docs_guide(topic='custom_code')` — CustomCodeNode JS API "
+            "(send_*/db_*/http_*/exit/format), media, pagination namunasi.\n"
+            "- `docs_guide(topic='flow_examples')` — to'liq bot misollari (flow JSON)."
         )
+        return "\n\n---\n\n".join(parts)
     if topic == "node_catalog":
         return render_compact_catalog() + _MODULE_CATALOG_NOTE + _I18N_CATALOG_NOTE
     files = {
@@ -416,12 +424,13 @@ def _session_tools() -> list[mtypes.Tool]:
         mtypes.Tool(
             name=_DOCS_GUIDE,
             description=(
-                "Botmother bot qurish qo'llanmalarini qaytaradi — agent'ning "
-                "ichki agentlari ishlatadigan to'liq yo'riqnomalar. Notrivial bot "
-                "qurishdan OLDIN majburiy o'qing: topic='all'. Alohida bo'lim kerak bo'lsa: "
-                "topic='flow' (qoidalar/handles/AI nodes), "
-                "topic='node_catalog' (barcha node turlari), topic='flow_examples' "
-                "(to'liq misollar). Boshqa topic'lar: cms, crm, deploy."
+                "Botmother bot qurish qo'llanmalarini qaytaradi. Notrivial bot "
+                "qurishdan OLDIN topic='all' o'qing — bu IXCHAM start: asosiy "
+                "qoidalar + node katalog + kichik bo'limlar. KEYIN, qurayotgan "
+                "narsangizga qarab KATTA deep-dive'larni alohida o'qing: "
+                "topic='flow' (to'liq qurish qoidalari/handles/AI nodes/patternlar), "
+                "topic='custom_code' (CustomCode JS API), topic='flow_examples' "
+                "(to'liq misollar). Boshqa: node_catalog, simulate, cms, crm, deploy, modules, i18n."
             ),
             inputSchema={
                 "type": "object",

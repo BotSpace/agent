@@ -11,11 +11,13 @@ broadcasts. You (the MCP client model) act as the bot builder.
 1. `project_list` / `project_create` — find or create the project.
 2. `session_use_project(project_id)` — REQUIRED before any `flow_*` tool.
    Loads the saved flow + CMS collections into the server-side session.
-3. BEFORE building anything non-trivial, you MUST read
-   `docs_guide(topic="all")` once for the current task. It includes flow rules,
-   node catalog, examples, simulate, custom code, modules, i18n, CMS, CRM and
-   deploy docs. Use narrower `docs_guide(topic="...")` calls only when you need
-   to re-read one section.
+3. BEFORE building anything non-trivial, read `docs_guide(topic="all")` once —
+   a COMPACT start (core rules + node catalog + small sections: simulate, modules,
+   i18n, CMS, CRM, deploy). The LARGE deep-dives do NOT fit in "all"; read them
+   separately as needed for what you're building:
+   `docs_guide(topic="flow")` (full build rules, handles, AI nodes, patterns),
+   `docs_guide(topic="custom_code")` (CustomCode JS API),
+   `docs_guide(topic="flow_examples")` (full bot examples).
 3b. PLAN BEFORE BUILDING (mandatory for any new bot or non-trivial edit) —
    turn the user's request into a short spec BEFORE the first `flow_add_*` call:
    (a) TRIGGERS — which /commands, buttons or messages start a flow?
