@@ -16,29 +16,7 @@ from pydantic import BaseModel, Field
 from ...flow import FlowDocument, FlowEdge, FlowNode, Position, auto_layout
 from ..base import Tool, ToolContext, ToolResult
 from .node_data_models import (
-    AIAgentData,
-    AIAnthropicProviderData,
-    AICollectionToolData,
-    AICustomCodeToolData,
-    AIDateTimeToolData,
-    AIGeminiProviderData,
-    AIGoogleSheetsToolData,
-    AIHTTPToolData,
-    AIKnowledgeToolData,
-    AIPaymentLinkToolData,
-    AIPaymentStatusToolData,
-    AIOllamaProviderData,
-    AIOpenAIProviderData,
-    CallbackQueryTriggerData,
-    CollectionData,
-    CommandTriggerData,
-    CustomCodeData,
-    EditOrSendMessageData,
-    HTTPRequestData,
-    IfConditionData,
-    MessageTriggerData,
-    SendTextMessageData,
-    StateData,
+    get_data_model,
 )
 
 
@@ -216,10 +194,15 @@ def _make_popular_node_tool(
     *,
     name: str,
     type_name: str,
-    data_model: type[BaseModel],
     description: str,
 ) -> Tool:
-    """Build a flow.add_<X> tool with strict typed data validation."""
+    """Build a flow.add_<X> tool with strict typed data validation.
+
+    Data model manifestdan kompilyatsiya qilinadi (node_data_models registry).
+    """
+    data_model = get_data_model(type_name)
+    if data_model is None:
+        raise ValueError(f"_make_popular_node_tool: {type_name} uchun manifest model yo'q")
 
     class TypedNodeInput(BaseModel):
         id: str = Field(description="Stable kebab-case node id.")
@@ -608,7 +591,6 @@ def build_flow_action_tools() -> list[Tool]:
         _make_popular_node_tool(
             name="flow.add_ai_agent",
             type_name="AIAgentNode",
-            data_model=AIAgentData,
             description=(
                 "Add an AIAgentNode (LLM agent). After adding, attach a provider with "
                 "flow.connect_accessory(port='acc:ai_model') and optionally tools on "
@@ -624,7 +606,6 @@ def build_flow_action_tools() -> list[Tool]:
         _make_popular_node_tool(
             name="flow.add_ai_openai_provider",
             type_name="AIOpenAIProviderNode",
-            data_model=AIOpenAIProviderData,
             description=(
                 "Add an OpenAI provider sub-node. Then connect: "
                 "flow.connect_accessory(accessory_id=<this>, agent_id=<agent>, port='acc:ai_model'). "
@@ -638,7 +619,6 @@ def build_flow_action_tools() -> list[Tool]:
         _make_popular_node_tool(
             name="flow.add_ai_ollama_provider",
             type_name="AIOllamaProviderNode",
-            data_model=AIOllamaProviderData,
             description=(
                 "Add an Ollama provider sub-node. THIS IS THE DEFAULT AI provider — use it "
                 "whenever a bot needs an LLM unless the user explicitly named another. "
@@ -654,7 +634,6 @@ def build_flow_action_tools() -> list[Tool]:
         _make_popular_node_tool(
             name="flow.add_ai_gemini_provider",
             type_name="AIGeminiProviderNode",
-            data_model=AIGeminiProviderData,
             description=(
                 "Add a Google Gemini provider sub-node. Connect to acc:ai_model. "
                 "Default model: gemini-1.5-flash. "
@@ -667,7 +646,6 @@ def build_flow_action_tools() -> list[Tool]:
         _make_popular_node_tool(
             name="flow.add_ai_anthropic_provider",
             type_name="AIAnthropicProviderNode",
-            data_model=AIAnthropicProviderData,
             description=(
                 "Add an Anthropic (Claude) provider sub-node. Connect to acc:ai_model. "
                 "Default model: claude-3-5-haiku-latest."
@@ -676,7 +654,6 @@ def build_flow_action_tools() -> list[Tool]:
         _make_popular_node_tool(
             name="flow.add_ai_http_tool",
             type_name="AIHTTPToolNode",
-            data_model=AIHTTPToolData,
             description=(
                 "Add an HTTP request tool sub-node for an AIAgentNode (tool='http_request'). "
                 "Use for calling an external REST API. Connect to acc:ai_tool. The LLM calls "
@@ -689,7 +666,6 @@ def build_flow_action_tools() -> list[Tool]:
         _make_popular_node_tool(
             name="flow.add_ai_collection_tool",
             type_name="AICollectionToolNode",
-            data_model=AICollectionToolData,
             description=(
                 "Add a Collection tool sub-node for an AIAgentNode (tool='collection'). "
                 "TEMPLATE (hybrid) model: ONE `operation` per node "
@@ -725,7 +701,6 @@ def build_flow_action_tools() -> list[Tool]:
         _make_popular_node_tool(
             name="flow.add_ai_custom_code_tool",
             type_name="AICustomCodeToolNode",
-            data_model=AICustomCodeToolData,
             description=(
                 "Add a custom JavaScript tool sub-node for an AIAgentNode (tool='custom_code'). "
                 "Use only for complex logic/computation or multi-step actions the "
@@ -738,7 +713,6 @@ def build_flow_action_tools() -> list[Tool]:
         _make_popular_node_tool(
             name="flow.add_ai_knowledge_tool",
             type_name="AIKnowledgeToolNode",
-            data_model=AIKnowledgeToolData,
             description=(
                 "Add a RAG knowledge retrieval tool sub-node for an AIAgentNode "
                 "(tool='knowledge'). Use ONLY for semantic (RAG) search over documents. "
@@ -758,7 +732,6 @@ def build_flow_action_tools() -> list[Tool]:
         _make_popular_node_tool(
             name="flow.add_ai_datetime_tool",
             type_name="AIDateTimeToolNode",
-            data_model=AIDateTimeToolData,
             description=(
                 "Add a date/time tool sub-node for an AIAgentNode (tool='datetime'). "
                 "NO credential. Gives the agent a real clock + date math so it never "
@@ -772,7 +745,6 @@ def build_flow_action_tools() -> list[Tool]:
         _make_popular_node_tool(
             name="flow.add_ai_google_sheets_tool",
             type_name="AIGoogleSheetsToolNode",
-            data_model=AIGoogleSheetsToolData,
             description=(
                 "Add a Google Sheets tool sub-node for an AIAgentNode (tool='google_sheets'). "
                 "Lets the agent VIEW (read, list_tabs) and MANAGE (append, update, clear) a "
@@ -792,7 +764,6 @@ def build_flow_action_tools() -> list[Tool]:
         _make_popular_node_tool(
             name="flow.add_ai_payment_link_tool",
             type_name="AIPaymentLinkToolNode",
-            data_model=AIPaymentLinkToolData,
             description=(
                 "Add a dynamic payment-link tool sub-node for an AIAgentNode "
                 "(tool='payment_link'). Lets the agent create a payment link on the fly "
@@ -814,7 +785,6 @@ def build_flow_action_tools() -> list[Tool]:
         _make_popular_node_tool(
             name="flow.add_ai_payment_status_tool",
             type_name="AIPaymentStatusToolNode",
-            data_model=AIPaymentStatusToolData,
             description=(
                 "Add a payment-status tool sub-node for an AIAgentNode "
                 "(tool='payment_status'). Lets the agent CHECK whether a payment order "
@@ -833,13 +803,11 @@ def build_flow_action_tools() -> list[Tool]:
         _make_popular_node_tool(
             name="flow.add_command_trigger",
             type_name="CommandTriggerNode",
-            data_model=CommandTriggerData,
             description="Add a command trigger (/start etc.). state={key,type} captures args.",
         ),
         _make_popular_node_tool(
             name="flow.add_edit_or_send",
             type_name="EditOrSendMessageNode",
-            data_model=EditOrSendMessageData,
             description=(
                 "PREFERRED message node (default for ALL bot messages): edits the previous "
                 "bot message when possible, sends a new one otherwise — menus/pages don't "
@@ -855,7 +823,6 @@ def build_flow_action_tools() -> list[Tool]:
         _make_popular_node_tool(
             name="flow.add_send_text_message",
             type_name="SendTextMessageNode",
-            data_model=SendTextMessageData,
             description=(
                 "Send a NEW text message. Use ONLY when a reply keyboard is needed "
                 "(request_contact/request_location) or a separate message is explicitly "
@@ -868,43 +835,36 @@ def build_flow_action_tools() -> list[Tool]:
         _make_popular_node_tool(
             name="flow.add_message_trigger",
             type_name="MessageTriggerNode",
-            data_model=MessageTriggerData,
             description="Wait for user message of given type. state={key,type} auto-saves. global=false → fires only after Send.",
         ),
         _make_popular_node_tool(
             name="flow.add_callback_query_trigger",
             type_name="CallbackQueryTriggerNode",
-            data_model=CallbackQueryTriggerData,
             description="Inline-button callback. filter='starts_with'+context={value:'accept:'} matches prefix.",
         ),
         _make_popular_node_tool(
             name="flow.add_if_condition",
             type_name="IfConditionNode",
-            data_model=IfConditionData,
             description="Branch node. Handles: true/false (or branch_0/1). Use flow.connect_branch.",
         ),
         _make_popular_node_tool(
             name="flow.add_collection",
             type_name="CollectionNode",
-            data_model=CollectionData,
             description="Insert into MongoDB from saved vars. fieldMappings={col:var_key} (var_key — ochiq o'zgaruvchi nomi, prefiksiz). {{inserted_id}} after.",
         ),
         _make_popular_node_tool(
             name="flow.add_state",
             type_name="StateNode",
-            data_model=StateData,
             description="Save to public state (public_<key>, read as {{key}}). type='Custom'+customType='{{expr}}' stores any expression.",
         ),
         _make_popular_node_tool(
             name="flow.add_custom_code",
             type_name="CustomCodeNode",
-            data_model=CustomCodeData,
             description="CustomCodeNode (JS, Goja VM). One node per logical step. outputs=[{name:'ok'}]+exit('ok') for branches. JS API in prompt Pattern 7.",
         ),
         _make_popular_node_tool(
             name="flow.add_http_request",
             type_name="HTTPRequestNode",
-            data_model=HTTPRequestData,
             description="HTTP call. url/method required. saveAs writes JSON response to public state (read as {{saveAs}}).",
         ),
     ]
