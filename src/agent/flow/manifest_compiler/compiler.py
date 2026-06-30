@@ -33,9 +33,20 @@ class _StrictData(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
+# Bu widget turlari DOIM yaroqli qiymatga ega (select→biror option, switch→bool,
+# read-only→avto-to'ldiriladi) — shuning uchun har doim ixtiyoriy (required emas).
+_ALWAYS_OPTIONAL_TYPES = {"select", "switch", "checkbox", "boolean", "read-only"}
+
+
 def _is_optional(f: dict) -> bool:
-    """Field ixtiyoriymi: optional bayrog'i, shartli ko'rinish, yoki default-yashirin."""
-    return bool(f.get("optional")) or bool(f.get("visibleWhen")) or f.get("defaultVisible") is False
+    """Field ixtiyoriymi: optional bayrog'i, shartli ko'rinish, default-yashirin,
+    yoki doim-yaroqli widget turi (select/switch/checkbox/read-only)."""
+    return (
+        bool(f.get("optional"))
+        or bool(f.get("visibleWhen"))
+        or f.get("defaultVisible") is False
+        or f.get("type") in _ALWAYS_OPTIONAL_TYPES
+    )
 
 
 def _scalar_type(kind: str, options: list[str] | None):
