@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""Frontend node manifestini agentga vendoring qiladi (sync).
+"""Backend kanonik node manifestini agentga vendoring qiladi (offline fallback).
 
-Yagona manba — frontend `runtime-node-registry.json`. Agent uni o'z image'iga
-nusxalab oladi (offline, deterministik). Bu skript nusxani yangilaydi yoki
-`--check` rejimida drift borligini tekshiradi (CI uchun).
+Yagona manba — backend `data/builtin_node_manifests.json` (AI docs bilan).
+Jonli rejimda agent backend `/project/{id}/node-manifests/` (built-in + modullar)
+dan oladi; bu vendored nusxa esa offline/boot fallback. Skript nusxani yangilaydi
+yoki `--check` rejimida drift borligini tekshiradi (CI uchun).
 
 Foydalanish:
     python scripts/sync_manifest.py            # nusxani yangilaydi
     python scripts/sync_manifest.py --check     # drift bo'lsa exit 1
 
-Frontend repo yo'li: --frontend bayrog'i yoki MANIFEST_FRONTEND_DIR env, aks holda
-monorepo sibling (`../bot-constructor-panel`).
+Backend repo yo'li: --backend bayrog'i yoki MANIFEST_BACKEND_DIR env, aks holda
+monorepo sibling (`../backend`).
 """
 
 from __future__ import annotations
@@ -26,13 +27,11 @@ _VENDORED = (
     _AGENT_ROOT / "src" / "agent" / "flow" / "manifest_compiler"
     / "runtime-node-registry.json"
 )
-_REL_SOURCE = Path("src/features/bot-constructor/manifest/runtime-node-registry.json")
+_REL_SOURCE = Path("core/apps/api/data/builtin_node_manifests.json")
 
 
-def _frontend_source(arg: str | None) -> Path:
-    base = arg or os.environ.get("MANIFEST_FRONTEND_DIR") or str(
-        _AGENT_ROOT.parent / "bot-constructor-panel"
-    )
+def _backend_source(arg: str | None) -> Path:
+    base = arg or os.environ.get("MANIFEST_BACKEND_DIR") or str(_AGENT_ROOT.parent / "backend")
     return Path(base) / _REL_SOURCE
 
 
@@ -42,13 +41,13 @@ def _sha(data: bytes) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--frontend", default=None, help="frontend repo ildizi")
+    ap.add_argument("--backend", default=None, help="backend repo ildizi")
     ap.add_argument("--check", action="store_true", help="drift bo'lsa exit 1 (yozmaydi)")
     args = ap.parse_args()
 
-    source = _frontend_source(args.frontend)
+    source = _backend_source(args.backend)
     if not source.exists():
-        print(f"❌ Frontend manifest topilmadi: {source}", file=sys.stderr)
+        print(f"❌ Backend manifest topilmadi: {source}", file=sys.stderr)
         return 2
 
     src_bytes = source.read_bytes()

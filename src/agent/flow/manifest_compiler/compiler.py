@@ -68,7 +68,9 @@ def _scalar_type(kind: str, options: list[str] | None):
 
 
 def _describe(f: dict) -> str | None:
-    return f.get("label") or f.get("placeholder") or f.get("helpText")
+    """LLM-facing field doc. Manifestdagi `description` (AI uchun, boy) afzal;
+    aks holda UI matni (label/placeholder/helpText) fallback."""
+    return f.get("description") or f.get("label") or f.get("placeholder") or f.get("helpText")
 
 
 def _emit_field(f: dict, defaults: dict) -> list[_Emit]:
