@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from .manifest_compiler.node_catalog import NODE_TYPES, get_node_spec, is_trigger
+from .manifest_compiler.node_catalog import (NODE_TYPES, acc_port_accepts, button_edge_types, get_node_spec, is_trigger, state_saving_types)
 from .schema import FlowDocument
 
 
@@ -54,20 +54,8 @@ _ACC_PREFIX = "acc:"
 # `data.type` (the value kind: text / contact_phone_number / *_file_id / user_id /
 # Custom / …). Triggers that auto-save via an optional `data.state` object are
 # intentionally NOT here — there `type` lives inside `data.state`, not `data`.
-_STATE_SAVING_NODE_TYPES = frozenset({"StateNode"})
-
-# Mapping: accessory targetHandle → accepted source node types (contract §1.1)
-_ACC_PORT_ACCEPTS: dict[str, frozenset[str]] = {
-    "acc:ai_model": frozenset({
-        "AIOpenAIProviderNode", "AIOllamaProviderNode",
-        "AIGeminiProviderNode", "AIAnthropicProviderNode",
-    }),
-    "acc:ai_tool": frozenset({
-        "AIHTTPToolNode", "AICollectionToolNode", "AICustomCodeToolNode",
-        "AIKnowledgeToolNode", "AIDateTimeToolNode",
-        "AIGoogleSheetsToolNode", "AIPaymentLinkToolNode",
-    }),
-}
+# State-saqlovchi node'lar (data.type majburiy) va accessory port qabul-ro'yxati
+# endi MANIFESTDAN derive qilinadi (node_catalog helper'lari) — qotirilgan emas.
 
 
 def _is_accessory_node(node_type: str) -> bool:
@@ -202,7 +190,7 @@ def validate(
         # cannot resolve what to store and saves nothing → broken form. The
         # generic check above only catches a fully-absent key; here we also
         # reject an empty/blank `type` and emit an actionable message.
-        if node.type in _STATE_SAVING_NODE_TYPES:
+        if node.type in state_saving_types():
             state_type = node.data.get("type")
             if not (isinstance(state_type, str) and state_type.strip()):
                 issues.append(
@@ -226,7 +214,7 @@ def validate(
         # (still accepted; required for AIAnthropicProviderNode, which has no
         # credential type). Without either, the engine's LLM call yields empty
         # output → the bot sends nothing → dead bot. Local Ollama is exempt.
-        if node.type in _ACC_PORT_ACCEPTS["acc:ai_model"]:
+        if node.type in acc_port_accepts()["acc:ai_model"]:
             cred_id = node.data.get("credential_id")
             has_credential = isinstance(cred_id, (int, str)) and str(cred_id).strip() not in (
                 "", "0", "none", "null", "None",
@@ -334,7 +322,7 @@ def validate(
             # Validate that the accessory edge connects accepted node types.
             source_node = nodes_by_id.get(edge.source)
             target_node = nodes_by_id.get(edge.target)
-            accepted = _ACC_PORT_ACCEPTS.get(target_handle)
+            accepted = acc_port_accepts().get(target_handle)
             if accepted is not None and source_node is not None:
                 if source_node.type not in accepted:
                     issues.append(
@@ -909,20 +897,9 @@ def _missing_button_handles(node, present: set[str]) -> list[tuple[str, dict]]:
     ]
 
 
-# Node types whose inline-keyboard buttons can route via button-edges
-# ("target-handler-{nodeId}-{text}"). Mirrors the engine's controller.go pause
-# list (MessageNode / EditMessageNode / EditOrSendMessageNode /
-# SendTextMessageNode); the engine resolves these edges type-agnostically, so
-# EditOrSendMessageNode supports button-edges directly — no global
-# CallbackQueryTriggerNode workaround is needed.
-_BUTTON_EDGE_NODE_TYPES = frozenset(
-    {
-        "SendTextMessageNode",
-        "EditOrSendMessageNode",
-        "EditMessageNode",
-        "MessageNode",
-    }
-)
+# Button-edge node turlari (inline tugma → target-handler-{nodeId}-{text}) endi
+# MANIFESTDAN derive qilinadi — `button_edge_types()` (manifest `buttonEdge` +
+# legacy MessageNode). Engine controller.go pause ro'yxatini aks ettiradi.
 
 
 def _button_source_handles(node) -> list[str]:
@@ -931,7 +908,7 @@ def _button_source_handles(node) -> list[str]:
 
 def _button_source_handles_with_buttons(node) -> list[tuple[str, dict]]:
     """(`target-handler-{nodeId}-{text}`, button_dict) for each keyboard button."""
-    if node.type not in _BUTTON_EDGE_NODE_TYPES:
+    if node.type not in button_edge_types():
         return []
 
     pairs: list[tuple[str, dict]] = []

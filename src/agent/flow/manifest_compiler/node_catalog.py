@@ -109,6 +109,39 @@ def all_node_types() -> list[NodeTypeSpec]:
     return list(_node_types().values())
 
 
+# ── Manifestdan derive qilinadigan node-turi to'plamlari (avval qotirilgan edi) ──
+
+# MessageNode — manifestda yo'q legacy alias; button-edge uchun qo'shib qo'yamiz.
+_LEGACY_BUTTON_EDGE = frozenset({"MessageNode"})
+
+
+@lru_cache(maxsize=1)
+def button_edge_types() -> frozenset[str]:
+    """Engine button-edge'ni qo'llab-quvvatlaydigan klaviaturali node'lar
+    (manifest `buttonEdge:true`) + legacy `MessageNode`."""
+    man = load_node_manifests()
+    return frozenset(t for t, m in man.items() if m.get("buttonEdge")) | _LEGACY_BUTTON_EDGE
+
+
+@lru_cache(maxsize=1)
+def state_saving_types() -> frozenset[str]:
+    """`data.type` ni MAJBURIY talab qiladigan state-saqlovchi node'lar
+    (manifest `savesState:true`)."""
+    return frozenset(t for t, m in load_node_manifests().items() if m.get("savesState"))
+
+
+@lru_cache(maxsize=1)
+def acc_port_accepts() -> dict[str, frozenset[str]]:
+    """`acc:<portType>` → qabul qilinadigan node turlari (manifest `accessoryPorts`)."""
+    out: dict[str, set[str]] = {}
+    for m in load_node_manifests().values():
+        for port in m.get("accessoryPorts") or []:
+            pt = port.get("portType")
+            if pt:
+                out.setdefault("acc:" + pt, set()).update(port.get("accepts") or [])
+    return {k: frozenset(v) for k, v in out.items()}
+
+
 def get_node_spec(type_name: str) -> NodeTypeSpec | None:
     return _node_types().get(type_name)
 
