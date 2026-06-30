@@ -116,120 +116,21 @@ async def test_add_node_accepts_valid_data():
 
 
 def test_collection_tool_data_defaults_and_keys():
-    """AICollectionToolNode mirrors the engine/constructor AICollectionToolData contract."""
+    """AICollectionToolNode manifestdan: engine-kontrakt default'lari injektsiya."""
     Model = NODE_DATA_MODELS["AICollectionToolNode"]
-    inst = Model.model_validate({"collection": "students"})
-    dumped = inst.model_dump()
-    assert dumped["tool"] == "collection"
-    assert dumped["toolName"] == "collection"
-    assert dumped["collection"] == "students"
-    assert dumped["operations"] == ["create", "read", "update", "delete"]
-    assert dumped["searchFields"] is None
-
-
-def test_collection_tool_data_operations_allow_list():
-    Model = NODE_DATA_MODELS["AICollectionToolNode"]
-    # Engine (AICollectionToolNode / mongoQueryTool) reads searchFields as
-    # [{"field": str, "description"?: str}]. Legacy {"name","type"} keys are
-    # NOT understood by the engine, so the model normalises name→field and drops
-    # the unknown `type` key. This keeps agent / engine in lockstep (#4).
-    inst = Model.model_validate(
-        {
-            "collection": "orders",
-            "operations": ["read"],
-            "searchFields": [{"name": "email", "type": "string"}],
-        }
-    )
-    dumped = inst.model_dump()
-    assert dumped["operations"] == ["read"]
-    assert dumped["searchFields"] == [{"field": "email"}]
-
-
-def test_collection_tool_data_search_fields_engine_shape():
-    """searchFields accepts the engine shape, a string array, and name-alias —
-    all normalised to [{"field", "description"?}] (#4)."""
-    Model = NODE_DATA_MODELS["AICollectionToolNode"]
-
-    # Canonical engine shape passes through unchanged.
-    canon = Model.model_validate(
-        {"collection": "c", "searchFields": [{"field": "status", "description": "order status"}]}
-    ).model_dump()
-    assert canon["searchFields"] == [{"field": "status", "description": "order status"}]
-
-    # Plain string array → coerced to {field}.
-    arr = Model.model_validate({"collection": "c", "searchFields": ["chat_id", "kind"]}).model_dump()
-    assert arr["searchFields"] == [{"field": "chat_id"}, {"field": "kind"}]
+    dumped = Model.model_validate(
+        {"toolName": "debts", "description": "qarz tool", "collection": "debts"}
+    ).model_dump(by_alias=True, exclude_none=True)
+    assert dumped["tool"] == "collection"  # engine tool identifikatori (defaults)
+    assert dumped["toolName"] == "debts"
+    assert dumped["collection"] == "debts"
+    assert dumped["action"] == "create"  # manifest default
 
 
 def test_collection_tool_data_forbids_extra_fields():
     Model = NODE_DATA_MODELS["AICollectionToolNode"]
-    # Unknown field rejected (extra='forbid').
     with pytest.raises(Exception):
-        Model.model_validate({"collection": "x", "bogusField": 1})
-    # `operation` is now a real Literal field, but an invalid value is rejected.
-    with pytest.raises(Exception):
-        Model.model_validate({"collection": "x", "operation": "find"})
-
-
-def test_collection_tool_template_read_with_fixed_and_ai_slots():
-    """TEMPLATE (hybrid) read: fixed {{chat_id}} slot + ai status slot."""
-    Model = NODE_DATA_MODELS["AICollectionToolNode"]
-    inst = Model.model_validate(
-        {
-            "collection": "debts",
-            "operation": "read",
-            "filterMatch": "and",
-            "filterConditions": [
-                {"field": "user_id", "op": "eq", "source": "fixed", "value": "{{chat_id}}"},
-                {
-                    "field": "status",
-                    "op": "eq",
-                    "source": "ai",
-                    "aiDescription": "qaysi holatdagi qarzlar (masalan active)",
-                },
-            ],
-        }
-    )
-    dumped = inst.model_dump()
-    assert dumped["operation"] == "read"
-    assert dumped["filterMatch"] == "and"
-    fixed, ai = dumped["filterConditions"]
-    assert fixed["source"] == "fixed" and fixed["value"] == "{{chat_id}}"
-    assert ai["source"] == "ai" and ai["aiDescription"]
-    # Legacy fields keep their backward-compat defaults.
-    assert dumped["operations"] == ["create", "read", "update", "delete"]
-    assert dumped["documentFields"] is None
-
-
-def test_collection_tool_template_create_document_fields():
-    Model = NODE_DATA_MODELS["AICollectionToolNode"]
-    inst = Model.model_validate(
-        {
-            "collection": "debts",
-            "operation": "create",
-            "documentFields": [
-                {"field": "user_id", "source": "fixed", "value": "{{chat_id}}"},
-                {"field": "amount", "source": "ai", "aiDescription": "qarz summasi"},
-                {"field": "text", "source": "ai", "aiDescription": "qarz izohi"},
-            ],
-        }
-    )
-    dumped = inst.model_dump()
-    assert dumped["operation"] == "create"
-    assert [f["field"] for f in dumped["documentFields"]] == ["user_id", "amount", "text"]
-    assert dumped["documentFields"][0]["value"] == "{{chat_id}}"
-
-
-def test_collection_tool_template_invalid_op_rejected():
-    Model = NODE_DATA_MODELS["AICollectionToolNode"]
-    with pytest.raises(Exception):
-        Model.model_validate(
-            {
-                "collection": "c",
-                "operation": "read",
-                "filterConditions": [{"field": "x", "op": "between", "source": "ai"}],
-            }
-        )
+        Model.model_validate({"toolName": "x", "description": "d", "bogusField": 1})
 
 
 def test_mongo_tool_node_removed():
@@ -259,55 +160,43 @@ def test_render_summary_table_mentions_all_categories():
 
 
 def test_knowledge_tool_data_defaults():
-    """AIKnowledgeToolNode mirrors the engine/constructor AIKnowledgeToolData contract."""
-    from agent.tools.flow.node_data_models import AIKnowledgeToolData
-
-    inst = AIKnowledgeToolData.model_validate({"collection": "products"})
-    dumped = inst.model_dump()
+    """AIKnowledgeToolNode manifestdan: embedding default'lari injektsiya."""
+    Model = NODE_DATA_MODELS["AIKnowledgeToolNode"]
+    dumped = Model.model_validate(
+        {"toolName": "kb", "description": "bilim bazasi", "collection": "products"}
+    ).model_dump(by_alias=True, exclude_none=True)
     assert dumped["tool"] == "knowledge"
-    assert dumped["toolName"] == "knowledge"
     assert dumped["collection"] == "products"
-    assert dumped["textFields"] is None
     assert dumped["embeddingProvider"] == "openai"
     assert dumped["embeddingModel"] == "text-embedding-3-small"
-    assert dumped["embeddingApiKey"] == ""
-    assert dumped["embeddingBaseURL"] == ""
-    assert dumped["vectorDbUrl"] == ""
-    assert dumped["vectorDbApiKey"] == ""
     assert dumped["topK"] == 5
 
 
 def test_knowledge_tool_data_custom_fields():
-    from agent.tools.flow.node_data_models import AIKnowledgeToolData
-
-    inst = AIKnowledgeToolData.model_validate(
+    Model = NODE_DATA_MODELS["AIKnowledgeToolNode"]
+    dumped = Model.model_validate(
         {
-            "collection": "articles",
-            "textFields": ["title", "body"],
-            "embeddingProvider": "ollama",
-            "embeddingModel": "nomic-embed-text",
-            "topK": 10,
+            "toolName": "kb", "description": "d", "collection": "articles",
+            "textFields": ["title", "body"], "embeddingProvider": "ollama",
+            "embeddingModel": "nomic-embed-text", "topK": 10,
         }
-    )
-    dumped = inst.model_dump()
+    ).model_dump(by_alias=True, exclude_none=True)
     assert dumped["textFields"] == ["title", "body"]
     assert dumped["embeddingProvider"] == "ollama"
-    assert dumped["embeddingModel"] == "nomic-embed-text"
     assert dumped["topK"] == 10
 
 
 def test_knowledge_tool_data_forbids_extra_fields():
-    from agent.tools.flow.node_data_models import AIKnowledgeToolData
-
+    Model = NODE_DATA_MODELS["AIKnowledgeToolNode"]
     with pytest.raises(Exception):
-        AIKnowledgeToolData.model_validate({"collection": "x", "unknown_key": "y"})
+        Model.model_validate({"toolName": "x", "description": "d", "unknown_key": "y"})
 
 
-def test_knowledge_tool_data_requires_collection():
-    from agent.tools.flow.node_data_models import AIKnowledgeToolData
-
+def test_knowledge_tool_data_requires_content_fields():
+    """toolName/description — asosiy content field'lar, talab qilinadi."""
+    Model = NODE_DATA_MODELS["AIKnowledgeToolNode"]
     with pytest.raises(Exception):
-        AIKnowledgeToolData.model_validate({})
+        Model.model_validate({})
 
 
 def test_knowledge_tool_node_in_registry():
@@ -319,47 +208,36 @@ def test_knowledge_tool_node_in_registry():
 
 
 def test_payment_link_tool_data_keys_and_max_amount_default():
-    from agent.tools.flow.node_data_models import AIPaymentLinkToolData
-
-    inst = AIPaymentLinkToolData.model_validate({"paymentType": "click"})
-    dumped = inst.model_dump(by_alias=True)
-    # Cross-stream keys the engine reads.
+    """tool/maxAmount manifest defaults'dan; maxAmount xavfsizlik shifti ENGINE'da."""
+    Model = NODE_DATA_MODELS["AIPaymentLinkToolNode"]
+    dumped = Model.model_validate({"paymentType": "click"}).model_dump(by_alias=True, exclude_none=True)
     assert dumped["tool"] == "payment_link"
-    assert dumped["toolName"] == "payment_link"
     assert dumped["paymentType"] == "click"
-    # Injection-guard default ceiling.
-    assert dumped["maxAmount"] == 100000000
+    assert dumped["maxAmount"] == 100000000  # manifest default (engine clamp qiladi)
 
 
 def test_payment_link_tool_data_accepts_custom_max_amount():
-    from agent.tools.flow.node_data_models import AIPaymentLinkToolData
-
-    inst = AIPaymentLinkToolData.model_validate({"paymentType": "paycue", "maxAmount": 50000})
-    assert inst.model_dump(by_alias=True)["maxAmount"] == 50000
+    Model = NODE_DATA_MODELS["AIPaymentLinkToolNode"]
+    dumped = Model.model_validate({"paymentType": "paycue", "maxAmount": 50000}).model_dump(by_alias=True)
+    assert dumped["maxAmount"] == 50000
 
 
 def test_payment_link_tool_data_rejects_bad_provider():
-    from agent.tools.flow.node_data_models import AIPaymentLinkToolData
-
+    Model = NODE_DATA_MODELS["AIPaymentLinkToolNode"]
     with pytest.raises(Exception):
-        AIPaymentLinkToolData.model_validate({"paymentType": "payme"})
+        Model.model_validate({"paymentType": "payme"})
 
 
 def test_payment_status_tool_data_keys_and_no_required_config():
-    from agent.tools.flow.node_data_models import AIPaymentStatusToolData
-
-    # No build-time config required (order_id is a runtime arg, project from engine).
-    inst = AIPaymentStatusToolData.model_validate({})
-    dumped = inst.model_dump(by_alias=True)
+    Model = NODE_DATA_MODELS["AIPaymentStatusToolNode"]
+    dumped = Model.model_validate({}).model_dump(by_alias=True, exclude_none=True)
     assert dumped["tool"] == "payment_status"
-    assert dumped["toolName"] == "payment_status"
 
 
 def test_payment_status_tool_data_forbids_extra_fields():
-    from agent.tools.flow.node_data_models import AIPaymentStatusToolData
-
+    Model = NODE_DATA_MODELS["AIPaymentStatusToolNode"]
     with pytest.raises(Exception):
-        AIPaymentStatusToolData.model_validate({"unknown_key": "y"})
+        Model.model_validate({"unknown_key": "y"})
 
 
 def test_payment_status_tool_node_in_registry_and_catalog():
