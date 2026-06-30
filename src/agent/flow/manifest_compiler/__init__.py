@@ -9,5 +9,14 @@ Reja: /Users/ico/.claude/plans/agent-arxitikturasini-yangilash-kerak-eager-thimb
 """
 
 from .field_type_map import FIELD_TYPE_MAP, FieldKind, FieldTypeSpec, known_field_types
+from .loader import NodeManifest, load_node_manifests, manifest_checksum
 
-__all__ = ["FIELD_TYPE_MAP", "FieldKind", "FieldTypeSpec", "known_field_types"]
+__all__ = [
+    "FIELD_TYPE_MAP",
+    "FieldKind",
+    "FieldTypeSpec",
+    "known_field_types",
+    "NodeManifest",
+    "load_node_manifests",
+    "manifest_checksum",
+]
