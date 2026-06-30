@@ -100,11 +100,16 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         required_data=["cronExpression"],
         is_trigger=True,
     ),
-    "ExternalWebhookTriggerNode": NodeTypeSpec(
-        type="ExternalWebhookTriggerNode",
+    "WebhookTriggerNode": NodeTypeSpec(
+        type="WebhookTriggerNode",
         category="trigger",
-        description="Tashqi webhook (stripe/payme/...) tomonidan trigger",
-        required_data=["provider"],
+        description=(
+            "Har bir node uchun unique tashqi webhook URL trigger. Context: webhook.body, "
+            "webhook.query, webhook.headers, webhook.method, webhook.raw. chat_id berilsa "
+            "flow aynan shu chat state'i bilan ishlaydi. wait_response=true bo'lsa "
+            "response_variable HTTP javob sifatida qaytariladi."
+        ),
+        optional_data=["chat_id", "wait_response", "response_variable", "webhook_url"],
         is_trigger=True,
     ),
     "PreCheckoutTriggerNode": NodeTypeSpec(
@@ -365,6 +370,18 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         optional_data=["branches", "operator"],
         source_handles=["true", "false"],
     ),
+    "SwitchNode": NodeTypeSpec(
+        type="SwitchNode",
+        category="flow_control",
+        description=(
+            "Bitta value'ni cases[].match bilan solishtiradi. Mos case output-<case.id> "
+            "yoki id bo'sh bo'lsa output-case_<index> handle'iga chiqadi; default=true "
+            "bo'lsa mos kelmaganda output-default."
+        ),
+        required_data=["value"],
+        optional_data=["cases", "default"],
+        source_handles=["output-default"],
+    ),
     "ElseIfNode": NodeTypeSpec(
         type="ElseIfNode",
         category="flow_control",
@@ -408,6 +425,12 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         type="ForLoopContinueNode",
         category="flow_control",
         description="ForLoop ichidan continue (boshqa iteratsiyaga o'tish)",
+    ),
+    "FormNode": NodeTypeSpec(
+        type="FormNode",
+        category="flow_control",
+        description="Foydalanuvchi ma'lumotlarini ketma-ket forma maydonlari orqali yig'ish",
+        optional_data=["items"],
     ),
     "VariableNode": NodeTypeSpec(
         type="VariableNode",
@@ -523,6 +546,26 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         category="integration",
         description="Telegram file/photo'ni yuklab olib state'ga saqlash",
         required_data=["fileId", "saveAs"],
+    ),
+    "DownloadFileNode": NodeTypeSpec(
+        type="DownloadFileNode",
+        category="integration",
+        description=(
+            "Joriy message context'idagi foydalanuvchi yuborgan faylni platformaga yuklab "
+            "saqlaydi. key orqali public_<key>, public_<key>_file_url, _file_size, "
+            "_file_type yoziladi. Odatda file media MessageTriggerNode'dan keyin qo'yiladi."
+        ),
+        required_data=["key"],
+        optional_data=["messageType"],
+    ),
+    "SetLanguageNode": NodeTypeSpec(
+        type="SetLanguageNode",
+        category="data",
+        description=(
+            "Foydalanuvchi tilini o'rnatadi va languages/language_options/current_lang "
+            "contextlarini ochadi. language bo'sh bo'lsa faqat til ro'yxati yuklanadi."
+        ),
+        optional_data=["language"],
     ),
     "CronNode": NodeTypeSpec(
         type="CronNode",
@@ -673,6 +716,13 @@ NODE_TYPES: dict[str, NodeTypeSpec] = {
         category="subflow",
         description="Boshqa flow ni ichki sifatida chaqirish",
         required_data=["subflowId"],
+    ),
+    "SubFlowExitNode": NodeTypeSpec(
+        type="SubFlowExitNode",
+        category="subflow",
+        description="Subflow tugagach parent flow'ga qaytadigan chiqish nuqtasi",
+        required_data=["exitName"],
+        source_handles=[],
     ),
     # ── AI Agent (flow node + accessory parent) ────────────────────────
     "AIAgentNode": NodeTypeSpec(

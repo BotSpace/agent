@@ -14,6 +14,12 @@ Default'da SAQLANMAGAN working draft sinaladi (use_saved=true — saqlangan flow
 | `click_text`   | text="📚 Kurslar"          | Tugma MATNI bo'yicha bosish (callback_data noma'lum yoki collection tugmasi bo'lsa) |
 | `contact`      | phone="+9989...", first_name? | Kontakt yuborish (request_contact javobiga) |
 | `location`     | latitude=41.31, longitude=69.24 | Joylashuv yuborish |
+| `photo`        | file_id?, caption?           | Photo xabari; file_id capture/media trigger sinovi |
+| `video`        | file_id?, caption?, file_name?, mime_type? | Video yoki forwarded video emulyatsiyasi |
+| `document`     | file_id?, caption?, file_name?, mime_type? | Hujjat/fayl xabari |
+| `animation`    | file_id?, caption?, file_name?, mime_type? | GIF/animation xabari |
+| `audio`        | file_id?, caption?, file_name?, mime_type? | Audio xabari |
+| `voice`        | file_id?, caption?, mime_type? | Voice xabari |
 | `advance_time` | seconds=3600               | Vaqtni oldinga surish — CronTriggerNode'lar otiladi (schedule_message qamralmaydi) |
 
 ## Multi-user (referral va sh.k.)
@@ -46,6 +52,14 @@ message_count, no_errors.
   ]
 }
 ```
+
+## Media/file_id testi
+`MessageTriggerNode(type="video", state={key:"episode_file_id", type:"file_id"})`
+ni sinash:
+```json
+{"type":"video","file_id":"BAAC_SIM_VIDEO","caption":"1-qism","file_name":"ep1.mp4","mime_type":"video/mp4","expect":{"no_errors":true}}
+```
+Yakuniy contextda `public_episode_file_id = "BAAC_SIM_VIDEO"` bo'lishi kerak.
 
 ## Regression testlar
 Ishlaydigan stsenariyni `flow_test_save(name, steps)` bilan saqlang — har

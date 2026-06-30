@@ -177,6 +177,7 @@ async def _auto_restore_session(
 # agentlariga beriladigan system prompt'lar — MCP klient modeli ham xuddi shu
 # bilimga ega bo'lishi uchun tool orqali ochib beriladi.
 _GUIDE_TOPICS = {
+    "all": "Barcha asosiy qo'llanmalar bitta javobda (har yangi bot/non-trivial edit oldidan majburiy)",
     "flow": "Flow-builder qo'llanmasi (handles, trigger, AI nodes, keyboard, state)",
     "flow_examples": "To'liq bot misollari (flow JSON'lari bilan)",
     "node_catalog": "Barcha node turlari katalogi (kategoriya, handle, maydonlar)",
@@ -194,6 +195,22 @@ def _load_guide(topic: str) -> str:
     from ..flow.catalog import render_compact_catalog
     from ..prompts.loader import load_prompt
 
+    if topic == "all":
+        return "\n\n---\n\n".join(
+            f"# {name}\n\n{_load_guide(name)}"
+            for name in (
+                "flow",
+                "node_catalog",
+                "flow_examples",
+                "simulate",
+                "custom_code",
+                "modules",
+                "i18n",
+                "cms",
+                "crm",
+                "deploy",
+            )
+        )
     if topic == "node_catalog":
         return render_compact_catalog() + _MODULE_CATALOG_NOTE + _I18N_CATALOG_NOTE
     files = {
@@ -401,7 +418,8 @@ def _session_tools() -> list[mtypes.Tool]:
             description=(
                 "Botmother bot qurish qo'llanmalarini qaytaradi — agent'ning "
                 "ichki agentlari ishlatadigan to'liq yo'riqnomalar. Notrivial bot "
-                "qurishdan OLDIN o'qing: topic='flow' (qoidalar/handles/AI nodes), "
+                "qurishdan OLDIN majburiy o'qing: topic='all'. Alohida bo'lim kerak bo'lsa: "
+                "topic='flow' (qoidalar/handles/AI nodes), "
                 "topic='node_catalog' (barcha node turlari), topic='flow_examples' "
                 "(to'liq misollar). Boshqa topic'lar: cms, crm, deploy."
             ),

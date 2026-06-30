@@ -61,6 +61,35 @@ async def test_simulate_forwards_chat_expect_advance_time_and_mode(monkeypatch):
     assert captured["steps"][1] == {"type": "advance_time", "seconds": 3600}
 
 
+async def test_simulate_forwards_media_step(monkeypatch):
+    captured = {}
+
+    async def fake_simulate(*, simulator_url, flow, steps, collections, chat, mode="full"):
+        captured["steps"] = steps
+        return {"ok": True, "steps": [], "errors": []}
+
+    monkeypatch.setattr("agent.integrations.simulator.simulate", fake_simulate)
+    res = await _tools()["flow.simulate"].run(
+        {
+            "steps": [
+                {
+                    "type": "video",
+                    "file_id": "BAAC_SIM_VIDEO",
+                    "caption": "1-qism",
+                    "file_name": "ep1.mp4",
+                    "mime_type": "video/mp4",
+                }
+            ],
+            "seed_collections": False,
+        },
+        _ctx(),
+    )
+
+    assert not res.is_error
+    assert captured["steps"][0]["file_id"] == "BAAC_SIM_VIDEO"
+    assert captured["steps"][0]["caption"] == "1-qism"
+
+
 async def test_assert_mode_compact_pass(monkeypatch):
     async def fake_simulate(*, simulator_url, flow, steps, collections, chat, mode="full"):
         return {

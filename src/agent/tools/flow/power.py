@@ -135,7 +135,11 @@ _STEP_TYPE_ALIASES = {
     "cmd": "command",
 }
 
-_STEP_TYPES = ("command", "text", "contact", "location", "click", "click_text", "advance_time")
+_STEP_TYPES = (
+    "command", "text", "contact", "location",
+    "photo", "video", "document", "animation", "audio", "voice",
+    "click", "click_text", "advance_time",
+)
 
 # Maydon nomlarining tabiiy variantlari → kanonik. command:"/start" yozsa text'ga,
 # lat/lng → latitude/longitude, phone_number → phone, callback_data → data.
@@ -150,16 +154,23 @@ _STEP_FIELD_ALIASES = {
     "lon": "longitude",
     "lng": "longitude",
     "firstName": "first_name",
+    "fileId": "file_id",
+    "fileName": "file_name",
+    "mimeType": "mime_type",
 }
 
 
 class FlowSimulateStep(BaseModel):
     type: Literal[
-        "command", "text", "contact", "location", "click", "click_text", "advance_time"
+        "command", "text", "contact", "location",
+        "photo", "video", "document", "animation", "audio", "voice",
+        "click", "click_text", "advance_time",
     ] = Field(
         description=(
             "Qadam turi: 'command' (text=/start), 'text' (text='salom'), "
             "'contact' (phone, first_name?), 'location' (latitude, longitude), "
+            "'photo'/'video'/'document'/'animation'/'audio'/'voice' "
+            "(file_id, caption?, file_name?, mime_type? — media trigger/file_id capture sinovi), "
             "'click' (INLINE tugma bosish: data=callback_data — 'callback'/'button' "
             "emas, aynan 'click'!), 'click_text' (tugma MATNI bo'yicha bosish: "
             "text='Tugma' — callback_data noma'lum bo'lsa), 'advance_time' "
@@ -191,6 +202,10 @@ class FlowSimulateStep(BaseModel):
 
     text: str | None = None
     data: str | None = None
+    file_id: str | None = Field(default=None, description="Media step uchun Telegram file_id.")
+    file_name: str | None = Field(default=None, description="Media step uchun file name.")
+    mime_type: str | None = Field(default=None, description="Media step uchun MIME type.")
+    caption: str | None = Field(default=None, description="Media step caption.")
     phone: str | None = None
     first_name: str | None = None
     latitude: float | None = Field(default=None, serialization_alias="lat")
