@@ -100,6 +100,22 @@ Type-specific kerak bo'lsa: `message.video.file_id`, `message.document.file_id`,
   ishga tushadi — step'ni `set_context` bilan saqla)
 - `sleep(ms)`
 
+### ⛔ exit() va outputs — har yo'lda exit() chaqir (aks holda branch JIM o'ladi)
+Node `data.outputs` e'lon qilsa (multi-output), u **exit-driven** bo'ladi:
+- Engine FAQAT `exit("nom")` tanlagan `output-<nom>` edge'iga yo'naltiradi.
+- `exit()`siz `return` qilsang YOKI `exit("x")` da `x` handle'ga edge ULANMAGAN
+  bo'lsa → bu branch **TO'XTAYDI** (keyingi hech narsa ishlamaydi). Engine endi
+  qolgan output edge'larini ishga tushirmaydi (eski "fan-out" yo'q).
+- Demak har kod yo'lida (`if`/`else`, error path, gate) MOS `exit("nom")` bo'lsin,
+  va har nom ULANGAN edge'ga ega bo'lsin. "To'xtat / hech narsa qilma" kerak bo'lsa
+  ham aniq output (masalan `exit("stop")`) yasab, uni terminal/noop node'ga ula —
+  shunda branch ataylab tugaydi, tasodifan emas.
+- ⚠️ Xavfsizlik: gate (obuna/ruxsat) bloklaganda `exit("blocked")` qil va uni
+  bloklash xabariga ula; shunchaki `return` qilma — aks holda branch sukut bilan
+  to'xtab, foydalanuvchi hech qanday javob olmasligi mumkin.
+- Linear (outputs YO'Q, oddiy chiziqli edge) node'da `exit`/`return` shart emas —
+  kod tugagach flow keyingi node'ga o'tadi.
+
 ## Ochiq o'zgaruvchilar (vars — TAVSIYA, prefiks avtomatik)
 StateNode/trigger saqlagan OCHIQ qiymatlar node maydonlarida `{{name}}` (yoki
 `{{public.name}}` / legacy `{{state.name}}`) ko'rinishida o'qiladi (ichida
@@ -154,7 +170,14 @@ const rows = context.sheets_response_rows;
   EDIT qiladi, bo'lmasa YANGI xabar yuboradi. options: `{text, parse_mode?,
   reply_markup?, node_id?, message_id?}`. Pagination/menyu yangilash uchun ENG QULAY.
 - `send_photo/send_video/send_document/send_audio/send_voice/send_sticker/
-  send_location/send_contact/send_animation(options)`
+  send_location/send_contact/send_animation(options)` → `{success, message_id}`
+  (xato: `{success:false, error}`). **Media kaliti = media TURI nomi, `file_id` EMAS:**
+  `send_video({video, caption?, parse_mode?, reply_markup?})`,
+  `send_photo({photo, ...})`, `send_document({document, ...})`,
+  `send_audio({audio, ...})`, `send_voice({voice, ...})`, `send_sticker({sticker})`,
+  `send_animation({animation, ...})`. Qiymat — URL yoki Telegram `file_id` string.
+  `send_video` obyekt KUTADI (yalang'och string EMAS); `send_photo` yalang'och
+  string'ni ham qabul qiladi (`send_photo(url)` ≡ `send_photo({photo:url})`).
 - `delete_message(options)`, `answer_callback_query(text?)`, `forward_message`, `copy_message`
 
 ### inline_keyboard / reply_markup formati

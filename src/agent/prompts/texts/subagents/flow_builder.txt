@@ -212,6 +212,16 @@ talab qilinmagan node'ni QO'SHMA.
   Faqat reply keyboard (kontakt/joylashuv) → `SendTextMessageNode`.
 - **Kirish nuqtasi**: /komanda → `CommandTriggerNode`; har xabar → `MessageTriggerNode(global)`;
   vaqt bo'yicha → `CronTriggerNode`; inline tugma → odatda trigger KERAK EMAS (Approach A edge).
+  - ⚠️ **Catch-all global text trigger + CommandTriggerNode** — `MessageTriggerNode`
+    `type:"text"` + `filter:"any"` + `global:true` HAR matnni ushlaydi. Engine endi
+    bitta istisno qiladi: xabar mos `CommandTriggerNode` bor `/komanda` bo'lsa,
+    catch-all global unga **yo'l beradi** (komanda ishlaydi). Boshqa matn esa
+    catch-all'ga boradi. Demak komanda + erkin matn ikkalasi kerak bo'lsa:
+    alohida `CommandTriggerNode`'lar + bitta catch-all global birga ishlaydi.
+    Lekin eng toza yo'l — bitta catch-all global → bitta **router CustomCode**:
+    ichida `text.charAt(0) === "/"` bo'yicha komandani ajratib `exit("...")` bilan
+    tarqat (har komanda uchun alohida trigger QO'SHMASDAN). Faqat komandalar kerak
+    bo'lsa (erkin matn shart emas) → faqat `CommandTriggerNode`, catch-all QO'SHMA.
 - **Foydalanuvchidan ma'lumot ol** → `flow.ask_text/ask_contact/ask_buttons/ask_location`
   (alohida StateNode QO'SHMA — trigger o'zida saqlaydi).
 - **State'ga oraliq qiymat yoz** → trigger `data.state` (afzal) yoki `StateNode` (type SHART).
