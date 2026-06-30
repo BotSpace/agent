@@ -641,7 +641,15 @@ async def flow_simulate(input: FlowSimulateInput, ctx: ToolContext) -> ToolResul
         if ok
         else "⚠️ Simulyatsiyada xatolar bor — yuqoriga qarang"
     )
-    return ToolResult(content="\n".join(lines), is_error=not ok, data=resp)
+    # `data` (structuredContent) IXCHAM bo'lsin — matn (lines) allaqachon AI uchun
+    # o'qishli, to'liq qadam transkriptini beradi. Katta maydonlar (steps,
+    # collections_after) JSON shovqini → ularni tashlaymiz; faqat yakuniy holat +
+    # xatolar qoladi (final_state.context AI o'zgaruvchilarni tekshirishi uchun foydali).
+    compact = {
+        k: v for k, v in resp.items()
+        if k not in ("steps", "collections_after")
+    }
+    return ToolResult(content="\n".join(lines), is_error=not ok, data=compact)
 
 
 # ── flow.export ───────────────────────────────────────────────────────────────
