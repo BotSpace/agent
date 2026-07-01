@@ -235,6 +235,17 @@ reply ikkalasida) — `value` URL string yoki `{url:"..."}`:
 ## HTTP
 - `http_request({url, method, headers?, body?})`, `http_get/http_post/http_put/http_delete`
 
+## Credential o'qish
+- `get_credential(id)` → `{id, name, type_key, mode, data:{...}}` yoki `null` (topilmasa).
+  `data` — credentialning DESHIFRLANGAN maydonlari (masalan custom type'da `chat_id`,
+  yoki API type'da `token`). Credentiallar owner-scoped — bot egasi o'z credentialini
+  o'qiydi. Dinamik konfiguratsiya uchun: credential id'sini `credentials.list` bilan top.
+```javascript
+// admin chat_id'ni credentialdan dinamik o'qish (hardcode/env o'rniga)
+const admin = get_credential(27);
+if (admin && String(chat_id) === admin.data.chat_id) { /* admin */ }
+```
+
 ## Alert (kuzatuv — constructor "Xabarlar" paneli)
 Debug "Xabarlar" paneliga leveled signal yuboradi. Flow ijrosiga TA'SIR QILMAYDI
 (fire-and-forget — xato qaytarmaydi, oqimni to'xtatmaydi). Kuzatuv (observability)
