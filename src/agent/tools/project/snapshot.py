@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from ...integrations.backend import get_backend_client
 from ..base import Tool, ToolContext, ToolResult, tool
+from .._common import resolve_concrete_project_id
 
 
 def _backend(ctx: ToolContext):
@@ -26,23 +27,6 @@ def _backend(ctx: ToolContext):
     if backend is not None:
         return backend
     return get_backend_client()
-
-
-def _concrete_project_id(value: Any) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    if text.lower() in {"", "global", "none", "null"}:
-        return None
-    return text
-
-
-def _project_id(ctx: ToolContext, override: Any) -> str | None:
-    return (
-        _concrete_project_id(override)
-        or _concrete_project_id(ctx.state.get("project_id"))
-        or _concrete_project_id(ctx.project_id)
-    )
 
 
 async def _safe(coro: Any) -> Any:
@@ -124,7 +108,7 @@ async def _collections_section(backend: Any, pid: str, claims: Any) -> Any:
     input_model=ProjectSnapshotInput,
 )
 async def project_snapshot(input: ProjectSnapshotInput, ctx: ToolContext) -> ToolResult:
-    pid = _project_id(ctx, input.project_id)
+    pid = resolve_concrete_project_id(ctx, input.project_id)
     if not pid:
         return ToolResult.error(
             "Aktiv loyiha yo'q — session_use_project(project_id) yoki project_id bering."
