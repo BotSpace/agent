@@ -31,6 +31,7 @@ class NodeTypeSpec:
     type: str
     category: str
     description: str
+    summary: str = ""  # bir qatorli qisqa tavsif (compact katalog uchun; params yo'q)
     required_data: list[str] = field(default_factory=list)
     optional_data: list[str] = field(default_factory=list)
     source_handles: list[str] = field(default_factory=lambda: ["source-handler"])
@@ -59,6 +60,7 @@ def _spec_from_manifest(m: dict) -> NodeTypeSpec:
         type=node_type,
         category=category,
         description=m.get("aiDoc") or m.get("descriptionFallback") or "",
+        summary=m.get("summary") or "",
         required_data=required,
         optional_data=optional,
         source_handles=src if src is not None else ["source-handler"],
@@ -169,13 +171,22 @@ def summary_for_llm() -> str:
 
 
 def render_compact_catalog() -> str:
-    """Cache'lanadigan system-prompt uchun ixcham node katalogi (aiDoc bilan)."""
+    """Cache'lanadigan system-prompt uchun ixcham node katalogi.
+
+    Faqat node NOMI + bir qatorli `summary` (nima qilishi) — params EMAS.
+    Node maydonlarini (params/schema) va to'liq `aiDoc`ni bilish uchun agent
+    `flow.list_node_types(type=...)` chaqiradi. Summary bo'lmasa aiDoc'ga tushadi.
+    """
     buckets: dict[str, list[NodeTypeSpec]] = {cat: [] for cat in _CATEGORY_ORDER}
     for spec in _node_types().values():
         if spec.category in buckets:
             buckets[spec.category].append(spec)
 
-    lines: list[str] = ["## Node tiplari kataloqi\n"]
+    lines: list[str] = [
+        "## Node tiplari kataloqi\n"
+        "Har qatorda: node nomi + qisqacha nima qilishi. Maydonlar (params) va "
+        "to'liq yo'riqnoma uchun `flow.list_node_types(type=...)` chaqir.\n\n"
+    ]
     for cat in _CATEGORY_ORDER:
         items = buckets[cat]
         if not items:
@@ -192,6 +203,6 @@ def render_compact_catalog() -> str:
             lines.append(
                 f"- **{spec.type}**{trigger_flag}{accessory_flag} "
                 f"[{spec.category}]{handles_str}\n"
-                f"  {spec.description}\n"
+                f"  {spec.summary or spec.description}\n"
             )
     return "".join(lines)
