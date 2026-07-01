@@ -649,6 +649,15 @@ async def flow_simulate(input: FlowSimulateInput, ctx: ToolContext) -> ToolResul
         k: v for k, v in resp.items()
         if k not in ("steps", "collections_after")
     }
+    # final_state.context — Telegram update echo'si (raw_update/telegram_update/
+    # message) JUDA katta va AI'ga kerak emas; faqat mazmunli o'zgaruvchilar qolsin.
+    fs = compact.get("final_state")
+    if isinstance(fs, dict) and isinstance(fs.get("context"), dict):
+        ctx_clean = {
+            k: v for k, v in fs["context"].items()
+            if k not in ("raw_update", "telegram_update", "message", "callback_query")
+        }
+        compact["final_state"] = {**fs, "context": ctx_clean}
     return ToolResult(content="\n".join(lines), is_error=not ok, data=compact)
 
 

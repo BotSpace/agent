@@ -219,7 +219,7 @@ async def test_flow_export_returns_full_flow():
     await _activate(srv)
     res = await _call(srv, "flow_export", {})
     assert not res.isError
-    assert res.structuredContent["nodes"] == _FLOW["nodes"]
+    assert _structured(res)["nodes"] == _FLOW["nodes"]
     assert "```json" in _text(res)
 
 
@@ -260,7 +260,7 @@ async def test_flow_import_rejects_invalid_flow():
 async def test_flow_import_export_roundtrip():
     srv = build_mcp_server()
     await _activate(srv)
-    exported = (await _call(srv, "flow_export", {})).structuredContent
+    exported = _structured(await _call(srv, "flow_export", {}))
     res = await _call(srv, "flow_import", {"flow_json": exported})
     assert not res.isError, _text(res)
 
@@ -275,7 +275,7 @@ async def test_flow_save_records_version_and_history_lists_it():
     await _record_version(ws, _user())
     res = await _call(srv, "flow_history", {})
     assert not res.isError, _text(res)
-    versions = res.structuredContent["versions"]
+    versions = _structured(res)["versions"]
     assert len(versions) == 1
     assert versions[0]["version"] == 1
     assert versions[0]["node_count"] == 2
@@ -313,7 +313,7 @@ async def test_flow_history_empty_when_never_saved():
     await _activate(srv)
     res = await _call(srv, "flow_history", {})
     assert not res.isError
-    assert res.structuredContent["versions"] == []
+    assert _structured(res)["versions"] == []
 
 
 # ── #1: flow_simulate ─────────────────────────────────────────────────────────
@@ -349,7 +349,7 @@ async def test_bot_simulate_formats_steps(monkeypatch):
     body = _text(res)
     assert "➡️" in body and "🤖" in body
     assert "start → msg" in body
-    assert res.structuredContent["ok"] is True
+    assert _structured(res)["ok"] is True
 
 
 async def test_bot_simulate_seeds_collections(monkeypatch):
@@ -432,8 +432,8 @@ async def test_session_status_auto_restores():
 
     res = await _call(srv, "session_status", {}, user=user)
     assert not res.isError
-    assert res.structuredContent["project_id"] == "77"
-    assert res.structuredContent["session_restored"] is True
+    assert _structured(res)["project_id"] == "77"
+    assert _structured(res)["session_restored"] is True
 
 
 async def test_no_restore_when_nothing_persisted():
@@ -551,3 +551,17 @@ async def test_draft_store_load_latest(monkeypatch):
     assert row is not None
     assert row["project_id"] == "88"
     assert row["flow_dirty"] is True
+
+
+def _structured(_res):
+    """MCP javob content'idagi YAML blokni dict qilib qaytaradi (structuredContent o'chirilgan)."""
+    import yaml as _yaml
+    _text = _res.content[0].text if _res.content else ""
+    for _chunk in (_text.rsplit("\n\n", 1)[-1], _text):
+        try:
+            _p = _yaml.safe_load(_chunk)
+            if isinstance(_p, dict):
+                return _p
+        except Exception:
+            pass
+    return {}
