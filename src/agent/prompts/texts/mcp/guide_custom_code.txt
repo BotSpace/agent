@@ -236,13 +236,15 @@ reply ikkalasida) — `value` URL string yoki `{url:"..."}`:
 - `http_request({url, method, headers?, body?})`, `http_get/http_post/http_put/http_delete`
 
 ## Credential o'qish
-- `get_credential(id)` → `{id, name, type_key, mode, data:{...}}` yoki `null` (topilmasa).
+- `get_credential(key)` → `{id, name, type_key, mode, data:{...}}` yoki `null` (topilmasa).
+  `key` — credentialning NOMI (portable "kalit"), masalan `get_credential("OpenAI kalitim")`.
+  Nomni `credentials.list` bilan top. Raqamli id ham qabul qilinadi (eski, tavsiya etilmaydi) —
+  id template ko'chirilganda o'zgaradi, NOM barqaror qoladi, shuning uchun DOIM nom ishlat.
   `data` — credentialning DESHIFRLANGAN maydonlari (masalan custom type'da `chat_id`,
-  yoki API type'da `token`). Credentiallar owner-scoped — bot egasi o'z credentialini
-  o'qiydi. Dinamik konfiguratsiya uchun: credential id'sini `credentials.list` bilan top.
+  yoki API type'da `token`). Credentiallar owner-scoped — bot egasi o'z credentialini o'qiydi.
 ```javascript
 // admin chat_id'ni credentialdan dinamik o'qish (hardcode/env o'rniga)
-const admin = get_credential(27);
+const admin = get_credential("Admin sozlamalari");
 if (admin && String(chat_id) === admin.data.chat_id) { /* admin */ }
 ```
 
