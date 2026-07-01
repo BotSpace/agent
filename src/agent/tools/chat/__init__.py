@@ -82,7 +82,16 @@ async def chat_user_history(input: ChatUserHistoryInput, ctx: ToolContext) -> To
         history = await _backend(ctx).user_chat_history(pid, input.chat_id, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
         return ToolResult.error(format_backend_error(None, e))
-    return ToolResult.ok(f"{len(history)} message(s).", data={"history": history})
+    # Tarixni content'ga YAML qilib chiqaramiz — aks holda ichki LangGraph agent
+    # (content-only) faqat sonni ko'rib xabarlarni ko'rmaydi. data_in_content →
+    # MCP takrorlamaydi.
+    import yaml as _yaml
+    body = _yaml.safe_dump(
+        history, allow_unicode=True, default_flow_style=False, sort_keys=False, width=100
+    ).rstrip() if history else "(bo'sh)"
+    return ToolResult.ok(
+        f"{len(history)} message(s):\n{body}", data={"history": history}, data_in_content=True
+    )
 
 
 # ── chat.user_stats ───────────────────────────────────────────────────────────

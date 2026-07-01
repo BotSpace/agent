@@ -184,9 +184,15 @@ async def flow_get(input: FlowGetInput, ctx: ToolContext) -> ToolResult:
             + f"\nnode_ids: {[n.id for n in flow.nodes]}"
             + f"\ntriggers: {[t.id for t in flow.triggers()]}"
         )
-        return ToolResult.ok(text, data=summary)
+        return ToolResult.ok(text, data=summary, data_in_content=True)
+    # To'liq flow — AI uchun YAML (JSON emas: arzon token + o'qishli). data_in_content
+    # → MCP YAML(data)ni takrorlamaydi.
+    import yaml as _yaml
     payload = flow.model_dump()
-    return ToolResult.ok(flow.to_json(indent=2), data=payload)
+    body = _yaml.safe_dump(
+        payload, allow_unicode=True, sort_keys=False, default_flow_style=False, width=100
+    ).rstrip()
+    return ToolResult.ok(body, data=payload, data_in_content=True)
 
 
 # ── flow.add_node (generic, replaces 53 per-type tools) ─────────────────────
@@ -872,20 +878,27 @@ async def flow_list_node_types(input: FlowListNodeTypesInput, ctx: ToolContext) 
     lines = [f"{len(payload)} node type(s) in {len(by_cat)} categories:"]
     for cat, types in sorted(by_cat.items()):
         lines.append(f"  {cat}: {', '.join(types)}")
-    # focused (query/types/type) → mos node'larning TO'LIQ schema'sini content'ga chiqar,
-    # lekin javob juda katta bo'lmasin: _MAX_SCHEMA_DUMP dan ortig'ini kesamiz.
+    # focused (query/types/type) → mos node'larning TO'LIQ schema'sini content'ga
+    # YAML sifatida chiqar (JSON emas — AI uchun arzon/o'qishli), _MAX_SCHEMA_DUMP
+    # dan ortig'ini kesamiz. data_in_content=True → MCP YAML(data)ni takrorlamaydi.
     if focused and payload:
-        import json as _json
+        import yaml as _yaml
         shown = payload[:_MAX_SCHEMA_DUMP]
         lines.append("")
-        for p in shown:
-            lines.append(_json.dumps(p, ensure_ascii=False, indent=2))
+        lines.append(
+            _yaml.safe_dump(
+                shown, allow_unicode=True, default_flow_style=False, sort_keys=False, width=100
+            ).rstrip()
+        )
         if len(payload) > len(shown):
             lines.append(
-                f"\n… yana {len(payload) - len(shown)} mos node bor — to'liq schema'ni "
-                f"data.types dan oling yoki query'ni aniqroq bering / types=[...] ishlating."
+                f"\n… yana {len(payload) - len(shown)} mos node bor — query'ni aniqroq "
+                f"bering yoki types=[...] ishlating."
             )
-    return ToolResult.ok("\n".join(lines), data={"types": payload})
+    # data_in_content=True — overview'da content faqat NOMLAR (yengil), focused'da
+    # YAML schema content'da. Ikkala holatda ham MCP YAML(data)ni qo'shmasin
+    # (overview 84 ta schema'ni dump qilmasin; focused takrorlanmasin).
+    return ToolResult.ok("\n".join(lines), data={"types": payload}, data_in_content=True)
 
 
 # ── flow.diff ────────────────────────────────────────────────────────────────

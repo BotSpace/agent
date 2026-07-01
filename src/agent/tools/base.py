@@ -56,6 +56,10 @@ class ToolResult:
     """Approval/clarification bo'lsa — graph interrupt payload."""
     data: dict[str, Any] | None = None
     """Strukturlangan natija (UI uchun foydali)."""
+    data_in_content: bool = False
+    """True bo'lsa — `data` allaqachon `content`ga (o'qishli ko'rinishda)
+    renderlangan; MCP qatlami YAML(data)ni QAYTA qo'shmaydi (takror bo'lmasin).
+    Data'ni content'ga o'zi chiqaradigan tool'lar (list_node_types, ...) uchun."""
 
     @classmethod
     def ok(cls, content: str, **kwargs: Any) -> "ToolResult":

@@ -405,7 +405,8 @@ async def get_document(input: GetDocumentInput, ctx: ToolContext) -> ToolResult:
     except BackendError as e:
         return _error(e)
     body = _json.dumps(_safe(d), ensure_ascii=False, separators=(",", ":"))
-    return ToolResult.ok(f"Document `{input.id}`:\n{body}", data={"document": d})
+    # content to'liq hujjatni o'z ichiga oladi → MCP YAML(data)ni takrorlamasin.
+    return ToolResult.ok(f"Document `{input.id}`:\n{body}", data={"document": d}, data_in_content=True)
 
 
 class InsertInput(BaseModel):
