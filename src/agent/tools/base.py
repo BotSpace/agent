@@ -56,6 +56,10 @@ class ToolResult:
     """Approval/clarification bo'lsa — graph interrupt payload."""
     data: dict[str, Any] | None = None
     """Strukturlangan natija (UI uchun foydali)."""
+    data_in_content: bool = False
+    """True bo'lsa — `content` allaqachon `data`dagi qatorlarni o'z ichiga oladi
+    (masalan cms.find qatorlarni JSON qilib content'ga soladi). MCP qatlami bunda
+    `data`ni YANA YAML qilib qo'shmaydi — token dublikati oldini oladi."""
 
     @classmethod
     def ok(cls, content: str, **kwargs: Any) -> "ToolResult":
