@@ -34,21 +34,20 @@ from ...integrations.backend import (
     load_modules_catalog,
 )
 from ..base import Tool, ToolContext, ToolResult, tool
+from .._common import resolve_project_id
 
 MODULE_PROJECT_ID = "_global"
 MODULE_KIND = "module"
 SIMILARITY_GOOD = 0.45  # modules have short descriptions → looser bar than templates
 
 
+# ponytail: local _backend saqlanadi — testlar module-global get_backend_client'ni
+# patch qiladi (ctx.services orqali emas), umumiy resolver bu seam'ni buzadi.
 def _backend(ctx: ToolContext) -> BackendClient:
     backend = ctx.services.get("backend")
     if isinstance(backend, BackendClient):
         return backend
     return get_backend_client()
-
-
-def _pid(ctx: ToolContext, override: str | int | None = None) -> str | int | None:
-    return override or ctx.state.get("project_id")
 
 
 def _claims(ctx: ToolContext) -> dict | None:
@@ -238,7 +237,7 @@ class ModulesEnableInput(BaseModel):
     input_model=ModulesEnableInput,
 )
 async def modules_enable(input: ModulesEnableInput, ctx: ToolContext) -> ToolResult:
-    pid = _pid(ctx, input.project_id)
+    pid = resolve_project_id(ctx, input.project_id)
     if not pid or str(pid).lower() in {"global", "none", "null"}:
         return ToolResult.error(
             "No active project — call session_use_project (or pass project_id) first."

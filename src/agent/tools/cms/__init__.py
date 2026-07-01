@@ -18,11 +18,7 @@ from ..base import Tool, ToolContext, ToolResult, tool
 # ── shared helpers ───────────────────────────────────────────────────────────
 
 
-from .._backend import backend_from_ctx as _backend  # ponytail: umumiy resolver
-
-
-def _pid(ctx: ToolContext, override: str | int | None = None) -> str | int | None:
-    return override or ctx.state.get("project_id")
+from .._common import backend_from_ctx as _backend, resolve_project_id
 
 
 def _error(e: BackendError, action: str | None = None) -> ToolResult:
@@ -114,7 +110,7 @@ class ListCollectionsInput(BaseModel):
     input_model=ListCollectionsInput,
 )
 async def list_collections(input: ListCollectionsInput, ctx: ToolContext) -> ToolResult:
-    pid = _pid(ctx, input.project_id)
+    pid = resolve_project_id(ctx, input.project_id)
     if pid is None:
         return ToolResult.error("No project_id.")
     try:
@@ -157,7 +153,7 @@ class GetCollectionInput(BaseModel):
     input_model=GetCollectionInput,
 )
 async def get_collection(input: GetCollectionInput, ctx: ToolContext) -> ToolResult:
-    pid = _pid(ctx, input.project_id)
+    pid = resolve_project_id(ctx, input.project_id)
     if pid is None:
         return ToolResult.error("No project_id.")
     try:
@@ -206,7 +202,7 @@ class CreateCollectionInput(BaseModel):
     input_model=CreateCollectionInput,
 )
 async def create_collection(input: CreateCollectionInput, ctx: ToolContext) -> ToolResult:
-    pid = _pid(ctx, input.project_id)
+    pid = resolve_project_id(ctx, input.project_id)
     if pid is None:
         return ToolResult.error("No project_id.")
     body = input.model_dump(exclude={"project_id"})
@@ -250,7 +246,7 @@ class DeleteCollectionInput(BaseModel):
     destructive=True,
 )
 async def delete_collection(input: DeleteCollectionInput, ctx: ToolContext) -> ToolResult:
-    pid = _pid(ctx, input.project_id)
+    pid = resolve_project_id(ctx, input.project_id)
     if pid is None:
         return ToolResult.error("No project_id.")
     if not input.confirm:
@@ -278,7 +274,7 @@ class AddFieldInput(BaseModel):
     input_model=AddFieldInput,
 )
 async def add_field(input: AddFieldInput, ctx: ToolContext) -> ToolResult:
-    pid = _pid(ctx, input.project_id)
+    pid = resolve_project_id(ctx, input.project_id)
     if pid is None:
         return ToolResult.error("No project_id.")
     try:
@@ -303,7 +299,7 @@ class UpdateFieldInput(BaseModel):
     input_model=UpdateFieldInput,
 )
 async def update_field(input: UpdateFieldInput, ctx: ToolContext) -> ToolResult:
-    pid = _pid(ctx, input.project_id)
+    pid = resolve_project_id(ctx, input.project_id)
     if pid is None:
         return ToolResult.error("No project_id.")
     try:
@@ -328,7 +324,7 @@ class RemoveFieldInput(BaseModel):
     destructive=True,
 )
 async def remove_field(input: RemoveFieldInput, ctx: ToolContext) -> ToolResult:
-    pid = _pid(ctx, input.project_id)
+    pid = resolve_project_id(ctx, input.project_id)
     if pid is None:
         return ToolResult.error("No project_id.")
     try:
@@ -365,7 +361,7 @@ class ListDocumentsInput(BaseModel):
     untrusted_output=True,
 )
 async def find(input: ListDocumentsInput, ctx: ToolContext) -> ToolResult:
-    pid = _pid(ctx, input.project_id)
+    pid = resolve_project_id(ctx, input.project_id)
     if pid is None:
         return ToolResult.error("No project_id.")
     try:
@@ -401,7 +397,7 @@ class GetDocumentInput(BaseModel):
     untrusted_output=True,
 )
 async def get_document(input: GetDocumentInput, ctx: ToolContext) -> ToolResult:
-    pid = _pid(ctx, input.project_id)
+    pid = resolve_project_id(ctx, input.project_id)
     if pid is None:
         return ToolResult.error("No project_id.")
     try:
@@ -429,7 +425,7 @@ class InsertInput(BaseModel):
     input_model=InsertInput,
 )
 async def insert(input: InsertInput, ctx: ToolContext) -> ToolResult:
-    pid = _pid(ctx, input.project_id)
+    pid = resolve_project_id(ctx, input.project_id)
     if pid is None:
         return ToolResult.error("No project_id.")
     try:
@@ -455,7 +451,7 @@ class BulkInsertInput(BaseModel):
     input_model=BulkInsertInput,
 )
 async def bulk_insert(input: BulkInsertInput, ctx: ToolContext) -> ToolResult:
-    pid = _pid(ctx, input.project_id)
+    pid = resolve_project_id(ctx, input.project_id)
     if pid is None:
         return ToolResult.error("No project_id.")
     try:
@@ -486,7 +482,7 @@ class UpdateInput(BaseModel):
     input_model=UpdateInput,
 )
 async def update_doc(input: UpdateInput, ctx: ToolContext) -> ToolResult:
-    pid = _pid(ctx, input.project_id)
+    pid = resolve_project_id(ctx, input.project_id)
     if pid is None:
         return ToolResult.error("No project_id.")
     patch = dict(input.patch)
@@ -514,7 +510,7 @@ class DeleteInput(BaseModel):
     destructive=True,
 )
 async def delete_doc(input: DeleteInput, ctx: ToolContext) -> ToolResult:
-    pid = _pid(ctx, input.project_id)
+    pid = resolve_project_id(ctx, input.project_id)
     if pid is None:
         return ToolResult.error("No project_id.")
     try:
@@ -538,7 +534,7 @@ class RestoreInput(BaseModel):
     input_model=RestoreInput,
 )
 async def restore_doc(input: RestoreInput, ctx: ToolContext) -> ToolResult:
-    pid = _pid(ctx, input.project_id)
+    pid = resolve_project_id(ctx, input.project_id)
     if pid is None:
         return ToolResult.error("No project_id.")
     try:
@@ -566,7 +562,7 @@ class AggregateInput(BaseModel):
     untrusted_output=True,
 )
 async def aggregate(input: AggregateInput, ctx: ToolContext) -> ToolResult:
-    pid = _pid(ctx, input.project_id)
+    pid = resolve_project_id(ctx, input.project_id)
     if pid is None:
         return ToolResult.error("No project_id.")
     try:
@@ -596,7 +592,7 @@ class AuditInput(BaseModel):
     input_model=AuditInput,
 )
 async def audit_log(input: AuditInput, ctx: ToolContext) -> ToolResult:
-    pid = _pid(ctx, input.project_id)
+    pid = resolve_project_id(ctx, input.project_id)
     if pid is None:
         return ToolResult.error("No project_id.")
     try:

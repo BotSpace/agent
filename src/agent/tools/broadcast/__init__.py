@@ -14,11 +14,7 @@ from ...integrations.backend import (
 from ..base import Tool, ToolContext, ToolResult, tool
 
 
-from .._backend import backend_from_ctx as _backend  # ponytail: umumiy resolver
-
-
-def _project_id(ctx: ToolContext, override: str | int | None) -> str | int | None:
-    return override or ctx.state.get("project_id")
+from .._common import backend_from_ctx as _backend, resolve_project_id
 
 
 class BroadcastPreviewInput(BaseModel):
@@ -67,7 +63,7 @@ async def broadcast_preview(input: BroadcastPreviewInput, ctx: ToolContext) -> T
                 "text": input.text,
                 "target": input.target,
                 "telegram_ids": ids if input.target != "all" else None,
-                "project_id": _project_id(ctx, input.project_id),
+                "project_id": resolve_project_id(ctx, input.project_id),
             }
         },
     )
@@ -94,7 +90,7 @@ class BroadcastSendInput(BaseModel):
 async def broadcast_send(input: BroadcastSendInput, ctx: ToolContext) -> ToolResult:
     pending = ctx.state.get("pending_broadcast") or {}
     text = input.text or pending.get("text")
-    pid = _project_id(ctx, input.project_id) or pending.get("project_id")
+    pid = resolve_project_id(ctx, input.project_id) or pending.get("project_id")
     ids = input.telegram_ids if input.telegram_ids is not None else pending.get("telegram_ids")
     if not text:
         return ToolResult.error("No broadcast text — call broadcast.preview first.")
@@ -137,7 +133,7 @@ class BroadcastStatusInput(BaseModel):
     input_model=BroadcastStatusInput,
 )
 async def broadcast_status(input: BroadcastStatusInput, ctx: ToolContext) -> ToolResult:
-    pid = _project_id(ctx, input.project_id)
+    pid = resolve_project_id(ctx, input.project_id)
     try:
         items = await _backend(ctx).list_messages(
             pid, page=input.page, page_size=input.page_size, auth_claims=ctx.state.get("auth_claims")

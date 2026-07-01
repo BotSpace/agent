@@ -12,11 +12,7 @@ from ...integrations.backend import (
 from ..base import Tool, ToolContext, ToolResult, tool
 
 
-from .._backend import backend_from_ctx as _backend  # ponytail: umumiy resolver
-
-
-def _project_id(ctx: ToolContext, override: str | int | None = None) -> str | int | None:
-    return override or ctx.state.get("project_id")
+from .._common import backend_from_ctx as _backend, resolve_project_id
 
 
 class EnvListInput(BaseModel):
@@ -40,7 +36,7 @@ class EnvListInput(BaseModel):
     input_model=EnvListInput,
 )
 async def env_list(input: EnvListInput, ctx: ToolContext) -> ToolResult:
-    pid = _project_id(ctx, input.project_id)
+    pid = resolve_project_id(ctx, input.project_id)
     if pid is None:
         return ToolResult.error("No project_id in context or input.")
     try:
@@ -81,7 +77,7 @@ class EnvSetInput(BaseModel):
     input_model=EnvSetInput,
 )
 async def env_set(input: EnvSetInput, ctx: ToolContext) -> ToolResult:
-    pid = _project_id(ctx, input.project_id)
+    pid = resolve_project_id(ctx, input.project_id)
     if pid is None:
         return ToolResult.error("No project_id in context or input.")
     try:
