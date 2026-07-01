@@ -16,7 +16,7 @@ Yangi field type qo'shilsa, shu jadvalga ham qo'shilishi SHART — aks holda
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 # ── Field "kind" — kompilyator qanday Python tipini yasashini aniqlaydi ──────────
 # Bu UI widget turidan (text/select/...) ko'ra dag'alroq sinf: bir nechta manifest

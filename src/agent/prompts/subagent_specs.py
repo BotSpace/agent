@@ -155,9 +155,5 @@ REGISTRY: dict[str, SubAgentSpec] = {
 }
 
 
-def get_subagent(name: str) -> SubAgentSpec | None:
-    return REGISTRY.get(name)
-
-
 def list_subagents() -> list[SubAgentSpec]:
     return list(REGISTRY.values())

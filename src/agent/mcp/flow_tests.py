@@ -204,9 +204,3 @@ def get_flow_test_store() -> FlowTestStore:
 
         _store = FlowTestStore(get_settings().database_url)
     return _store
-
-
-def set_flow_test_store(store: FlowTestStore | None) -> None:
-    """Test hook — inject a fake/None store."""
-    global _store
-    _store = store

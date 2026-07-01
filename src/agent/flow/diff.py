@@ -29,18 +29,6 @@ class FlowDiff:
             lines.append(f"- Edges: {', '.join(self.removed_edges)}")
         return "\n".join(lines) if lines else "(no changes)"
 
-    @property
-    def is_empty(self) -> bool:
-        return not any(
-            (
-                self.added_nodes,
-                self.removed_nodes,
-                self.modified_nodes,
-                self.added_edges,
-                self.removed_edges,
-            )
-        )
-
 
 def diff(before: FlowDocument, after: FlowDocument) -> FlowDiff:
     before_nodes = {n.id: n for n in before.nodes}

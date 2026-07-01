@@ -11,23 +11,14 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from ...integrations.backend import BackendClient, BackendError, get_backend_client, pagination_summary
+from ...integrations.backend import BackendError, pagination_summary
 from ..base import Tool, ToolContext, ToolResult, tool
 
 
 # ── shared helpers ───────────────────────────────────────────────────────────
 
 
-def _backend(ctx: ToolContext) -> BackendClient:
-    backend = ctx.services.get("backend")
-    if isinstance(backend, BackendClient):
-        return backend
-    return get_backend_client()
-
-
-def _bearer(ctx: ToolContext) -> str | None:
-    claims = ctx.state.get("auth_claims") or {}
-    return claims.get("access_token") if isinstance(claims, dict) else None
+from .._backend import backend_from_ctx as _backend  # ponytail: umumiy resolver
 
 
 def _pid(ctx: ToolContext, override: str | int | None = None) -> str | int | None:
