@@ -79,11 +79,6 @@ def _backend(ctx: ToolContext) -> BackendClient:
     return get_backend_client()
 
 
-def _bearer(ctx: ToolContext) -> str | None:
-    claims = ctx.state.get("auth_claims") or {}
-    return claims.get("access_token") if isinstance(claims, dict) else None
-
-
 def _project_id(ctx: ToolContext, override: str | int | None) -> str | int | None:
     # Release calls must be scoped to a concrete project, never global context.
     value = override or ctx.state.get("project_id") or ctx.project_id

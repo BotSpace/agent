@@ -47,12 +47,6 @@ def _set_working_flow(flow: FlowDocument) -> dict[str, Any]:
     return {"working_flow": flow.model_dump(), "flow_dirty": True}
 
 
-def _snake_node_name(type_name: str) -> str:
-    name = type_name.removesuffix("Node")
-    parts = re.findall(r"[A-Z]+(?=[A-Z][a-z]|$)|[A-Z]?[a-z]+|\d+", name)
-    return "_".join(part.lower() for part in parts)
-
-
 def _edge_id(source: str, target: str, source_handle: str | None = None) -> str:
     handle = (source_handle or "source-handler").replace(" ", "_")
     return f"e-{source}-{target}-{handle}"

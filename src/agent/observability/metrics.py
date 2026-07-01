@@ -72,13 +72,6 @@ AGENT_RUN_DURATION = Histogram(
 )
 
 
-def _estimate_tokens(text: str) -> int:
-    """Cheap chars-per-token estimate. Not exact, but fine for a
-    relative breakdown (system vs user vs tool_result). Replace with
-    tiktoken if accuracy matters."""
-    return max(0, (len(text) + 3) // 4)
-
-
 def local_token_breakdown(
     messages: list[Message],
     options: GenerateOptions,

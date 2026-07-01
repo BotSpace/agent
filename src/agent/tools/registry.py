@@ -29,17 +29,8 @@ class ToolRegistry:
     def all(self) -> list[Tool]:
         return list(self._tools.values())
 
-    def by_namespace(self, namespace: str) -> list[Tool]:
-        prefix = f"{namespace}."
-        return [t for t in self._tools.values() if t.name.startswith(prefix)]
-
     def specs(self) -> list[ToolSpec]:
         return [t.to_spec() for t in self._tools.values()]
-
-    def filter_specs(self, allowed: set[str] | None) -> list[ToolSpec]:
-        if allowed is None:
-            return self.specs()
-        return [t.to_spec() for t in self._tools.values() if t.name in allowed]
 
     async def execute(
         self,

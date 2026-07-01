@@ -21,7 +21,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from ...flow.manifest_compiler.compiler import LocalizedText, _StrictData, compile_node_model
+from ...flow.manifest_compiler.compiler import LocalizedText, compile_node_model
 from ...flow.manifest_compiler.loader import load_node_manifests
 
 __all__ = [
