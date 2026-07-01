@@ -43,6 +43,10 @@ class FakeDraftStore:
     async def clear(self, *, user_id, project_id) -> None:
         self.rows.pop((user_id, project_id), None)
 
+    async def touch_active(self, *, user_id, project_id) -> None:
+        # Real DraftStore: (user,project)ni oxirgi-tanlangan deb belgilaydi. Fake — no-op yozib qo'yamiz.
+        self.active = (user_id, project_id)
+
 
 class _FakeBackend:
     async def get_project(self, project_id, *, auth_claims=None):

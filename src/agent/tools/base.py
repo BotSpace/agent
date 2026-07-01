@@ -58,8 +58,9 @@ class ToolResult:
     """Strukturlangan natija (UI uchun foydali)."""
     data_in_content: bool = False
     """True bo'lsa — `data` allaqachon `content`ga (o'qishli ko'rinishda)
-    renderlangan; MCP qatlami YAML(data)ni QAYTA qo'shmaydi (takror bo'lmasin).
-    Data'ni content'ga o'zi chiqaradigan tool'lar (list_node_types, ...) uchun."""
+    renderlangan; MCP qatlami YAML(data)ni QAYTA qo'shmaydi (token takrori
+    oldini oladi). Data'ni content'ga o'zi chiqaradigan tool'lar uchun
+    (list_node_types, flow.get, cms.find/get_document, ...)."""
 
     @classmethod
     def ok(cls, content: str, **kwargs: Any) -> "ToolResult":

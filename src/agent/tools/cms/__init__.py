@@ -379,6 +379,7 @@ async def find(input: ListDocumentsInput, ctx: ToolContext) -> ToolResult:
     return ToolResult.ok(
         _fmt_rows(rows, total),
         data={"results": rows, "total": total, "limit": res.get("limit"), "skip": res.get("skip")},
+        data_in_content=True,
     )
 
 
@@ -545,6 +546,130 @@ async def restore_doc(input: RestoreInput, ctx: ToolContext) -> ToolResult:
     return ToolResult.ok(f"Document `{input.id}` restored.", data=res)
 
 
+# ── bulk update / delete (filter bo'yicha) ───────────────────────────────────
+# ponytail: client-side loop (find → per-doc update/delete). Backend'da atomik
+# bulk-update endpoint yo'q; agent uchun 1 tool chaqiruvi — asosiy og'riqni yechadi.
+# Atomiklik/tezlik kerak bo'lsa backend'ga bulk endpoint qo'shiladi.
+
+
+class UpdateManyInput(BaseModel):
+    collection: str
+    filter: dict[str, Any] = Field(
+        description="Yangilanadigan hujjatlarni tanlovchi MongoDB filter, masalan {code:'123'}. "
+        "Bo'sh {} RAD ETILADI (butun kolleksiyani yangilab yubormaslik uchun)."
+    )
+    patch: dict[str, Any] = Field(
+        description="Har bir mos hujjatga qo'llaniladigan qisman yangilanish (partial merge)."
+    )
+    limit: int = Field(
+        default=500, ge=1, le=1000,
+        description="Ko'pi bilan shuncha hujjat yangilanadi (xavfsizlik chegarasi).",
+    )
+    project_id: str | int | None = None
+
+
+@tool(
+    name="cms.update_many",
+    description=(
+        "Update every document matching a MongoDB `filter` with the same `patch` "
+        "(partial merge). One call instead of many cms.update. Not atomic — each "
+        "doc is patched in turn; partial failure reports how many succeeded. Empty "
+        "filter is rejected. At most `limit` (default 500) docs are touched."
+    ),
+    input_model=UpdateManyInput,
+)
+async def update_many(input: UpdateManyInput, ctx: ToolContext) -> ToolResult:
+    pid = resolve_project_id(ctx, input.project_id)
+    if pid is None:
+        return ToolResult.error("No project_id.")
+    if not input.filter:
+        return ToolResult.error(
+            "filter bo'sh bo'lishi mumkin emas — butun kolleksiyani yangilab "
+            "yubormaslik uchun aniq filter bering (masalan {\"code\":\"123\"})."
+        )
+    if not input.patch:
+        return ToolResult.error("patch bo'sh — yangilanadigan maydon yo'q.")
+    claims = ctx.state.get("auth_claims")
+    try:
+        res = await _backend(ctx).cms_list_documents(
+            pid, input.collection, filter=input.filter, limit=input.limit, auth_claims=claims
+        )
+    except BackendError as e:
+        return _error(e)
+    rows = res.get("results", [])
+    ids = [str(r["_id"]) for r in rows if r.get("_id")]
+    total = res.get("total", len(ids))
+    updated, errors = 0, []
+    for did in ids:
+        try:
+            await _backend(ctx).cms_update(pid, input.collection, did, dict(input.patch), auth_claims=claims)
+            updated += 1
+        except BackendError as e:
+            errors.append(f"{did}: {e}")
+    msg = f"Updated {updated}/{len(ids)} document(s) matching filter."
+    if isinstance(total, int) and total > len(ids):
+        msg += f" ({total} matched; capped at limit={input.limit} — increase `limit` for the rest.)"
+    if errors:
+        msg += f" {len(errors)} failed; first: {errors[0]}"
+    return ToolResult.ok(msg, data={"matched": len(ids), "total": total, "updated": updated, "errors": errors[:10]})
+
+
+class DeleteManyInput(BaseModel):
+    collection: str
+    filter: dict[str, Any] = Field(
+        description="O'chiriladigan hujjatlarni tanlovchi MongoDB filter. Bo'sh {} RAD ETILADI."
+    )
+    limit: int = Field(
+        default=500, ge=1, le=1000,
+        description="Ko'pi bilan shuncha hujjat o'chiriladi (xavfsizlik chegarasi).",
+    )
+    project_id: str | int | None = None
+
+
+@tool(
+    name="cms.delete_many",
+    description=(
+        "Soft-delete every document matching a MongoDB `filter` (recoverable via "
+        "cms.restore). One call instead of many cms.delete. Not atomic. Empty "
+        "filter is rejected. At most `limit` (default 500) docs are deleted."
+    ),
+    input_model=DeleteManyInput,
+    destructive=True,
+)
+async def delete_many(input: DeleteManyInput, ctx: ToolContext) -> ToolResult:
+    pid = resolve_project_id(ctx, input.project_id)
+    if pid is None:
+        return ToolResult.error("No project_id.")
+    if not input.filter:
+        return ToolResult.error(
+            "filter bo'sh bo'lishi mumkin emas — butun kolleksiyani o'chirib "
+            "yubormaslik uchun aniq filter bering."
+        )
+    claims = ctx.state.get("auth_claims")
+    try:
+        res = await _backend(ctx).cms_list_documents(
+            pid, input.collection, filter=input.filter, limit=input.limit, auth_claims=claims
+        )
+    except BackendError as e:
+        return _error(e)
+    rows = res.get("results", [])
+    ids = [str(r["_id"]) for r in rows if r.get("_id")]
+    total = res.get("total", len(ids))
+    deleted, errors = 0, []
+    for did in ids:
+        try:
+            await _backend(ctx).cms_delete(pid, input.collection, did, auth_claims=claims)
+            deleted += 1
+        except BackendError as e:
+            errors.append(f"{did}: {e}")
+    msg = f"Soft-deleted {deleted}/{len(ids)} document(s) matching filter."
+    if isinstance(total, int) and total > len(ids):
+        msg += f" ({total} matched; capped at limit={input.limit}.)"
+    if errors:
+        msg += f" {len(errors)} failed; first: {errors[0]}"
+    return ToolResult.ok(msg, data={"matched": len(ids), "total": total, "deleted": deleted, "errors": errors[:10]})
+
+
 class AggregateInput(BaseModel):
     collection: str
     pipeline: list[dict[str, Any]] = Field(
@@ -572,7 +697,7 @@ async def aggregate(input: AggregateInput, ctx: ToolContext) -> ToolResult:
         return _error(e)
     rows = d.get("results", [])
     count = d.get("count", len(rows))
-    return ToolResult.ok(_fmt_rows(rows, count, noun="row"), data=d)
+    return ToolResult.ok(_fmt_rows(rows, count, noun="row"), data=d, data_in_content=True)
 
 
 class AuditInput(BaseModel):
@@ -604,7 +729,9 @@ async def audit_log(input: AuditInput, ctx: ToolContext) -> ToolResult:
         )
     except BackendError as e:
         return _error(e)
-    return ToolResult.ok(_fmt_rows(items, len(items), noun="audit entry"), data={"audit": items})
+    return ToolResult.ok(
+        _fmt_rows(items, len(items), noun="audit entry"), data={"audit": items}, data_in_content=True
+    )
 
 
 def build_cms_tools() -> list[Tool]:
@@ -621,7 +748,9 @@ def build_cms_tools() -> list[Tool]:
         insert,
         bulk_insert,
         update_doc,
+        update_many,
         delete_doc,
+        delete_many,
         restore_doc,
         aggregate,
         audit_log,

@@ -39,8 +39,13 @@ CREATE TABLE IF NOT EXISTS mcp_flow_drafts (
     collections   JSONB,
     snapshots     JSONB NOT NULL DEFAULT '[]'::jsonb,
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    active_at     TIMESTAMPTZ,
     PRIMARY KEY (user_id, project_id)
 );
+-- active_at — foydalanuvchi shu loyihani ohirgi marta EXPLICIT tanlagan vaqti
+-- (session_use_project). Restore shuni asos qiladi, oxirgi tahrirlangan draftni
+-- emas — noto'g'ri loyihaga drift'ni oldini oladi. Eski jadval uchun migratsiya:
+ALTER TABLE mcp_flow_drafts ADD COLUMN IF NOT EXISTS active_at TIMESTAMPTZ;
 """
 
 
@@ -155,11 +160,34 @@ class DraftStore:
             "snapshots": row[5] or [],
         }
 
-    async def load_latest(self, *, user_id: str) -> dict[str, Any] | None:
-        """Most-recently-updated draft for a user across all projects (#5).
+    async def touch_active(self, *, user_id: str, project_id: str) -> None:
+        """Mark this (user, project) as the last EXPLICITLY selected one (#2).
 
-        Used for transparent session recovery: after a restart the active-project
-        pointer is lost, so we fall back to "whatever the user was last editing".
+        Called on session_use_project. Restore (load_latest) prefers the most
+        recently *selected* project over the most recently *edited* one, so a
+        mutation on another project can't silently drift the session. No-op if
+        the draft row doesn't exist yet (upsert creates it first). Graceful
+        degrade → silent."""
+        if not await self._bootstrap():
+            return
+        try:
+            async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        "UPDATE mcp_flow_drafts SET active_at = NOW() "
+                        "WHERE user_id = %s AND project_id = %s",
+                        (user_id, project_id),
+                    )
+                await conn.commit()
+        except Exception as exc:
+            logger.warning("MCP draft touch_active failed (%s/%s): %s", user_id, project_id, exc)
+
+    async def load_latest(self, *, user_id: str) -> dict[str, Any] | None:
+        """Session recovery anchor for a user across all projects (#2, #5).
+
+        After a restart the active-project pointer is lost. We restore the
+        project the user last EXPLICITLY selected (active_at), falling back to
+        the most recently edited draft (updated_at) if none was ever selected.
         Includes `project_id` in the returned dict. Graceful degrade → None."""
         if not await self._bootstrap():
             return None
@@ -171,7 +199,7 @@ class DraftStore:
                                   baseline_flow, flow_dirty, collections, snapshots
                            FROM mcp_flow_drafts
                            WHERE user_id = %s
-                           ORDER BY updated_at DESC
+                           ORDER BY active_at DESC NULLS LAST, updated_at DESC
                            LIMIT 1""",
                         (user_id,),
                     )
