@@ -473,8 +473,8 @@ def _result_to_mcp(
     # qo'shiladi; `structuredContent` (JSON) YUBORILMAYDI — MCP klient JSON o'rniga
     # o'qishli YAML ko'radi. (Ichki LangGraph agent ToolResult'ni to'g'ridan o'qiydi,
     # MCP qatlamiga bog'liq emas.)
-    # data_in_content=True bo'lsa — tool data'ni allaqachon content'ga renderlagan,
-    # YAML(data)ni qo'shmaymiz (takror bo'lmasin).
+    # data_in_content=True bo'lsa — tool data'ni allaqachon content'ga renderlagan
+    # (cms.find/get_document, flow.get, ...), YAML(data)ni qo'shmaymiz (takror bo'lmasin).
     text = content or ""
     if not data_in_content and isinstance(data, dict) and data:
         yml = _data_to_yaml(data)
@@ -553,6 +553,9 @@ async def _handle_session_use_project(
             pass
 
         await _persist_draft(ws)
+        # #2 — this is an EXPLICIT project selection; mark it so session recovery
+        # (load_latest) sticks to it rather than drifting to the last-edited draft.
+        await get_draft_store().touch_active(user_id=user.user_id, project_id=project_id)
 
         nodes = len(flow.get("nodes") or [])
         edges = len(flow.get("edges") or [])
@@ -763,9 +766,22 @@ async def _execute_registry_tool(
         ws.sync_auth_claims(user.claims)
 
         # #5 — transparent session recovery: if no active project (pointer lost
-        # after a restart/TTL), restore the user's last-edited draft and carry on
+        # after a restart/TTL), restore the user's last-selected draft and carry on
         # instead of erroring. Only when project_id wasn't explicit.
         if not ws.project_id and explicit_pid is None:
+            # #2 — never SILENTLY guess a project for a destructive op: restoring
+            # the wrong project could delete/overwrite the wrong data. Make the
+            # caller pin the project explicitly. Read/flow tools still auto-restore.
+            reg_tool = registry.get(reg_name)
+            if reg_tool is not None and reg_tool.destructive:
+                return _result_to_mcp(
+                    "Aktiv loyiha yo'q, bu esa o'zgartiruvchi (destructive) amal. "
+                    "Noto'g'ri loyihaga yozib yubormaslik uchun avval "
+                    "session_use_project(project_id) chaqiring yoki project_id "
+                    "argumentini bevosita bering.",
+                    is_error=True,
+                    data=None,
+                )
             restored_pid = await _auto_restore_session(store, user)
             if restored_pid is not None:
                 ws = store.get(user.user_id, client_key=user.client_key)

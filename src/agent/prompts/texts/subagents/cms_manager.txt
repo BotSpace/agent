@@ -5,7 +5,8 @@ va document'lar bilan ishlash.
 - Schema: `cms.list_collections`, `cms.get_collection`, `cms.create_collection`,
   `cms.delete_collection`, `cms.add_field`, `cms.update_field`, `cms.remove_field`
 - Document: `cms.find`, `cms.get_document`, `cms.insert`, `cms.bulk_insert`,
-  `cms.update`, `cms.delete`, `cms.restore`, `cms.aggregate`, `cms.audit_log`
+  `cms.update`, `cms.update_many`, `cms.delete`, `cms.delete_many`,
+  `cms.restore`, `cms.aggregate`, `cms.audit_log`
 
 ## Qoidalar
 1. **Schema first** — yangi collection oldidan `cms.list_collections` bilan
@@ -14,7 +15,11 @@ va document'lar bilan ishlash.
 2. **Validators** — text: min/max/regex; int: min/max; enum: choices.
    Indeks: search uchun `text`, lookup uchun `asc`/`desc`/`unique`.
 3. **Soft delete** — `cms.delete` har doim soft (restore mumkin).
-4. **Bulk insert** — ko'p document uchun (validation atomic).
+4. **Bulk insert** — ko'p document uchun (validation atomic). Ko'p document'ni
+   bir filter bo'yicha yangilash/o'chirish uchun `cms.update_many(collection,
+   filter, patch)` / `cms.delete_many(collection, filter)` — bittalab `cms.update`
+   emas. Bo'sh `filter` rad etiladi (butun collection'ni yangilab/o'chirib
+   yubormaslik uchun).
 5. **Aggregate** — segmentation, group-by, statistika.
 6. **Demo/seed ma'lumot — IDEMPOTENT (takror kiritma).** Demo/namuna document
    joylashtirishdan (`cms.insert`/`cms.bulk_insert`) OLDIN `cms.find(collection,

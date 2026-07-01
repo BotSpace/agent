@@ -542,7 +542,7 @@ async def test_draft_store_load_latest(monkeypatch):
         s = " ".join(sql.split())
         if s.startswith("CREATE TABLE"):
             return None
-        if "ORDER BY updated_at DESC" in s:
+        if "ORDER BY active_at DESC" in s:
             # project_id, project_name, working_flow, baseline_flow,
             # flow_dirty, collections, snapshots
             return ("88", "Proj 88", _FLOW, _FLOW, True, [], [])
