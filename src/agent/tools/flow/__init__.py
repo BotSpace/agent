@@ -26,6 +26,7 @@ from ...flow import (
     validate,
 )
 from ..base import Tool, ToolContext, ToolResult, tool
+from .._common import resolve_concrete_project_id
 from .actions import build_flow_action_tools, remap_button_edge_handles
 from .node_data_models import get_data_model  # ponytail: NODE_DATA_MODELS re-export'i hech qayerda ishlatilmaydi
 from .power import build_flow_power_tools
@@ -63,23 +64,6 @@ def node_missing_error(node_id: str, flow: FlowDocument, *, role: str = "Node") 
     return ToolResult.error(
         f"{role} `{node_id}` topilmadi. Mavjud node id'lari: "
         f"{[n.id for n in flow.nodes]}. flow_get(summary_only=true) bilan tekshiring."
-    )
-
-
-def _concrete_project_id(value: Any) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    if text.lower() in {"", "global", "none", "null"}:
-        return None
-    return text
-
-
-def _project_id(ctx: ToolContext) -> str | None:
-    # Chat sessions may start in a global context, then select/create a project
-    # via tools. Save must use that concrete state project, never `/global/`.
-    return _concrete_project_id(ctx.state.get("project_id")) or _concrete_project_id(
-        ctx.project_id
     )
 
 
@@ -1006,7 +990,7 @@ async def flow_save(input: FlowSaveInput, ctx: ToolContext) -> ToolResult:
     if input.apply_layout:
         auto_layout(flow)
 
-    project_id = _concrete_project_id(input.project_id) or _project_id(ctx)
+    project_id = resolve_concrete_project_id(ctx, input.project_id)
     if not project_id:
         return ToolResult.error(
             "Cannot save flow: no concrete project_id is set. "

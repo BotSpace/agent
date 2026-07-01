@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from ...flow import FlowDocument, validate
 from ..base import ToolContext, ToolResult, tool
+from .._common import resolve_concrete_project_id
 
 # ── shared state helpers ──────────────────────────────────────────────────────
 
@@ -36,29 +37,6 @@ def _working_flow(ctx: ToolContext) -> dict[str, Any]:
         except Exception:
             return {"nodes": [], "edges": []}
     return {"nodes": [], "edges": []}
-
-
-def _concrete_project_id(value: Any) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    if text.lower() in {"", "global", "none", "null"}:
-        return None
-    return text
-
-
-def _power_project_id(ctx: ToolContext, explicit: Any = None) -> str | None:
-    """Resolve the project id. Priority: explicit tool arg → state → ctx.
-
-    The explicit arg matters in the dashboard agent: a sub-agent may know the
-    project from its prompt but not have it set in ctx (only the working flow is
-    propagated), so tools like flow.simulate/save MUST accept project_id directly
-    — exactly like flow.save already does."""
-    return (
-        _concrete_project_id(explicit)
-        or _concrete_project_id(ctx.state.get("project_id"))
-        or _concrete_project_id(ctx.project_id)
-    )
 
 
 def _backend(ctx: ToolContext):
@@ -283,7 +261,7 @@ async def _seed_collections(ctx: ToolContext, project_id: str | None = None) -> 
     """Read the CURRENT documents of the project's collections (max 50 each) so
     the simulator runs against realistic data. Per-collection failures isolated."""
     out: dict[str, list[dict]] = {}
-    project_id = _concrete_project_id(project_id) or _power_project_id(ctx)
+    project_id = resolve_concrete_project_id(ctx, project_id)
     if not project_id:
         return out
     backend = _backend(ctx)
@@ -517,7 +495,7 @@ async def _resolve_sim_flow(ctx: ToolContext, *, use_saved: bool) -> dict[str, A
         from ...integrations.backend import load_saved_flow
 
         flow = await load_saved_flow(
-            _power_project_id(ctx), auth_claims=ctx.state.get("auth_claims"),
+            resolve_concrete_project_id(ctx), auth_claims=ctx.state.get("auth_claims"),
             client=_backend(ctx),
         )
         return flow if isinstance(flow, dict) else {"nodes": [], "edges": []}
@@ -574,7 +552,7 @@ async def _run_simulation(
 async def flow_simulate(input: FlowSimulateInput, ctx: ToolContext) -> ToolResult:
     from ...integrations.simulator import SimulatorUnavailableError
 
-    project_id = _power_project_id(ctx, getattr(input, "project_id", None))
+    project_id = resolve_concrete_project_id(ctx, getattr(input, "project_id", None))
     if not project_id:
         return ToolResult.error(
             "Aktiv loyiha yo'q — avval loyihani tanlang (session_use_project / "
@@ -757,7 +735,7 @@ class FlowHistoryInput(BaseModel):
 async def flow_history(input: FlowHistoryInput, ctx: ToolContext) -> ToolResult:
     from ...mcp.flow_versions import get_flow_version_store
 
-    project_id = _power_project_id(ctx, getattr(input, "project_id", None))
+    project_id = resolve_concrete_project_id(ctx, getattr(input, "project_id", None))
     if not project_id:
         return ToolResult.error(
             "Aktiv loyiha yo'q — avval loyihani tanlang."
@@ -806,7 +784,7 @@ class FlowRollbackInput(BaseModel):
 async def flow_rollback(input: FlowRollbackInput, ctx: ToolContext) -> ToolResult:
     from ...mcp.flow_versions import get_flow_version_store
 
-    project_id = _power_project_id(ctx, getattr(input, "project_id", None))
+    project_id = resolve_concrete_project_id(ctx, getattr(input, "project_id", None))
     if not project_id:
         return ToolResult.error(
             "Aktiv loyiha yo'q — avval loyihani tanlang."
@@ -962,7 +940,7 @@ class FlowTestSaveInput(BaseModel):
 async def flow_test_save(input: FlowTestSaveInput, ctx: ToolContext) -> ToolResult:
     from ...mcp.flow_tests import get_flow_test_store
 
-    project_id = _power_project_id(ctx, getattr(input, "project_id", None))
+    project_id = resolve_concrete_project_id(ctx, getattr(input, "project_id", None))
     if not project_id:
         return ToolResult.error("Aktiv loyiha yo'q — avval loyihani tanlang.")
     name = input.name.strip()
@@ -1005,7 +983,7 @@ class FlowTestListInput(BaseModel):
 async def flow_test_list(input: FlowTestListInput, ctx: ToolContext) -> ToolResult:
     from ...mcp.flow_tests import get_flow_test_store
 
-    project_id = _power_project_id(ctx, getattr(input, "project_id", None))
+    project_id = resolve_concrete_project_id(ctx, getattr(input, "project_id", None))
     if not project_id:
         return ToolResult.error("Aktiv loyiha yo'q — avval loyihani tanlang.")
     tests = await get_flow_test_store().list(project_id=project_id)
@@ -1050,7 +1028,7 @@ class FlowTestDeleteInput(BaseModel):
 async def flow_test_delete(input: FlowTestDeleteInput, ctx: ToolContext) -> ToolResult:
     from ...mcp.flow_tests import get_flow_test_store
 
-    project_id = _power_project_id(ctx, getattr(input, "project_id", None))
+    project_id = resolve_concrete_project_id(ctx, getattr(input, "project_id", None))
     if not project_id:
         return ToolResult.error("Aktiv loyiha yo'q — avval loyihani tanlang.")
     name = input.name.strip()
@@ -1099,7 +1077,7 @@ class FlowTestRunInput(BaseModel):
 async def flow_test_run(input: FlowTestRunInput, ctx: ToolContext) -> ToolResult:
     from ...mcp.flow_tests import get_flow_test_store
 
-    project_id = _power_project_id(ctx, getattr(input, "project_id", None))
+    project_id = resolve_concrete_project_id(ctx, getattr(input, "project_id", None))
     if not project_id:
         return ToolResult.error("Aktiv loyiha yo'q — avval loyihani tanlang.")
     store = get_flow_test_store()

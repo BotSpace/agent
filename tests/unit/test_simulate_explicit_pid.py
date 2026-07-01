@@ -1,7 +1,8 @@
 """flow.simulate (va power tools) ctx'da project_id bo'lmasa ham explicit
 project_id bilan ishlashi — dashboard sub-agent muammosi."""
 
-from agent.tools.flow.power import FlowSimulateInput, _power_project_id
+from agent.tools._common import resolve_concrete_project_id
+from agent.tools.flow.power import FlowSimulateInput
 
 
 class _Ctx:
@@ -12,12 +13,12 @@ class _Ctx:
 
 def test_explicit_project_id_wins_when_ctx_empty():
     ctx = _Ctx()  # ctx'da hech narsa yo'q (dashboard sub-agent holati)
-    assert _power_project_id(ctx, "1217") == "1217"
+    assert resolve_concrete_project_id(ctx, "1217") == "1217"
 
 
 def test_ctx_used_when_no_explicit():
     ctx = _Ctx(project_id="42")
-    assert _power_project_id(ctx) == "42"
+    assert resolve_concrete_project_id(ctx) == "42"
 
 
 def test_simulate_input_accepts_project_id():
@@ -29,4 +30,4 @@ def test_simulate_input_accepts_project_id():
 
 def test_placeholder_project_ignored():
     ctx = _Ctx()
-    assert _power_project_id(ctx, "global") is None
+    assert resolve_concrete_project_id(ctx, "global") is None
