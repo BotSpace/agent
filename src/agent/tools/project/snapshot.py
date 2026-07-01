@@ -18,8 +18,8 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from ...integrations.backend import get_backend_client
-from ..base import Tool, ToolContext, ToolResult, tool
 from .._common import resolve_concrete_project_id
+from ..base import Tool, ToolContext, ToolResult, tool
 
 
 def _backend(ctx: ToolContext):

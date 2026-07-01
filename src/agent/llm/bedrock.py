@@ -21,6 +21,8 @@ from ..observability.metrics import (
     local_token_breakdown,
     record_llm_usage,
 )
+from ._utils import restore_tool_name as _restore_tool_name
+from ._utils import sanitize_tool_name as _sanitize_tool_name
 from .base import (
     ContentPart,
     GenerateOptions,
@@ -71,16 +73,6 @@ def _bedrock_supports_caching(model_id: str) -> bool:
     reject cachePoint blocks with a ValidationException, so gate on Claude.
     """
     return "anthropic.claude" in model_id.lower()
-
-
-# Bedrock tool name regex is [a-zA-Z0-9_-]+ — no dots allowed.
-# We swap "." → "--" on the way out and reverse it on tool_use callbacks.
-def _sanitize_tool_name(name: str) -> str:
-    return name.replace(".", "--")
-
-
-def _restore_tool_name(name: str) -> str:
-    return name.replace("--", ".")
 
 
 class BedrockClient(LLMClient):

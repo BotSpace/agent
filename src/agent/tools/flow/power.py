@@ -21,8 +21,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, model_validator
 
 from ...flow import FlowDocument, validate
-from ..base import ToolContext, ToolResult, tool
 from .._common import resolve_concrete_project_id
+from ..base import ToolContext, ToolResult, tool
 
 # ── shared state helpers ──────────────────────────────────────────────────────
 
