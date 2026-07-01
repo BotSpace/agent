@@ -453,13 +453,34 @@ def _session_tools() -> list[mtypes.Tool]:
 # ── Tool execution ───────────────────────────────────────────────────────────
 
 
+def _data_to_yaml(data: dict) -> str:
+    """Strukturali `data`ni AI uchun o'qishli YAML matnga aylantiradi (JSON emas)."""
+    import yaml
+
+    try:
+        text = yaml.safe_dump(
+            data, allow_unicode=True, default_flow_style=False, sort_keys=False, width=100
+        ).rstrip()
+        return text if text and text != "{}" else ""
+    except Exception:
+        return ""
+
+
 def _result_to_mcp(content: str, *, is_error: bool, data: dict | None) -> mtypes.CallToolResult:
-    blocks: list[mtypes.ContentBlock] = [mtypes.TextContent(type="text", text=content or "")]
-    structured = data if isinstance(data, dict) else None
+    # AI-mos javob: matn (content) + strukturali ma'lumot YAML sifatida content'ga
+    # qo'shiladi; `structuredContent` (JSON) YUBORILMAYDI — MCP klient JSON o'rniga
+    # o'qishli YAML ko'radi. (Ichki LangGraph agent ToolResult'ni to'g'ridan o'qiydi,
+    # MCP qatlamiga bog'liq emas.)
+    text = content or ""
+    if isinstance(data, dict) and data:
+        yml = _data_to_yaml(data)
+        if yml:
+            text = f"{text}\n\n{yml}" if text else yml
+    blocks: list[mtypes.ContentBlock] = [mtypes.TextContent(type="text", text=text)]
     return mtypes.CallToolResult(
         content=blocks,
         isError=is_error,
-        structuredContent=structured,
+        structuredContent=None,
     )
 
 

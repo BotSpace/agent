@@ -141,7 +141,7 @@ async def test_session_status_after_use_project(monkeypatch):
 
     assert result.isError is False
     assert "Aktiv loyiha: 3" in result.content[0].text
-    assert result.structuredContent["nodes"] == 1
+    assert _structured(result)["nodes"] == 1
 
 
 @pytest.mark.asyncio
@@ -194,7 +194,7 @@ async def test_dirty_draft_is_persisted_and_restored(monkeypatch):
 
     assert result.isError is False
     assert "draft tiklandi" in result.content[0].text
-    assert result.structuredContent["draft_restored"] is True
+    assert _structured(result)["draft_restored"] is True
     ws2 = store.get("42")
     assert ws2.flow_dirty is True
     assert any(n["id"] == "m1" for n in ws2.working_flow["nodes"])
@@ -259,7 +259,7 @@ async def test_session_status_returns_collections_and_dirty(monkeypatch):
     finally:
         mcp_server._current_user.reset(token)
 
-    sc = result.structuredContent
+    sc = _structured(result)
     assert sc["project_id"] == "3"
     assert sc["collections"] == ["orders", "users"]
     assert sc["flow_dirty"] is False
@@ -295,7 +295,7 @@ async def test_session_undo_restores_flow_after_clear(monkeypatch):
         mcp_server._current_user.reset(token)
 
     assert undone.isError is False
-    assert undone.structuredContent["restored"] is True
+    assert _structured(undone)["restored"] is True
     ws = get_workspace_store().get("42")
     assert len(ws.working_flow["nodes"]) == 2
 
@@ -356,7 +356,7 @@ async def test_two_clients_same_user_independent_active_project(monkeypatch):
         status_a = await _call(srv, "session_status", {})
     finally:
         mcp_server._current_user.reset(tok)
-    assert status_a.structuredContent["project_id"] == "1"
+    assert _structured(status_a)["project_id"] == "1"
 
     # B's session_status reports project 2.
     tok = mcp_server._current_user.set(user_b)
@@ -364,7 +364,7 @@ async def test_two_clients_same_user_independent_active_project(monkeypatch):
         status_b = await _call(srv, "session_status", {})
     finally:
         mcp_server._current_user.reset(tok)
-    assert status_b.structuredContent["project_id"] == "2"
+    assert _structured(status_b)["project_id"] == "2"
 
     # A flow tool from client A lands on project 1's shared workspace.
     tok = mcp_server._current_user.set(user_a)
@@ -397,7 +397,7 @@ async def test_same_client_sequential_use_project_last_wins(monkeypatch):
     finally:
         mcp_server._current_user.reset(tok)
 
-    assert status.structuredContent["project_id"] == "2"
+    assert _structured(status)["project_id"] == "2"
     assert store.active_project_id("42", client_key="solo") == "2"
 
 
@@ -433,3 +433,17 @@ async def test_explicit_project_id_overrides_active_pointer(monkeypatch):
     assert ws1.working_flow["nodes"][0]["data"]["messageText"] == "1"
     # And the active pointer is still 1.
     assert store.active_project_id("42", client_key="ovr") == "1"
+
+
+def _structured(_res):
+    """MCP javob content'idagi YAML blokni dict qilib qaytaradi (structuredContent o'chirilgan)."""
+    import yaml as _yaml
+    _text = _res.content[0].text if _res.content else ""
+    for _chunk in (_text.rsplit("\n\n", 1)[-1], _text):
+        try:
+            _p = _yaml.safe_load(_chunk)
+            if isinstance(_p, dict):
+                return _p
+        except Exception:
+            pass
+    return {}

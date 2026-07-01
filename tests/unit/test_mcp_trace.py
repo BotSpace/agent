@@ -305,7 +305,7 @@ async def test_session_log_prompt_opens_trace_and_returns_id(monkeypatch, wired)
     finally:
         mcp_server._current_user.reset(token)
     assert res.isError is False
-    tid = res.structuredContent["trace_id"]
+    tid = _structured(res)["trace_id"]
     assert tid
     assert trace.current_trace_id("42", "ck") == tid
     # The __prompt__ record carries the verbatim prompt and this trace_id.
@@ -353,7 +353,7 @@ async def test_tool_calls_attach_to_trace(monkeypatch, wired):
     token = mcp_server._current_user.set(_user())
     try:
         res = await _call(srv, "session_log_prompt", {"prompt": "build"})
-        tid = res.structuredContent["trace_id"]
+        tid = _structured(res)["trace_id"]
         await _call(srv, "session_use_project", {"project_id": "9"})
         await _call(
             srv,
@@ -409,3 +409,17 @@ def teardown_function() -> None:
     # Keep the shared workspace store clean between tests.
     get_workspace_store()._store.clear()
     get_workspace_store()._active.clear()
+
+
+def _structured(_res):
+    """MCP javob content'idagi YAML blokni dict qilib qaytaradi (structuredContent o'chirilgan)."""
+    import yaml as _yaml
+    _text = _res.content[0].text if _res.content else ""
+    for _chunk in (_text.rsplit("\n\n", 1)[-1], _text):
+        try:
+            _p = _yaml.safe_load(_chunk)
+            if isinstance(_p, dict):
+                return _p
+        except Exception:
+            pass
+    return {}

@@ -30,7 +30,8 @@ async def _client_key(c, headers):
     r = await c.post("/", headers=headers, json={
         "jsonrpc": "2.0", "id": 9, "method": "tools/call",
         "params": {"name": "session_status", "arguments": {}}})
-    m = re.search(r'"client_key"\s*:\s*"([^"]+)"', json.dumps(r.json()))
+    # Javob endi YAML (structuredContent JSON emas): `client_key: sid-...`.
+    m = re.search(r'client_key["\s:]+\'?"?([^\s"\',}]+)', json.dumps(r.json()))
     assert m, f"client_key topilmadi: {r.text[:300]}"
     return m.group(1)
 
