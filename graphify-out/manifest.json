@@ -1,0 +1,670 @@
+{
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/conftest.py": {
+    "mtime": 1782896150.1191695,
+    "hash": "a9d8ffb36fb3cbf4ed5a7b4cf4cc68b9"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_session_isolation.py": {
+    "mtime": 1782896150.1345408,
+    "hash": "e2bc6324e1287d7908a427adb97e0ec7"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_release_tools.py": {
+    "mtime": 1782896150.13296,
+    "hash": "7c66a991e65a471519fb03e01573a865"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_manifest_loader.py": {
+    "mtime": 1782896150.1287756,
+    "hash": "aa72e354a347692b18d424a1aa818aaf"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_mcp_trace.py": {
+    "mtime": 1782896150.1308413,
+    "hash": "c9f3a28b3a13a3d63d29c47d3501cee2"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_assert_native_shape.py": {
+    "mtime": 1782896150.1209235,
+    "hash": "e7a44116206ef4b7a1176d610a07d1a9"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_token_limit_midrun.py": {
+    "mtime": 1782896150.137735,
+    "hash": "18fa1352163d3381211e5215596e4393"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_flow_regression_tests.py": {
+    "mtime": 1782896150.1261995,
+    "hash": "fdcd25c6a967c9ad594b1235f97c9145"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_flow_tools.py": {
+    "mtime": 1782896150.126986,
+    "hash": "81e46b98d054182f567b854731be8c94"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_mcp_auth.py": {
+    "mtime": 1782896150.1290958,
+    "hash": "4b4e55d11a68010454d8a0ceee058bff"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_design_quality_digest.py": {
+    "mtime": 1782896150.1246164,
+    "hash": "7ee6c8d5e5e1a6090f33a230541ddf1b"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_mcp_session.py": {
+    "mtime": 1782896150.1306002,
+    "hash": "000933f83231ac8f13416e0b8d9c1b61"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_project_snapshot.py": {
+    "mtime": 1782896150.132571,
+    "hash": "b9eca6c75911a61f177ae74ddc2f9fb8"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_mcp_fixes.py": {
+    "mtime": 1782896150.129689,
+    "hash": "1429a00718ef18e37e1eaead2b158f63"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_catalog_cache.py": {
+    "mtime": 1782896150.121973,
+    "hash": "912b58fdd6c95b9775f826af6bdefab0"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_module_nodes.py": {
+    "mtime": 1782896150.1313722,
+    "hash": "12b147e4a94323710cb2075d1b520b13"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_simulate_explicit_pid.py": {
+    "mtime": 1782896150.135021,
+    "hash": "2c69036e009aeb56cb83717bebfd5a80"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_mcp_server.py": {
+    "mtime": 1782896150.130362,
+    "hash": "097f943585fc1dbb5bc84ef10cef57e6"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_file_upload_tool.py": {
+    "mtime": 1782896150.1256125,
+    "hash": "a95949148d1bc972b43786972262038f"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_rolling_cache.py": {
+    "mtime": 1782896150.1333165,
+    "hash": "d8adda8e939f6ed1324c6cd707556f78"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_approval_resume.py": {
+    "mtime": 1782896150.1202364,
+    "hash": "d248ecdc5b794f8b0c3ba07297b13850"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_ask_user_tool.py": {
+    "mtime": 1782896150.1205945,
+    "hash": "5d409b3fae90f1dadc374d09f89064ba"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_mcp_feedback_batch.py": {
+    "mtime": 1782896150.129378,
+    "hash": "9c6827738a9ab17067d049382ce5a5f8"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_edit_or_send_tool.py": {
+    "mtime": 1782896150.1252694,
+    "hash": "c148ea23ea4b5df2f9215a288fe67907"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_modules_tools.py": {
+    "mtime": 1782896150.1317818,
+    "hash": "ed44055a4fe6377bb200b52bf14983f3"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_build_rules_digest.py": {
+    "mtime": 1782896150.121736,
+    "hash": "163429cb6be32246ed79125d42352ac5"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_agent_prompt.py": {
+    "mtime": 1782896150.119539,
+    "hash": "835ad875d87c63440b36ef8f8c8fa077"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_subagent_clear_and_nested_emit.py": {
+    "mtime": 1782896150.1362667,
+    "hash": "03fcc91ffd6748bef0397be55a3c12da"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_tool_registry.py": {
+    "mtime": 1782896150.1379797,
+    "hash": "8032b2752f09032e4e8a44f094f1a175"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_model_addenda.py": {
+    "mtime": 1782896150.1311612,
+    "hash": "e0406be6c43a6c9bb6b86b29c19446a0"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_check_membership_schema.py": {
+    "mtime": 1782896150.1226952,
+    "hash": "f33047daf6421a681d253cfcad74fb96"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_node_data_models.py": {
+    "mtime": 1782896150.13198,
+    "hash": "e62cc8ccd96cec0e091e506087c04366"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_flow_simulate_v2.py": {
+    "mtime": 1782896150.1266944,
+    "hash": "0512e71a52cae7ea79fa07e071306413"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_plan_tools.py": {
+    "mtime": 1782896150.1322453,
+    "hash": "4246bec7645e3d26de9dfc4159db5382"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_bedrock_message_conversion.py": {
+    "mtime": 1782896150.121437,
+    "hash": "ca1950247ed83ed9a44866c75af87c7c"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_seed_collections_backend.py": {
+    "mtime": 1782896150.1339672,
+    "hash": "a63725cee2422cba5037efd95afb7a5f"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_custom_code_guide.py": {
+    "mtime": 1782896150.1242733,
+    "hash": "aa955fc51d6ad8cd00479a1fb60a8ebe"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_cms_primary_field.py": {
+    "mtime": 1782896150.1229746,
+    "hash": "ff1f4241b214d04fa703f2b73e2318af"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_dynamic_llm_config.py": {
+    "mtime": 1782896150.124993,
+    "hash": "956eaa87102634b0169c8057855592db"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_subagent_registry.py": {
+    "mtime": 1782896150.1365933,
+    "hash": "4c11ed1db8dc1884336cd7f4f56857cc"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_chat_user_stats.py": {
+    "mtime": 1782896150.1223555,
+    "hash": "9afef3304bee47e3dcf1aecb6be25e03"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_llm_metrics.py": {
+    "mtime": 1782896150.128297,
+    "hash": "585d055339c7c0309a06404e62d9f703"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_simulate_step_aliases.py": {
+    "mtime": 1782896150.1358936,
+    "hash": "cee88796764cb52fefaf3032af29531a"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_credential_types.py": {
+    "mtime": 1782896150.1236136,
+    "hash": "22bb4cc535794cb89e1321de138a1331"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_flow_schema.py": {
+    "mtime": 1782896150.1262968,
+    "hash": "379aaa105c930abdde9d1caa784cfe94"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_baseline_flow_load.py": {
+    "mtime": 1782896150.121178,
+    "hash": "4e0347b3354e0b3696acb7e6ef3ef287"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_anthropic_message_conversion.py": {
+    "mtime": 1782896150.1198082,
+    "hash": "ddb41375a2ac87993e94c7bf91f98650"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_llm_message_conversion.py": {
+    "mtime": 1782896150.1278858,
+    "hash": "9152c0eba72fe0f60ec9379a81fff9d5"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_subagent_sessions.py": {
+    "mtime": 1782896150.1373336,
+    "hash": "38b26ec3e4eea6567ba2b58e33295cf0"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_collections_awareness.py": {
+    "mtime": 1782896150.1233678,
+    "hash": "0ed80cda18c7befb9ad4658be94f8bb1"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_manifest_field_type_map.py": {
+    "mtime": 1782896150.1286192,
+    "hash": "daf97a6e4dfe7abc63e34f5c867182ca"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_internal_config.py": {
+    "mtime": 1782896150.1276195,
+    "hash": "1010d1e8bc2817036f34a979aba0c778"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_mcp_power.py": {
+    "mtime": 1782896150.129863,
+    "hash": "ed11ecef962293ecb225ce283aab81be"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_flow_power_tools.py": {
+    "mtime": 1782896150.1259127,
+    "hash": "9128358f0501b74a24677641f08445bd"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_credentials_connect_oauth.py": {
+    "mtime": 1782896150.1238573,
+    "hash": "0cac2bbb5d27e6427f5435d5bf6046bc"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_flow_validator.py": {
+    "mtime": 1782896150.1273122,
+    "hash": "3e47d920e7842a608f7cf173348a6df9"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/tests/unit/test_simulate_field_aliases.py": {
+    "mtime": 1782896150.135593,
+    "hash": "5b404a424795d620513ba20f32dfd03b"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/logging.py": {
+    "mtime": 1782896150.0977223,
+    "hash": "854c70c29a3fc2be8261eaae90f00965"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/config.py": {
+    "mtime": 1782896150.0903366,
+    "hash": "4e0450f66fdaf1ae99ab1f6c2ffad74e"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/__init__.py": {
+    "mtime": 1782896150.0879035,
+    "hash": "4b05ac4ad51d26d2d03b46ffe04ee285"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/cli.py": {
+    "mtime": 1782896150.0898998,
+    "hash": "c5821d616b486dd0665924e90e2795b8"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/main.py": {
+    "mtime": 1782896150.097799,
+    "hash": "c7d135b0a3160de9cfe06b50e99062b5"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/mongo_log.py": {
+    "mtime": 1782896150.1020343,
+    "hash": "f124f1694c19ad46ba5b1c656173a71b"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/tools/registry.py": {
+    "mtime": 1782896150.1178925,
+    "hash": "9ad76b67919d781157323cb2858d2cfc"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/tools/__init__.py": {
+    "mtime": 1782896150.1119986,
+    "hash": "66ef0b3bbc6e618f707a8ef57f12f3fe"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/tools/ask_user.py": {
+    "mtime": 1782896150.1123025,
+    "hash": "e6e8ac361f5f5c72a5779b6b3ecde0ac"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/tools/base.py": {
+    "mtime": 1782896150.1126218,
+    "hash": "ad153570ebf98bc9a4a4836b685e8e3e"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/tools/chat/__init__.py": {
+    "mtime": 1782896150.1133587,
+    "hash": "819a1fb1ee3cce0bc689235ba9b86d04"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/tools/file/__init__.py": {
+    "mtime": 1782896150.1148057,
+    "hash": "75d10dd74381d48b821706d4fb84d8ac"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/tools/plan/__init__.py": {
+    "mtime": 1782896150.1166885,
+    "hash": "94cd30999960dda4a7732f74262471d9"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/tools/release/__init__.py": {
+    "mtime": 1782896150.11812,
+    "hash": "a8fab89b3f466960e5529ef1112221bf"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/tools/search/__init__.py": {
+    "mtime": 1782896150.1184566,
+    "hash": "7c24be4ea90c8f72cc7f63e4e611e1e3"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/tools/project/__init__.py": {
+    "mtime": 1782896150.117313,
+    "hash": "b441ca7d59b9e1278935555194955855"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/tools/project/snapshot.py": {
+    "mtime": 1782896150.117622,
+    "hash": "eddab4f86679b64ae4847ba05c9d02ae"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/tools/cms/__init__.py": {
+    "mtime": 1782896150.1136756,
+    "hash": "bc359821dcfbd520de609438d96a6b78"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/tools/task/__init__.py": {
+    "mtime": 1782896150.1190028,
+    "hash": "6b102af53b1b36ae9d591457f2e57e1d"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/tools/modules/__init__.py": {
+    "mtime": 1782896150.116274,
+    "hash": "cdfa530256a3728187815b475503810b"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/tools/broadcast/__init__.py": {
+    "mtime": 1782896150.1129787,
+    "hash": "b023f3c33781a9fcc30c4533eb2a8077"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/tools/credentials/__init__.py": {
+    "mtime": 1782896150.1142256,
+    "hash": "28ea630e7d328caed8ec181dde2170bc"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/tools/flow/actions.py": {
+    "mtime": 1782896150.1153061,
+    "hash": "a7472534723dfd712f966e5129d6903e"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/tools/flow/__init__.py": {
+    "mtime": 1782896150.1150737,
+    "hash": "125d4171dbf3ab691e094acd3b4809d0"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/tools/flow/templates.py": {
+    "mtime": 1782896150.1160183,
+    "hash": "73bfa3e3afe64bdc4c0cd0a327362f31"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/tools/flow/node_data_models.py": {
+    "mtime": 1782896150.1155405,
+    "hash": "5056c691f5a1e0c10175b08dbb9af0f3"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/tools/flow/power.py": {
+    "mtime": 1782896150.115754,
+    "hash": "f3fd0b7036cdb05018878039d79df58c"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/llm/openrouter.py": {
+    "mtime": 1782896150.0973425,
+    "hash": "9bbcf67e36f231f9fdcf85a3ce59ce86"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/llm/__init__.py": {
+    "mtime": 1782896150.0952046,
+    "hash": "09c6f7f22c36360ec34922d5ebd8cb8e"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/llm/openai.py": {
+    "mtime": 1782896150.0969756,
+    "hash": "660593213d26f3c394166145927f65d9"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/llm/anthropic.py": {
+    "mtime": 1782896150.0957074,
+    "hash": "1980d0f4a77787fab51cf1999a8150a2"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/llm/budgets.py": {
+    "mtime": 1782896150.0966828,
+    "hash": "7f025c4c0bf6ce90207d427f1ac2ab9d"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/llm/router.py": {
+    "mtime": 1782896150.097603,
+    "hash": "2d40d2a906beb80ca9e3a43f939161a4"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/llm/base.py": {
+    "mtime": 1782896150.0961618,
+    "hash": "0c29241aeade77478a00fe657f6165ea"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/llm/bedrock.py": {
+    "mtime": 1782896150.0964873,
+    "hash": "6c3ed52b2e02b7ee88605144af8366c0"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/memory/vector.py": {
+    "mtime": 1782896150.1017003,
+    "hash": "dca99ff65dbfe31284491b39a1b6b281"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/memory/checkpoint.py": {
+    "mtime": 1782896150.1011755,
+    "hash": "77b08865d6c4b37d3b6933d9e1f734d0"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/memory/retriever.py": {
+    "mtime": 1782896150.101377,
+    "hash": "055b458832db6150f4bcf951d49a59d3"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/memory/__init__.py": {
+    "mtime": 1782896150.1009047,
+    "hash": "4585ab8a87419d25c66ce6bb29cf2fed"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/memory/embedder.py": {
+    "mtime": 1782896150.1012769,
+    "hash": "6e83e76d2b5faf98a9327f12003bcb12"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/graph/__init__.py": {
+    "mtime": 1782896150.0929508,
+    "hash": "01fc70a70d28b6af4d8d7f9fee4cb5d0"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/graph/builder.py": {
+    "mtime": 1782896150.093271,
+    "hash": "f764cc211e8833c691a99fd5077e9a0d"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/graph/state.py": {
+    "mtime": 1782896150.09365,
+    "hash": "ef1e54a4f60365eca03976282ef4499d"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/runtime/worker.py": {
+    "mtime": 1782896150.1109052,
+    "hash": "6d335c016c55e00721f1e9872ff798de"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/runtime/store.py": {
+    "mtime": 1782896150.1105733,
+    "hash": "908506bd8467e4cc339e48c9417d75c0"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/runtime/events.py": {
+    "mtime": 1782896150.1102576,
+    "hash": "81ee958bd34e6e67f81c0f935266fac7"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/runtime/__init__.py": {
+    "mtime": 1782896150.1099892,
+    "hash": "0c4b403f597c8e156db9704b8b0b7b98"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/mcp/auth.py": {
+    "mtime": 1782896150.0986304,
+    "hash": "098beda1dec9bb7ca19a184d33f94d2f"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/mcp/trace.py": {
+    "mtime": 1782896150.1002557,
+    "hash": "76f69d4de794a9c5a8c9cae61fac38fc"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/mcp/server.py": {
+    "mtime": 1782896150.099916,
+    "hash": "b3fef3ca6b00988b41a26b1ac4377f11"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/mcp/flow_tests.py": {
+    "mtime": 1782896150.0992646,
+    "hash": "12e01eb02fdfab7b67a1d015943705d7"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/mcp/draft_store.py": {
+    "mtime": 1782896150.0989108,
+    "hash": "71a8e56e904fb7310909462617fe0866"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/mcp/__init__.py": {
+    "mtime": 1782896150.098109,
+    "hash": "ef1de1a79a9b9e7b493ee4de4761e31e"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/mcp/flow_versions.py": {
+    "mtime": 1782896150.099647,
+    "hash": "72fcdc5a255facd99570e0815ac471be"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/mcp/workspace.py": {
+    "mtime": 1782896150.1005702,
+    "hash": "38584c07a13f0391cc995376994110e2"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/mcp/__main__.py": {
+    "mtime": 1782896150.0983582,
+    "hash": "5aa78863a037b092c340f9c66b083c6b"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/observability/metrics.py": {
+    "mtime": 1782896150.1028821,
+    "hash": "82cf9bfe48d0c17e254fdde36e52f860"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/observability/__init__.py": {
+    "mtime": 1782896150.102554,
+    "hash": "02e7cdf7f0044a7c20fbbb00e32c7f4d"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/integrations/backend.py": {
+    "mtime": 1782896150.0943058,
+    "hash": "0d9e4c33f0983607678d274b42326587"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/integrations/__init__.py": {
+    "mtime": 1782896150.0940313,
+    "hash": "acf97b40ba1ac639950de56693ceddc3"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/integrations/simulator.py": {
+    "mtime": 1782896150.0950499,
+    "hash": "897aa0091e43f2ad6c7afa006daf72fc"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/integrations/dynamic_config.py": {
+    "mtime": 1782896150.0947795,
+    "hash": "595f5905293f2fcb8fd309f82333bd1e"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/scripts/__init__.py": {
+    "mtime": 1782896150.1110163,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/scripts/ingest_modules.py": {
+    "mtime": 1782896150.1112432,
+    "hash": "5b8a6dc023e2f7d8883cd6c1055ed46c"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/scripts/ingest_templates.py": {
+    "mtime": 1782896150.1116226,
+    "hash": "636e1753f14b39bd3c9b747f44634cde"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/prompts/system.py": {
+    "mtime": 1782896150.1047702,
+    "hash": "df2577f9084e40f0951e734e15cc703a"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/prompts/subagent_specs.py": {
+    "mtime": 1782896150.1044588,
+    "hash": "a010b2d04a67108f1001724554c4acd2"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/prompts/__init__.py": {
+    "mtime": 1782896150.1033936,
+    "hash": "d3b2b4abdc335212084f5f851b9e73cc"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/prompts/loader.py": {
+    "mtime": 1782896150.103795,
+    "hash": "fa27d8210deda4cc66d8220fb9104fd2"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/api/deps.py": {
+    "mtime": 1782896150.0887084,
+    "hash": "34b334c284d3d5076a4c6035e101c991"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/api/__init__.py": {
+    "mtime": 1782896150.0880625,
+    "hash": "b43ae3e3d5fca86aff5ac95fa6baa9ff"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/api/sse.py": {
+    "mtime": 1782896150.0896347,
+    "hash": "8a3e32a0a1a3f237b73762c4e417d291"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/api/app.py": {
+    "mtime": 1782896150.088377,
+    "hash": "2537c556b30770ae676f989dbbcb231e"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/api/routes/__init__.py": {
+    "mtime": 1782896150.0888095,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/api/routes/threads.py": {
+    "mtime": 1782896150.0895205,
+    "hash": "b335840dccc96b3465c5ad908f1ca0f8"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/api/routes/runs.py": {
+    "mtime": 1782896150.089242,
+    "hash": "bd293280c419e566cb1496fca03a11e0"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/flow/validator.py": {
+    "mtime": 1782896150.092777,
+    "hash": "1fb36c20fa18f696ea49d65ae03be64d"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/flow/layout.py": {
+    "mtime": 1782896150.0909684,
+    "hash": "805ee1e0608b51507c24fb59fc0bfa7d"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/flow/__init__.py": {
+    "mtime": 1782896150.0907626,
+    "hash": "22d5580b3475517ad02a84c9fd244f17"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/flow/recipes.py": {
+    "mtime": 1782896150.0922208,
+    "hash": "f48ac9fe07f6dbd3bf428ab0cc99762d"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/flow/diff.py": {
+    "mtime": 1782896150.0908744,
+    "hash": "45c2daa0d47a145e61a05ed7d301774c"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/flow/schema.py": {
+    "mtime": 1782896150.092549,
+    "hash": "945b79cac210e91b08a98e35006ab2b6"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/flow/manifest_compiler/field_type_map.py": {
+    "mtime": 1782896150.0915258,
+    "hash": "adcfbf01b61561718645fd5c22bbfd5d"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/flow/manifest_compiler/node_catalog.py": {
+    "mtime": 1782896150.0919046,
+    "hash": "f0fc28efd6d433585fd1083fa9e039ac"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/flow/manifest_compiler/compiler.py": {
+    "mtime": 1782896150.0913475,
+    "hash": "67c04f4005061d43550dfc391a27f102"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/flow/manifest_compiler/__init__.py": {
+    "mtime": 1782896150.0911765,
+    "hash": "e16043bac7d22ce2654fc31730adc904"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/flow/manifest_compiler/loader.py": {
+    "mtime": 1782896150.0916846,
+    "hash": "e286e9d8d38dcc426fa14a6fddcd4c6e"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/README.md": {
+    "mtime": 1782896150.0853472,
+    "hash": "6268b30333f3e4c3cb150a6a5d5784e2"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/docker-compose.yml": {
+    "mtime": 1782896150.0854573,
+    "hash": "03ec75a71a07a6f2bc52f13290853ffe"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/docs/manifest_contract.md": {
+    "mtime": 1782896150.0859973,
+    "hash": "8e9543d7d8142bde43cdcb9774c5aff6"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/docs/api.md": {
+    "mtime": 1782896150.0856726,
+    "hash": "8a3f0d820367ffcc371a02ebb079029f"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/docs/mcp.md": {
+    "mtime": 1782896150.0868003,
+    "hash": "4f98e8c5a4ecb17fb78742469bb2d930"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/docs/manifest_drift_report.md": {
+    "mtime": 1782896150.0864754,
+    "hash": "2ba887e1b77281045bf970512ae818de"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/helm/values-dev.yaml": {
+    "mtime": 1782896150.0870938,
+    "hash": "8027bacc19910d86da1277d8aa8b19e1"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/helm/values.yaml": {
+    "mtime": 1782896150.0872498,
+    "hash": "7b406bee62d00f09870a90a382317e2a"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/prompts/texts/README.md": {
+    "mtime": 1782896150.1050878,
+    "hash": "a462c9998502f13ce680ed88dd1e72f8"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/prompts/texts/subagents/cms_manager.txt": {
+    "mtime": 1782896150.108393,
+    "hash": "b5422ed939837786ef5f0c1a79b9805f"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/prompts/texts/subagents/flow_builder.txt": {
+    "mtime": 1782896150.109369,
+    "hash": "a27970f358cb09f105a955270dcdfb96"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/prompts/texts/subagents/crm_manager.txt": {
+    "mtime": 1782896150.1087716,
+    "hash": "b63d7aa62364a35908558fe370a9e8cf"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/prompts/texts/subagents/deploy_manager.txt": {
+    "mtime": 1782896150.1090543,
+    "hash": "e2244fdb7aee439a2453e9dba8ec29be"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/prompts/texts/subagents/flow_builder_examples.txt": {
+    "mtime": 1782896150.109835,
+    "hash": "e58aef9c5c19651ce55c605efe1e401a"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/prompts/texts/dispatcher/core_identity.txt": {
+    "mtime": 1782896150.1057103,
+    "hash": "135471786c64b52f6df26cb1fb764c41"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/prompts/texts/mcp/guide_modules.txt": {
+    "mtime": 1782896150.1067958,
+    "hash": "2414021a300bfaab6eb055760d00ffb9"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/prompts/texts/mcp/build_rules_digest.txt": {
+    "mtime": 1782896150.1059473,
+    "hash": "e825cfe5ac9d176165de5c5f3ae00dc0"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/prompts/texts/mcp/instructions.txt": {
+    "mtime": 1782896150.107227,
+    "hash": "f647d4ab60a7f02c365ede66e778e375"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/prompts/texts/mcp/guide_simulate.txt": {
+    "mtime": 1782896150.106992,
+    "hash": "ad5283cd4b7dbaa760acfea75842dcbf"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/prompts/texts/mcp/guide_custom_code.txt": {
+    "mtime": 1782896150.1061475,
+    "hash": "1b440a925587f203f40d2b81564fa973"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/prompts/texts/mcp/guide_i18n.txt": {
+    "mtime": 1782896150.106591,
+    "hash": "7bb4fcc15eb9bbab515486acd82be0e4"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/prompts/texts/shared/narrate_rule.txt": {
+    "mtime": 1782896150.1080287,
+    "hash": "18d02dba354688234f8435041809ea07"
+  },
+  "/Volumes/disk/projects/my/botmother/worktrees/agent/hale-wolf/agent/src/agent/prompts/texts/shared/autonomy.txt": {
+    "mtime": 1782896150.1077178,
+    "hash": "4755ec9f727cf629d3d4fff9455d2d5e"
+  }
+}
