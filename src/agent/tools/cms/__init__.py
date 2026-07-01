@@ -12,13 +12,11 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from ...integrations.backend import BackendError, pagination_summary
-from ..base import Tool, ToolContext, ToolResult, tool
-
 
 # ── shared helpers ───────────────────────────────────────────────────────────
-
-
-from .._common import backend_from_ctx as _backend, resolve_project_id
+from .._common import backend_from_ctx as _backend
+from .._common import resolve_project_id
+from ..base import Tool, ToolContext, ToolResult, tool
 
 
 def _error(e: BackendError, action: str | None = None) -> ToolResult:

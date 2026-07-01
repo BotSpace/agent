@@ -11,6 +11,8 @@ from typing import Any
 from openai import APIStatusError, AsyncOpenAI
 
 from ..observability.metrics import local_token_breakdown, record_llm_usage
+from ._utils import restore_tool_name as _restore_tool_name
+from ._utils import sanitize_tool_name as _sanitize_tool_name
 from .base import (
     ContentPart,
     GenerateOptions,
@@ -62,16 +64,6 @@ def _wrap_for_langsmith(client: AsyncOpenAI) -> AsyncOpenAI:
     except ImportError:
         return client
     return wrap_openai(client)
-
-
-# OpenAI function names must match ^[a-zA-Z0-9_-]+$, while internal tool
-# names use dotted namespaces like "flow.get".
-def _sanitize_tool_name(name: str) -> str:
-    return name.replace(".", "--")
-
-
-def _restore_tool_name(name: str) -> str:
-    return name.replace("--", ".")
 
 
 class OpenAIClient(LLMClient):

@@ -33,8 +33,8 @@ from ...integrations.backend import (
     get_backend_client,
     load_modules_catalog,
 )
-from ..base import Tool, ToolContext, ToolResult, tool
 from .._common import resolve_project_id
+from ..base import Tool, ToolContext, ToolResult, tool
 
 MODULE_PROJECT_ID = "_global"
 MODULE_KIND = "module"
