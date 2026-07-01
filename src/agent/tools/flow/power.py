@@ -356,6 +356,20 @@ def _fmt_simulate_step(idx: int, step: dict) -> list[str]:
     errs = step.get("errors") if isinstance(step, dict) else None
     for e in errs if isinstance(errs, list) else []:
         lines.append(f"     ❌ XATO: {e}")
+    # CustomCode alert.info/warning/error(...) — simulyatsiya feed'i (engine
+    # per-step `alerts` qaytaradi). Xato emas, kuzatuv signali.
+    _ALERT_ICON = {"error": "🔴", "warning": "🟡", "info": "🔵"}
+    alerts = step.get("alerts") if isinstance(step, dict) else None
+    for a in alerts if isinstance(alerts, list) else []:
+        if not isinstance(a, dict):
+            continue
+        lvl = str(a.get("level") or "info")
+        msg = str(a.get("message") or "").replace("\n", " ")
+        detail = str(a.get("detail") or "").replace("\n", " ")
+        line = f"     {_ALERT_ICON.get(lvl, '🔔')} alert[{lvl}]: {msg}"
+        if detail:
+            line += f" — {detail}"
+        lines.append(line)
     # simulator v2 — per-step expect verdict.
     if isinstance(step, dict) and step.get("expect_passed") is not None:
         if step.get("expect_passed"):

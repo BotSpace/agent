@@ -284,3 +284,21 @@ def test_mcp_export_includes_power_tools():
         "flow_rollback",
     ):
         assert mcp_name in exported, mcp_name
+
+
+def test_fmt_simulate_step_surfaces_alerts():
+    """CustomCode alert.* per-step render'da level ikonkasi bilan ko'rinadi."""
+    from agent.tools.flow.power import _fmt_simulate_step
+
+    step = {
+        "input": {"type": "text", "text": "salom"},
+        "bot_messages": [{"text": "javob"}],
+        "nodes": [{"id": "n1", "type": "CustomCodeNode"}],
+        "alerts": [
+            {"level": "warning", "message": "narx yuqori", "detail": "amount=999"},
+            {"level": "info", "message": "ok"},
+        ],
+    }
+    out = "\n".join(_fmt_simulate_step(1, step))
+    assert "🟡 alert[warning]: narx yuqori — amount=999" in out
+    assert "🔵 alert[info]: ok" in out
