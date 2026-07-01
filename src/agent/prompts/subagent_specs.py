@@ -85,11 +85,16 @@ FLOW_BUILDER = SubAgentSpec(
         "plan.*",
         "ask_user",
         "flow.*",
-        # Read-only credential lookup — the flow-builder needs to check whether
-        # a payment/http credential exists (e.g. Click) when wiring/debugging a
-        # PaymentNode or http_request. Create/delete stay OUT of this scope.
+        # Credential lifecycle — flow-builder AI-provider / Google / payment / http
+        # node'larini quradi va ularga `credential_id` kerak. Prompt yo'q credential'ni
+        # yaratishni (create/connect_oauth) buyuradi, shuning uchun ular allowed bo'lishi
+        # SHART (aks holda tool_allowed bloklab, node credential_id'siz qoladi).
+        # `delete` destructive — boshqa flow'larni buzmasin deb SCOPE'dan tashqarida.
         "credentials.list",
         "credentials.list_types",
+        "credentials.create",
+        "credentials.connect_oauth",
+        "credentials.update",
         "task.run",
     ],
     model_hint="executor",
