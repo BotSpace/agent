@@ -207,7 +207,7 @@ def _fake_versions(monkeypatch):
     from agent.mcp import flow_versions as fv
 
     store = _FakeVersionStore()
-    monkeypatch.setattr(fv, "_store", store)
+    monkeypatch.setattr(fv._store, "_value", store)
     return store
 
 

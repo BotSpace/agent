@@ -44,7 +44,9 @@ CREATE TABLE IF NOT EXISTS mcp_flow_drafts (
 """
 
 
+from ..config import get_settings
 from ..config import normalize_pg_url as _normalize
+from ._lazy_store import LazyStore
 
 
 class DraftStore:
@@ -205,19 +207,13 @@ class DraftStore:
             logger.warning("MCP draft clear failed (%s/%s): %s", user_id, project_id, exc)
 
 
-_store: DraftStore | None = None
+_store: LazyStore[DraftStore] = LazyStore(lambda: DraftStore(get_settings().database_url))
 
 
 def get_draft_store() -> DraftStore:
-    global _store
-    if _store is None:
-        from ..config import get_settings
-
-        _store = DraftStore(get_settings().database_url)
-    return _store
+    return _store.get()
 
 
 def set_draft_store(store: DraftStore | None) -> None:
     """Test hook — inject a fake/None store."""
-    global _store
-    _store = store
+    _store.reset(store)
