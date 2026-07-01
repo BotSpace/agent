@@ -237,14 +237,17 @@ reply ikkalasida) — `value` URL string yoki `{url:"..."}`:
 
 ## Credential o'qish
 - `get_credential(key)` → `{id, name, type_key, mode, data:{...}}` yoki `null` (topilmasa).
-  `key` — credentialning NOMI (portable "kalit"), masalan `get_credential("OpenAI kalitim")`.
-  Nomni `credentials.list` bilan top. Raqamli id ham qabul qilinadi (eski, tavsiya etilmaydi) —
-  id template ko'chirilganda o'zgaradi, NOM barqaror qoladi, shuning uchun DOIM nom ishlat.
+  `key` resolutioni: (1) LOGICAL KEY (flow credential_map'i — template'da eng barqaror,
+  odatda type_key masalan `"openai_api"`), (2) credential NOMI, (3) raqamli id (eski).
+  Nomni `credentials.list` bilan top. Raqamli id ISHLATMA — template ko'chirilganda o'zgaradi.
   `data` — credentialning DESHIFRLANGAN maydonlari (masalan custom type'da `chat_id`,
   yoki API type'da `token`). Credentiallar owner-scoped — bot egasi o'z credentialini o'qiydi.
+- TEMPLATE'da: node'da ishlatilgan credential logical key bilan yoziladi (masalan
+  `get_credential("openai_api")`). Botdan yaratilganda foydalanuvchi tanlagan credential'ga
+  avtomatik ulanadi — nom mos kelishi shart emas, ikki bot ikki xil credential ishlatsa ham ishlaydi.
 ```javascript
 // admin chat_id'ni credentialdan dinamik o'qish (hardcode/env o'rniga)
-const admin = get_credential("Admin sozlamalari");
+const admin = get_credential("telegram_bot");   // template'da: logical key
 if (admin && String(chat_id) === admin.data.chat_id) { /* admin */ }
 ```
 
