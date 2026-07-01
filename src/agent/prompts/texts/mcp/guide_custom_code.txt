@@ -66,7 +66,12 @@ exit('new');
   bo'lsa rawga yaqin payload shu yerda.
 - `callback_query` (object) — inline tugma bosilganda: `.data` (callback_data),
   `.message_id` va `.message.message_id` (TUGMA TURGAN XABAR id — edit uchun!),
-  `.message.text`, `.first_name`
+  `.message.text`, `.first_name`. Har YANGI update'da tozalanadi (stale bo'lmaydi).
+- `trigger_type` (string) — JORIY update turi: `'command'` (/buyruq), `'message'`
+  (oddiy xabar) yoki `'callback'` (inline tugma). `is_callback` (bool) — qisqartma
+  (`trigger_type === 'callback'`). ⭐ CALLBACK vs MATNni ajratish uchun SHUNI ishlat —
+  `if (callback_query)` sniffing o'rniga `if (is_callback)`. Bir node ham callback'dan,
+  ham message'dan yetsa (masalan pagination + kod kiritish), niyatni shu bildiradi.
 - `context` (object) — barcha kontekst kalitlari. **O'qish uchun AFZAL usul:
   obyekt-access** `context.<key>` (`context.first_name`, `context.user_id`,
   `context.sheets_response_rows`, `context.collection_<key>`,
@@ -190,7 +195,16 @@ reply ikkalasida) — `value` URL string yoki `{url:"..."}`:
 ## Raw Telegram Bot API (tg_call + wrapper'lar)
 - `tg_call(method, params)` — ISTALGAN Telegram Bot API metodi. Nested
   ob'ekt/massiv (reply_markup, permissions, prices...) avto JSON-string. →
-  `{ok, result}` yoki `{ok:false, description}`. `params.chat_id` berilmasa joriy chat.
+  `{ok, result}` yoki `{ok:false, description, error_code}`. `params.chat_id` berilmasa joriy chat.
+  ⚠️ Telegram javob obyekti `res.result` ICHIDA (`res.status` EMAS — `res.result.status`).
+  A'zolik tekshirish namunasi:
+  ```javascript
+  const r = get_chat_member({ chat_id: -1001234567890, user_id: user_id });
+  if (r.ok) {
+    const status = r.result.status;  // 'creator'|'administrator'|'member'|'restricted'|'left'|'kicked'
+    const isMember = status !== 'left' && status !== 'kicked';
+  }
+  ```
   ```javascript
   tg_call('banChatMember', { chat_id: -1001234567890, user_id: user_id });
   tg_call('sendInvoice', { title:'Premium', description:'1 oy', payload:'p1',
@@ -266,8 +280,10 @@ tahrirlaydi (yangi xabar yubormaydi). Sir: callback'da `edit_or_send` yoki
 ```javascript
 // show-list node (kod kiritilganda VA page: callback'da — ikkala holatda ishlaydi)
 const PAGE_SIZE = 5;
-const callbackParts = (callback_query && (callback_query.data || '').split(':')) || [];
-const code = String(vars.movie_code || callbackParts[1] || '').trim();  // o'qish: obyekt-access (vars afzal)
+// is_callback bilan ANIQ ajrat: page-navigatsiya (callback) yoki kod kiritish (message).
+// `callback_query` sniffing emas — is_callback niyatni ishonchli bildiradi.
+const callbackParts = is_callback ? (callback_query.data || '').split(':') : [];
+const code = String((is_callback ? callbackParts[1] : vars.movie_code) || '').trim();
 const requestedPage = parseInt(callbackParts[2] || 1, 10);
 
 const movie = db_find_one('movies', { code: code });
@@ -302,7 +318,7 @@ if (nav.length) {
   rows.push(nav);
 }
 
-if (callback_query) {
+if (is_callback) {
   answer_callback_query('Sahifa ' + page);
 }
 edit_or_send({ text: text, parse_mode: 'HTML', inline_keyboard: rows });
