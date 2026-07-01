@@ -57,7 +57,7 @@ def store(monkeypatch):
     from agent.mcp import flow_tests as ft
 
     s = _FakeTestStore()
-    monkeypatch.setattr(ft, "_store", s)
+    monkeypatch.setattr(ft._store, "_value", s)
     return s
 
 
@@ -184,7 +184,7 @@ def _versions(monkeypatch):
         async def get(self, **kwargs):
             return None
 
-    monkeypatch.setattr(fv, "_store", _V())
+    monkeypatch.setattr(fv._store, "_value", _V())
 
 
 @pytest.fixture

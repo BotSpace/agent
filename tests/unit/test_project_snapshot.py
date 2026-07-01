@@ -81,7 +81,7 @@ def _no_versions(monkeypatch):
                 {"version": 1, "node_count": 2, "edge_count": 1, "saved_at": None},
             ]
 
-    monkeypatch.setattr(fv, "_store", _V())
+    monkeypatch.setattr(fv._store, "_value", _V())
 
 
 async def test_snapshot_aggregates_everything(_no_versions):

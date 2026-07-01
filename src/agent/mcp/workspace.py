@@ -26,6 +26,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from ._lazy_store import LazyStore
+
 # Workspace TTL — oxirgi tegishdan keyin shuncha soniya yashaydi.
 _DEFAULT_TTL_SECONDS = 2 * 60 * 60  # 2 soat
 
@@ -251,11 +253,8 @@ class WorkspaceStore:
         self._locks.clear()
 
 
-_store: WorkspaceStore | None = None
+_store: LazyStore[WorkspaceStore] = LazyStore(WorkspaceStore)
 
 
 def get_workspace_store() -> WorkspaceStore:
-    global _store
-    if _store is None:
-        _store = WorkspaceStore()
-    return _store
+    return _store.get()

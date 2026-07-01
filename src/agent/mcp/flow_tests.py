@@ -38,7 +38,9 @@ CREATE TABLE IF NOT EXISTS mcp_flow_tests (
 """
 
 
+from ..config import get_settings
 from ..config import normalize_pg_url as _normalize
+from ._lazy_store import LazyStore
 
 
 class FlowTestStore:
@@ -194,13 +196,10 @@ class FlowTestStore:
             return False
 
 
-_store: FlowTestStore | None = None
+_store: LazyStore[FlowTestStore] = LazyStore(
+    lambda: FlowTestStore(get_settings().database_url)
+)
 
 
 def get_flow_test_store() -> FlowTestStore:
-    global _store
-    if _store is None:
-        from ..config import get_settings
-
-        _store = FlowTestStore(get_settings().database_url)
-    return _store
+    return _store.get()

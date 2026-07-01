@@ -38,7 +38,9 @@ CREATE TABLE IF NOT EXISTS mcp_flow_versions (
 """
 
 
+from ..config import get_settings
 from ..config import normalize_pg_url as _normalize
+from ._lazy_store import LazyStore
 
 
 class FlowVersionStore:
@@ -189,19 +191,15 @@ class FlowVersionStore:
         }
 
 
-_store: FlowVersionStore | None = None
+_store: LazyStore[FlowVersionStore] = LazyStore(
+    lambda: FlowVersionStore(get_settings().database_url)
+)
 
 
 def get_flow_version_store() -> FlowVersionStore:
-    global _store
-    if _store is None:
-        from ..config import get_settings
-
-        _store = FlowVersionStore(get_settings().database_url)
-    return _store
+    return _store.get()
 
 
 def set_flow_version_store(store: FlowVersionStore | None) -> None:
     """Test hook — inject a fake/None store."""
-    global _store
-    _store = store
+    _store.reset(store)
