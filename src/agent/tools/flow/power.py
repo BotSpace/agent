@@ -672,10 +672,13 @@ async def flow_export(_: FlowExportInput, ctx: ToolContext) -> ToolResult:
     flow = _working_flow(ctx)
     nodes = len(flow.get("nodes") or [])
     edges = len(flow.get("edges") or [])
+    # Export = zaxira/ko'chirish formati → JSON (flow.import bilan round-trip).
+    # data_in_content → MCP JSON'ni YAML(data) bilan takrorlamaydi.
     body = _json.dumps(flow, ensure_ascii=False, indent=2)
     return ToolResult.ok(
         f"Working flow ({nodes} node, {edges} edge):\n```json\n{body}\n```",
         data=flow,
+        data_in_content=True,
     )
 
 

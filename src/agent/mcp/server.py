@@ -466,13 +466,17 @@ def _data_to_yaml(data: dict) -> str:
         return ""
 
 
-def _result_to_mcp(content: str, *, is_error: bool, data: dict | None) -> mtypes.CallToolResult:
+def _result_to_mcp(
+    content: str, *, is_error: bool, data: dict | None, data_in_content: bool = False
+) -> mtypes.CallToolResult:
     # AI-mos javob: matn (content) + strukturali ma'lumot YAML sifatida content'ga
     # qo'shiladi; `structuredContent` (JSON) YUBORILMAYDI — MCP klient JSON o'rniga
     # o'qishli YAML ko'radi. (Ichki LangGraph agent ToolResult'ni to'g'ridan o'qiydi,
     # MCP qatlamiga bog'liq emas.)
+    # data_in_content=True bo'lsa — tool data'ni allaqachon content'ga renderlagan,
+    # YAML(data)ni qo'shmaymiz (takror bo'lmasin).
     text = content or ""
-    if isinstance(data, dict) and data:
+    if not data_in_content and isinstance(data, dict) and data:
         yml = _data_to_yaml(data)
         if yml:
             text = f"{text}\n\n{yml}" if text else yml
@@ -820,7 +824,10 @@ async def _execute_registry_tool(
             and _mark_rules_served(user.user_id, user.client_key)
         ):
             content = _load_build_rules_digest() + "\n\n" + (content or "")
-        return _result_to_mcp(content, is_error=result.is_error, data=result.data)
+        return _result_to_mcp(
+            content, is_error=result.is_error, data=result.data,
+            data_in_content=result.data_in_content,
+        )
 
 
 # ── Low-level MCP Server qurish ──────────────────────────────────────────────

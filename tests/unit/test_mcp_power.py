@@ -219,7 +219,10 @@ async def test_flow_export_returns_full_flow():
     await _activate(srv)
     res = await _call(srv, "flow_export", {})
     assert not res.isError
-    assert _structured(res)["nodes"] == _FLOW["nodes"]
+    # export content = ```json {flow} ``` fence (data_in_content → YAML(data) qo'shilmaydi)
+    import json as _json
+    body = _text(res).split("```json", 1)[1].rsplit("```", 1)[0].strip()
+    assert _json.loads(body)["nodes"] == _FLOW["nodes"]
     assert "```json" in _text(res)
 
 
