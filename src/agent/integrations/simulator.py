@@ -19,6 +19,8 @@ Contract (QAT'IY — engine team owns the other side; simulator v2):
              "steps": [{"input", "bot_messages": [{message_id, text, parse_mode,
                         keyboard, reply_keyboard, removed_keyboard}],
                         "edits", "deletes", "nodes": [{id, type}], "errors",
+                        "alerts"?: [{level: info|warning|error, message, detail,
+                                     node_id, node_type}],  # CustomCode alert.*
                         "expect_passed"?: bool, "expect_failures"?: [str]}],
              "final_state": {state, context},
              "collections_after", "errors"}
