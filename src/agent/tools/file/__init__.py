@@ -15,7 +15,7 @@ from ...integrations.backend import (
 from ..base import Tool, ToolContext, ToolResult, tool
 
 
-from .._backend import backend_from_ctx as _backend  # ponytail: umumiy resolver
+from .._common import backend_from_ctx as _backend
 
 
 class FileListInput(BaseModel):

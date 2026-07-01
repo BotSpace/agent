@@ -16,11 +16,7 @@ from ...integrations.backend import (
 from ..base import Tool, ToolContext, ToolResult, tool
 
 
-from .._backend import backend_from_ctx as _backend  # ponytail: umumiy resolver
-
-
-def _project_id(ctx: ToolContext, override: str | int | None) -> str | int | None:
-    return override or ctx.state.get("project_id")
+from .._common import backend_from_ctx as _backend, resolve_project_id
 
 
 class ChatListUsersInput(BaseModel):
@@ -46,7 +42,7 @@ class ChatListUsersInput(BaseModel):
     input_model=ChatListUsersInput,
 )
 async def chat_list_users(input: ChatListUsersInput, ctx: ToolContext) -> ToolResult:
-    pid = _project_id(ctx, input.project_id)
+    pid = resolve_project_id(ctx, input.project_id)
     if pid is None:
         return ToolResult.error("No project_id.")
     try:
@@ -80,7 +76,7 @@ class ChatUserHistoryInput(BaseModel):
     input_model=ChatUserHistoryInput,
 )
 async def chat_user_history(input: ChatUserHistoryInput, ctx: ToolContext) -> ToolResult:
-    pid = _project_id(ctx, input.project_id)
+    pid = resolve_project_id(ctx, input.project_id)
     if pid is None:
         return ToolResult.error("No project_id.")
     try:
@@ -245,7 +241,7 @@ class ChatUserStatsInput(BaseModel):
     input_model=ChatUserStatsInput,
 )
 async def chat_user_stats(input: ChatUserStatsInput, ctx: ToolContext) -> ToolResult:
-    pid = _project_id(ctx, input.project_id)
+    pid = resolve_project_id(ctx, input.project_id)
     if pid is None:
         return ToolResult.error("No project_id.")
     backend = _backend(ctx)
