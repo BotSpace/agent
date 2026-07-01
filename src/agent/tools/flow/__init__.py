@@ -726,36 +726,80 @@ async def flow_set_languages(input: FlowSetLanguagesInput, ctx: ToolContext) -> 
 
 
 class FlowListNodeTypesInput(BaseModel):
+    query: str | None = Field(
+        default=None,
+        description=(
+            "Free-text search across node name + summary + full doc (ToolSearch-style). "
+            "Returns the FULL schema for every matching node. Har so'z substring bo'lib "
+            "mos kelishi kerak (AND). Masalan `query='to'lov'` yoki `query='collection read'`."
+        ),
+    )
+    types: list[str] | None = Field(
+        default=None,
+        description=(
+            "Bir nechta node turining to'liq schema'sini BITTA chaqiruvda ol, masalan "
+            '["SendTextMessageNode", "IfConditionNode"].'
+        ),
+    )
+    type: str | None = Field(
+        default=None,
+        description="Bitta node turi — to'liq maydon schema'si. (`types=[type]` qisqartmasi.)",
+    )
     category: str | None = Field(
         default=None,
         description="Optional filter: trigger | send | edit | flow_control | data | integration | interaction | subflow | ai",
     )
-    type: str | None = Field(
-        default=None,
-        description="If set, return only that single node type with full field schema.",
-    )
+
+
+def _node_matches_query(query: str, *fields: str | None) -> bool:
+    """Har query so'zi haystack (nom+summary+doc) ichida substring bo'lsa mos (AND)."""
+    hay = " ".join(f for f in fields if f).lower()
+    return all(tok in hay for tok in query.lower().split())
+
+
+# query bo'yicha to'liq-schema dump uchun yumshoq chegara — javob juda katta bo'lmasin.
+_MAX_SCHEMA_DUMP = 12
 
 
 @tool(
     name="flow.list_node_types",
     description=(
-        "Return the FULL per-type field/validator schema for one or more node types. "
-        "The compact catalog (type names, categories, descriptions, handles) is already "
-        "in the system context — you do NOT need to call this tool to discover available "
-        "node types. Call it only when you need the detailed field schema before adding "
-        "a specific node: `type=<NodeName>` for a single type's full schema (types, "
-        "enums, required vs optional). `category=<name>` filters to a category."
+        "Return the FULL per-type field/validator schema for one or MORE node types. "
+        "The compact catalog (type names + one-line summaries) is already in the system "
+        "context — you do NOT need this tool to discover types. Call it before adding "
+        "node(s) when you need the detailed field schema. Three ways to fetch: "
+        "`query=<text>` searches name+summary+doc and returns full schema for every match "
+        "(ToolSearch-style); `types=[A, B, ...]` fetches several named types at once; "
+        "`type=<Name>` a single type. `category=<name>` filters/overviews a category."
     ),
     input_model=FlowListNodeTypesInput,
 )
 async def flow_list_node_types(input: FlowListNodeTypesInput, ctx: ToolContext) -> ToolResult:
     from .node_data_models import render_node_schema
 
-    specs = all_node_types()
+    want = set(input.types or [])
     if input.type:
-        specs = [s for s in specs if s.type == input.type]
-    elif input.category:
-        specs = [s for s in specs if s.category == input.category]
+        want.add(input.type)
+    query = (input.query or "").strip()
+    # focused = aniq turlar yoki query berilgan → to'liq schema'ni content'da ko'rsatamiz
+    focused = bool(want or query)
+
+    def _keep(node_type: str, *doc_fields: str | None, category: str | None) -> bool:
+        if want:
+            return node_type in want
+        if query:
+            return _node_matches_query(query, node_type, *doc_fields)
+        if input.category:
+            return category == input.category
+        return True
+
+    # Qidiruv NOM + qisqa SUMMARY bo'yicha (to'liq aiDoc emas — aks holda uzun
+    # doc'li node'lar deyarli hamma query'ga mos kelib shovqin qiladi). To'liq
+    # doc baribir natijada `description` sifatida qaytadi.
+    specs = [
+        s for s in all_node_types()
+        if _keep(s.type, s.summary, category=s.category)
+    ]
 
     payload = []
     for s in specs:
@@ -764,6 +808,7 @@ async def flow_list_node_types(input: FlowListNodeTypesInput, ctx: ToolContext) 
             {
                 "type": s.type,
                 "category": s.category,
+                "summary": s.summary,
                 "description": s.description,
                 "source_handles": s.source_handles,
                 "is_trigger": s.is_trigger,
@@ -777,9 +822,9 @@ async def flow_list_node_types(input: FlowListNodeTypesInput, ctx: ToolContext) 
     for mod in _module_nodes(ctx):
         if not isinstance(mod, dict) or not mod.get("type"):
             continue
-        if input.type and mod["type"] != input.type:
-            continue
-        if input.category and mod.get("category") != input.category:
+        if not _keep(
+            mod["type"], mod.get("description"), category=mod.get("category") or "integration"
+        ):
             continue
         fields = [
             {"name": f, "required": True, "source": "module"}
@@ -827,11 +872,19 @@ async def flow_list_node_types(input: FlowListNodeTypesInput, ctx: ToolContext) 
     lines = [f"{len(payload)} node type(s) in {len(by_cat)} categories:"]
     for cat, types in sorted(by_cat.items()):
         lines.append(f"  {cat}: {', '.join(types)}")
-    if input.type and payload:
-        # Single-type lookup: show full schema in content
+    # focused (query/types/type) → mos node'larning TO'LIQ schema'sini content'ga chiqar,
+    # lekin javob juda katta bo'lmasin: _MAX_SCHEMA_DUMP dan ortig'ini kesamiz.
+    if focused and payload:
         import json as _json
+        shown = payload[:_MAX_SCHEMA_DUMP]
         lines.append("")
-        lines.append(_json.dumps(payload[0], ensure_ascii=False, indent=2))
+        for p in shown:
+            lines.append(_json.dumps(p, ensure_ascii=False, indent=2))
+        if len(payload) > len(shown):
+            lines.append(
+                f"\n… yana {len(payload) - len(shown)} mos node bor — to'liq schema'ni "
+                f"data.types dan oling yoki query'ni aniqroq bering / types=[...] ishlating."
+            )
     return ToolResult.ok("\n".join(lines), data={"types": payload})
 
 

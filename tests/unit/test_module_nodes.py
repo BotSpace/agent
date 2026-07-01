@@ -153,6 +153,28 @@ def test_validator_module_required_field_error():
 
 
 @pytest.mark.asyncio
+async def test_list_node_types_query_and_types():
+    """ToolSearch-uslub: query nom+summary bo'yicha topadi, types bir nechtasini oladi."""
+    tools = _tools()
+    ctx = ToolContext(run_id="r", project_id="42", user_id="u")
+
+    # query — nom/summary bo'yicha (to'liq aiDoc bo'yicha emas → shovqinsiz)
+    res = await tools["flow.list_node_types"].run({"query": "to'lov"}, ctx)
+    hits = {t["type"] for t in res.data["types"]}
+    assert "SendInvoiceNode" in hits and "PaymentNode" in hits
+    assert "AIAgentNode" not in hits  # uzun aiDoc'da "to'lov" bor, lekin summary'da yo'q
+
+    # types — bir nechta node to'liq schema bilan, bitta chaqiruvda
+    res = await tools["flow.list_node_types"].run(
+        {"types": ["SendTextMessageNode", "IfConditionNode"]}, ctx
+    )
+    got = {t["type"] for t in res.data["types"]}
+    assert got == {"SendTextMessageNode", "IfConditionNode"}
+    assert all("fields" in t for t in res.data["types"])  # to'liq schema
+    assert "fields" in res.content  # focused → content'da to'liq dump
+
+
+@pytest.mark.asyncio
 async def test_list_node_types_includes_module_nodes():
     tools = _tools()
     ctx = ToolContext(run_id="r", project_id="42", user_id="u")
