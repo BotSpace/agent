@@ -151,11 +151,16 @@ async def release_list(input: ReleaseListInput, ctx: ToolContext) -> ToolResult:
 
 class ReleaseDeployInput(BaseModel):
     project_id: str | int | None = None
-    plan_id: int | None = Field(
+    # str because the Go backend's plan ids are UUIDs (plans.list returns
+    # UUID strings, not Django's legacy integer ids). Kept optional: the Go
+    # release-create endpoint no longer accepts/uses plan_id at all (project
+    # plans were dropped from release creation server-side) — this field is
+    # currently a no-op, retained only for backward-compatible tool inputs.
+    plan_id: str | int | None = Field(
         default=None,
         description=(
-            "REQUIRED for the FIRST release of a project. Use plans.list to discover "
-            "available plan ids. Subsequent releases do not need plan_id."
+            "Plan id (from plans.list). NOTE: currently ignored by the backend — "
+            "release creation no longer requires/uses a plan."
         ),
     )
     months: int | None = Field(
@@ -304,7 +309,8 @@ async def subscription_current(_: SubscriptionCurrentInput, ctx: ToolContext) ->
 
 
 class SubscriptionUpgradeInput(BaseModel):
-    plan_id: int = Field(description="Target plan id (from plans.list).")
+    # str because the Go backend's plan ids are UUIDs, not integers.
+    plan_id: str | int = Field(description="Target plan id (from plans.list).")
     months: int = Field(default=1, description="Billing months: 1, 3, 6, or 12.")
 
 
