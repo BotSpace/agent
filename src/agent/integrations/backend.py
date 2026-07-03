@@ -57,7 +57,7 @@ async def fetch_public_config() -> dict[str, Any]:
         return _public_config_cache
 
     s = get_settings()
-    url = s.backend_base_url.rstrip("/") + "/api/v1/shared/config/public/"
+    url = s.backend_base_url.rstrip("/") + "/api/v1/shared/config/public"
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(url, headers={"Accept": "application/json"})
@@ -112,7 +112,7 @@ async def fetch_internal_config() -> dict[str, Any]:
         logger.debug("fetch_internal_config: BACKEND_INTERNAL_TOKEN not set — skipping")
         return {}
 
-    url = s.backend_base_url.rstrip("/") + "/api/v1/shared/config/internal/"
+    url = s.backend_base_url.rstrip("/") + "/api/v1/shared/config/internal"
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(
@@ -226,7 +226,31 @@ def _unwrap_envelopes(data: Any, depth: int = 0) -> Any:
         {"status": false, "data": {"status": false, "detail": "ValidationError",
                                     "errors": {"plan_id": ["…"]}}}
     This walks down until it sees actual content.
+
+    The Go backend NEVER uses that envelope (its `httpx.OK`/`httpx.Error`
+    helpers write bare JSON) — errors instead come back as
+    ``{"error": {"code": "...", "message": "...", "details": {...}}}``
+    (`internal/shared/httpx/response.go`). Normalize that shape to the
+    Django-style top-level ``detail``/``code``/``errors`` keys the extractors
+    below already understand, so `format_backend_error` reads the same
+    human message regardless of which backend answered.
     """
+    if (
+        isinstance(data, dict)
+        and isinstance(data.get("error"), dict)
+        and ("code" in data["error"] or "message" in data["error"])
+    ):
+        err = data["error"]
+        normalized: dict[str, Any] = {}
+        if isinstance(err.get("message"), str):
+            normalized["detail"] = err["message"]
+        if isinstance(err.get("code"), str):
+            normalized["code"] = err["code"]
+        details = err.get("details")
+        if isinstance(details, dict) and details:
+            normalized["errors"] = details
+        data = normalized
+
     while (
         isinstance(data, dict)
         and "data" in data
@@ -433,12 +457,21 @@ def pagination_summary(items: Any) -> str:
 
 
 def _unwrap_item(payload: Any) -> dict[str, Any]:
+    """Peel a Django-style ``{"status": true, "data": {...}}`` envelope.
+
+    MUST use `_unwrap_envelopes`'s stricter check (data + an envelope marker
+    key), not a bare ``"data" in payload`` test: several Go backend objects
+    legitimately have their OWN top-level ``data`` field (e.g. a credential's
+    ``{"id", "name", "type_key", "data": {"api_key": ...}, ...}``) — a naive
+    check silently threw away everything except that inner field, discarding
+    the id every subsequent call needs. `_unwrap_envelopes` only descends when
+    "status"/"errors"/"detail" also sit alongside "data", which never happens
+    on a bare Go object.
+    """
     if not isinstance(payload, dict):
         return {}
-    data = payload.get("data")
-    if isinstance(data, dict):
-        return data
-    return payload
+    unwrapped = _unwrap_envelopes(payload)
+    return unwrapped if isinstance(unwrapped, dict) else payload
 
 
 def _auth_kw(auth_claims: dict | None) -> dict[str, Any]:
@@ -585,6 +618,30 @@ class BackendClient:
             json=json,
             headers=self._headers(bearer=bearer, user_id=user_id),
         )
+        # Bearer fallback when the internal-token + X-User-Id impersonation
+        # mode 401s. The Go backend (unlike Django's InternalTokenAuthentication)
+        # does NOT support X-Internal-Token + X-User-Id impersonation on
+        # user-scoped resource routes (projects/credentials/enviroment/relase/
+        # file/messages/subscription/cms/chat/debug — verified empirically:
+        # every one of those routes is mounted behind `middleware.Auth`, which
+        # only recognises `Authorization: Bearer <jwt>`; only a handful of
+        # true backend-to-backend routes — shared/config/internal, the
+        # credential/payment "internal" resolve endpoints, template internal
+        # feed — check X-Internal-Token). Since the Go and Django JWT signing
+        # keys now match, forwarding the caller's own bearer JWT is always a
+        # safe, equivalent fallback here — retry once with bearer-only headers
+        # before giving up. use_internal is then cleared so the refresh-on-401
+        # block below still gets a chance if THAT bearer also turns out to be
+        # expired.
+        if resp.status_code == 401 and use_internal and bearer:
+            resp = await self._client.request(
+                method,
+                url,
+                params=params,
+                json=json,
+                headers=self._headers(bearer=bearer),
+            )
+            use_internal = False
         # Refresh-on-401 only when we're using a forwarded user JWT.
         # When the request was made with the internal token + X-User-Id
         # there is no refresh to perform — the internal token does not
@@ -925,7 +982,7 @@ class BackendClient:
         if limit:
             params["limit"] = limit
         d = await self._request(
-            "GET", "/api/debug/errors/", params=params, **_auth_kw(auth_claims)
+            "GET", "/api/v1/debug/errors", params=params, **_auth_kw(auth_claims)
         )
         payload = _unwrap_envelopes(d)
         if isinstance(payload, dict):
@@ -1182,9 +1239,36 @@ class BackendClient:
         return _unwrap_item(d)
 
     # ── chat (CRM users + history) ─────────────────────────────────────
-    # NOT YET IMPLEMENTED on the Go backend — there is no chat module at
-    # all (grepped internal/modules for "chat": no route). Left pointing at
-    # the old Django paths (will 404) until the coordinator ports it.
+    # NOW IMPLEMENTED on the Go backend at /api/v1/chat/... (internal/modules/
+    # chat) — verified live. Two gotchas vs every other module:
+    #   1. No trailing slash (Gin 301/307-redirects it away — httpx does not
+    #      follow redirects by default, so a trailing slash silently breaks
+    #      this).
+    #   2. The path param is NOT this client's usual `project["id"]` (Go's own
+    #      primary key) — chat.ResolveProjectForOwner only accepts the Django
+    #      legacy int pk OR the project's `uuid` column (see
+    #      internal/modules/chat/repository.go). Every migrated (pre-Go)
+    #      project's `id` is a synthesized uuid5 that does NOT match either,
+    #      so passing it straight through 404s with "project.not_found" even
+    #      for a project the caller owns. `_resolve_chat_project_id` below
+    #      looks the project up and swaps in its `uuid` field when `project_id`
+    #      isn't already a bare integer (legacy pk).
+    async def _resolve_chat_project_id(
+        self, project_id: str | int, *, auth_claims: dict | None = None
+    ) -> str:
+        pid_str = str(project_id)
+        try:
+            int(pid_str)
+            return pid_str  # already a Django legacy int pk — pass through
+        except ValueError:
+            pass
+        try:
+            project = await self.get_project(project_id, auth_claims=auth_claims)
+        except BackendError:
+            return pid_str  # let the chat call itself surface the real error
+        uuid_val = project.get("uuid")
+        return str(uuid_val) if uuid_val else pid_str
+
     async def list_chat_users(
         self,
         project_id: str | int,
@@ -1195,8 +1279,9 @@ class BackendClient:
     ) -> "PagedList":
         params: dict[str, Any] = {}
         params.update(_page_params(page, page_size))
+        resolved_pid = await self._resolve_chat_project_id(project_id, auth_claims=auth_claims)
         d = await self._request(
-            "GET", f"/api/chat/users/{project_id}/", params=params or None, **_auth_kw(auth_claims)
+            "GET", f"/api/v1/chat/users/{resolved_pid}", params=params or None, **_auth_kw(auth_claims)
         )
         return _unwrap_list(d)
 
@@ -1207,8 +1292,9 @@ class BackendClient:
         *,
         auth_claims: dict | None = None,
     ) -> list[dict[str, Any]]:
+        resolved_pid = await self._resolve_chat_project_id(project_id, auth_claims=auth_claims)
         d = await self._request(
-            "GET", f"/api/chat/messages/{project_id}/{chat_id}/", **_auth_kw(auth_claims)
+            "GET", f"/api/v1/chat/messages/{resolved_pid}/{chat_id}", **_auth_kw(auth_claims)
         )
         return _unwrap_list(d)
 
@@ -1650,7 +1736,7 @@ class BackendClient:
             logger.warning("list_internal_templates skipped — BACKEND_INTERNAL_TOKEN not set")
             return []
         try:
-            d = await self._request("GET", "/api/template/internal/list/")
+            d = await self._request("GET", "/api/v1/template/internal/list")
         except BackendError:
             logger.warning("list_internal_templates: endpoint not available on this backend")
             return []
@@ -1663,7 +1749,7 @@ class BackendClient:
         if not self._internal_token:
             return None
         try:
-            return await self._request("GET", f"/api/template/internal/{identifier}/")
+            return await self._request("GET", f"/api/v1/template/internal/{identifier}")
         except BackendError as e:
             if e.status == 404:
                 return None
