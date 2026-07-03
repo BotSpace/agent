@@ -293,8 +293,7 @@ async def credentials_create(input: CredentialsCreateInput, ctx: ToolContext) ->
 
 
 class CredentialsUpdateInput(BaseModel):
-    # str because the Go backend's credential ids are UUIDs, not integers.
-    id: str | int = Field(description="Credential id to update.")
+    id: int = Field(description="Credential id to update.")
     name: str | None = Field(default=None, description="New name (optional).")
     data: dict | None = Field(
         default=None,
@@ -329,8 +328,7 @@ async def credentials_update(input: CredentialsUpdateInput, ctx: ToolContext) ->
 
 
 class CredentialsDeleteInput(BaseModel):
-    # str because the Go backend's credential ids are UUIDs, not integers.
-    id: str | int = Field(description="Credential id to delete (soft delete).")
+    id: int = Field(description="Credential id to delete (soft delete).")
 
 
 @tool(
