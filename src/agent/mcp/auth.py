@@ -181,7 +181,7 @@ async def _exchange_bsp(token: str, settings: Settings) -> _ExchangedToken:
     if cached and (cached.exp == 0.0 or cached.exp - _EXCHANGE_REFRESH_LEEWAY > now):
         return cached
 
-    url = settings.backend_base_url.rstrip("/") + "/auth/token/exchange/"
+    url = settings.backend_base_url.rstrip("/") + "/auth/token/exchange"
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(
