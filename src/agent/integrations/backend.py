@@ -351,6 +351,19 @@ class PagedList(list):
 
 
 def _unwrap_list(payload: Any) -> "PagedList":
+    """Normalize a list response into a page-based ``PagedList``.
+
+    Supports THREE shapes we may see depending on which backend answered:
+      - bare list                                            (Go: enviroment/relase)
+      - DRF envelope {"results": [...], "total_items"/"count", "total_pages",
+        "current_page", "page_size", possibly wrapped in {"data": {...}}}
+                                                                (old Django backend)
+      - Go pagination envelope {"items": [...], "total", "limit", "offset"}
+        (new Go backend: projects, credentials, files, messages, modules, ...)
+        — translated to the same page-based PagedList API so every existing
+        caller (page/page_size/total_pages/current_page) keeps working
+        unchanged; internally Go only understands limit/offset.
+    """
     if isinstance(payload, list):
         pl = PagedList(payload)
         pl.total_items = len(payload)
@@ -359,16 +372,45 @@ def _unwrap_list(payload: Any) -> "PagedList":
     if not isinstance(payload, dict):
         return PagedList()
     data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
-    results = data.get("results") if isinstance(data, dict) else None
+    meta = data if isinstance(data, dict) else {}
+    results = meta.get("results")
+    if not isinstance(results, list):
+        results = meta.get("items")  # Go pagination shape
     if not isinstance(results, list):
         results = payload["results"] if isinstance(payload.get("results"), list) else []
     pl = PagedList(results)
-    meta = data if isinstance(data, dict) else {}
-    pl.total_items = int(meta.get("total_items") or meta.get("count") or len(results))
-    pl.total_pages = int(meta.get("total_pages") or 1)
-    pl.current_page = int(meta.get("current_page") or 1)
-    pl.page_size = int(meta.get("page_size") or len(results))
+    total = int(meta.get("total_items") or meta.get("count") or meta.get("total") or len(results))
+    limit = meta.get("limit")
+    if isinstance(limit, int) and limit > 0:
+        # Go shape: derive page-based fields from limit/offset so callers
+        # (which only know page/page_size/total_pages/current_page) don't change.
+        offset = int(meta.get("offset") or 0)
+        pl.total_items = total
+        pl.page_size = limit
+        pl.total_pages = max(1, -(-total // limit))  # ceil division
+        pl.current_page = (offset // limit) + 1
+    else:
+        pl.total_items = total
+        pl.total_pages = int(meta.get("total_pages") or 1)
+        pl.current_page = int(meta.get("current_page") or 1)
+        pl.page_size = int(meta.get("page_size") or len(results))
     return pl
+
+
+def _page_params(page: int | None, page_size: int | None) -> dict[str, Any]:
+    """Build BOTH DRF-style (page/page_size) and Go-style (limit/offset) query
+    params so the same BackendClient call works against either backend — each
+    backend ignores the params it doesn't understand.
+    """
+    params: dict[str, Any] = {}
+    if page:
+        params["page"] = page
+    if page_size:
+        params["page_size"] = page_size
+        params["limit"] = page_size
+        if page:
+            params["offset"] = (page - 1) * page_size
+    return params
 
 
 def pagination_summary(items: Any) -> str:
@@ -473,14 +515,20 @@ class BackendClient:
         urinilganda blacklist'dagi eski token ishlatilib 401 qaytadi.
 
         Returns: (new_access, new_refresh_or_None) yoki None — agar refresh fail.
+
+        NOTE: Go backend endpoint is ``POST /api/v1/auth/refresh`` (not Django's
+        root-level ``/auth/token/refresh/``), body key is ``refresh_token`` (not
+        ``refresh``), and the response is FLAT — ``{"access_token", "refresh_token",
+        "access_expires_at", "refresh_expires_at", "token_type"}`` — no
+        ``{"status","data":{"token":{...}}}`` envelope.
         """
         if not refresh_token:
             return None
-        url = self._base_url + "/auth/token/refresh/"
+        url = self._base_url + "/api/v1/auth/refresh"
         try:
             resp = await self._client.post(
                 url,
-                json={"refresh": refresh_token},
+                json={"refresh_token": refresh_token},
                 headers={"Accept": "application/json", "Content-Type": "application/json"},
             )
             if resp.status_code >= 400:
@@ -491,10 +539,12 @@ class BackendClient:
                 )
                 return None
             data = resp.json() or {}
+            # Go (flat) shape first, then fall back to the old Django envelope
+            # shape so this keeps working if ever pointed at the old backend.
             root = data.get("data") if isinstance(data.get("data"), dict) else data
             token = (root or {}).get("token") or {}
-            access = token.get("access") or root.get("access")
-            new_refresh = token.get("refresh") or root.get("refresh")
+            access = root.get("access_token") or token.get("access") or root.get("access")
+            new_refresh = root.get("refresh_token") or token.get("refresh") or root.get("refresh")
             if isinstance(access, str) and access:
                 logger.info(
                     "Agent access token refreshed mid-run (rotated_refresh=%s)",
@@ -614,29 +664,26 @@ class BackendClient:
         params: dict[str, Any] = {}
         if search:
             params["search"] = search
-        if page:
-            params["page"] = page
-        if page_size:
-            params["page_size"] = page_size
-        d = await self._request("GET", "/api/project/", params=params or None, **_auth_kw(auth_claims))
+        params.update(_page_params(page, page_size))
+        d = await self._request("GET", "/api/v1/projects", params=params or None, **_auth_kw(auth_claims))
         return _unwrap_list(d)
 
     async def get_project(self, project_id: str | int, *, auth_claims: dict | None = None) -> dict[str, Any]:
-        d = await self._request("GET", f"/api/project/{project_id}/", **_auth_kw(auth_claims))
+        d = await self._request("GET", f"/api/v1/projects/{project_id}", **_auth_kw(auth_claims))
         return _unwrap_item(d)
 
     async def create_project(self, body: dict[str, Any], *, auth_claims: dict | None = None) -> dict[str, Any]:
-        d = await self._request("POST", "/api/project/", json=body, **_auth_kw(auth_claims))
+        d = await self._request("POST", "/api/v1/projects", json=body, **_auth_kw(auth_claims))
         return _unwrap_item(d)
 
     async def update_project(
         self, project_id: str | int, body: dict[str, Any], *, auth_claims: dict | None = None
     ) -> dict[str, Any]:
-        d = await self._request("PATCH", f"/api/project/{project_id}/", json=body, **_auth_kw(auth_claims))
+        d = await self._request("PATCH", f"/api/v1/projects/{project_id}", json=body, **_auth_kw(auth_claims))
         return _unwrap_item(d)
 
     async def delete_project(self, project_id: str | int, *, auth_claims: dict | None = None) -> None:
-        await self._request("DELETE", f"/api/project/{project_id}/", **_auth_kw(auth_claims))
+        await self._request("DELETE", f"/api/v1/projects/{project_id}", **_auth_kw(auth_claims))
 
     # ── env vars ───────────────────────────────────────────────────────
     async def list_env(
@@ -648,19 +695,35 @@ class BackendClient:
         auth_claims: dict | None = None,
     ) -> "PagedList":
         params: dict[str, Any] = {"project": project_id}
-        if page:
-            params["page"] = page
-        if page_size:
-            params["page_size"] = page_size
-        d = await self._request("GET", "/api/enviroment/", params=params, **_auth_kw(auth_claims))
+        params.update(_page_params(page, page_size))
+        d = await self._request("GET", "/api/v1/enviroment", params=params, **_auth_kw(auth_claims))
         return _unwrap_list(d)
 
     async def create_env(self, body: dict[str, Any], *, auth_claims: dict | None = None) -> dict[str, Any]:
-        d = await self._request("POST", "/api/enviroment/", json=body, **_auth_kw(auth_claims))
+        """POST /api/v1/enviroment — upsert on (project_id, key).
+
+        Go's ``UpsertEnvironmentRequest`` wants ``project_id`` (not Django's
+        ``project``); caller (tools/env) is expected to send
+        ``{"project_id": ..., "key": ..., "value": ..., "secret": bool}``.
+        """
+        d = await self._request("POST", "/api/v1/enviroment", json=body, **_auth_kw(auth_claims))
         return _unwrap_item(d)
 
-    async def delete_env(self, env_id: str | int, *, auth_claims: dict | None = None) -> None:
-        await self._request("DELETE", f"/api/enviroment/{env_id}/", **_auth_kw(auth_claims))
+    async def delete_env(
+        self, key: str, project_id: str | int, *, auth_claims: dict | None = None
+    ) -> None:
+        """DELETE /api/v1/enviroment/{key}?project=<project_id>.
+
+        NOTE: Go's env delete is keyed by (key, project_id) — NOT a global
+        opaque env row id like the old Django endpoint. Callers must now pass
+        both the variable's ``key`` name and its ``project_id``.
+        """
+        await self._request(
+            "DELETE",
+            f"/api/v1/enviroment/{key}",
+            params={"project": project_id},
+            **_auth_kw(auth_claims),
+        )
 
     # ── releases (deploy) ──────────────────────────────────────────────
     async def list_releases(
@@ -672,33 +735,31 @@ class BackendClient:
         auth_claims: dict | None = None,
     ) -> "PagedList":
         params: dict[str, Any] = {"project": project_id}
-        if page:
-            params["page"] = page
-        if page_size:
-            params["page_size"] = page_size
-        d = await self._request("GET", "/api/relase/", params=params, **_auth_kw(auth_claims))
+        params.update(_page_params(page, page_size))
+        d = await self._request("GET", "/api/v1/relase", params=params, **_auth_kw(auth_claims))
         return _unwrap_list(d)
 
     async def create_release(
         self,
         project_id: str | int,
         *,
-        plan_id: int | None = None,
-        months: int | None = None,
+        plan_id: int | None = None,  # kept for caller compat; Go ignores it (plans dropped)
+        months: int | None = None,  # kept for caller compat; Go ignores it (plans dropped)
         auth_claims: dict | None = None,
     ) -> dict[str, Any]:
-        body: dict[str, Any] = {"project": project_id}
-        if plan_id is not None:
-            body["plan_id"] = plan_id
-        if months is not None:
-            body["months"] = months
-        d = await self._request("POST", "/api/relase/", json=body, **_auth_kw(auth_claims))
+        """POST /api/v1/relase. Go's CreateReleaseRequest only wants
+        ``project_id`` — the legacy ``plan_id``/``months`` fields no longer
+        exist server-side (project plans were dropped); they're accepted here
+        only so existing callers don't need to change, but are NOT sent.
+        """
+        body: dict[str, Any] = {"project_id": project_id}
+        d = await self._request("POST", "/api/v1/relase", json=body, **_auth_kw(auth_claims))
         return _unwrap_item(d)
 
     async def get_release(
         self, release_id: str | int, *, auth_claims: dict | None = None
     ) -> dict[str, Any]:
-        d = await self._request("GET", f"/api/relase/{release_id}/", **_auth_kw(auth_claims))
+        d = await self._request("GET", f"/api/v1/relase/{release_id}", **_auth_kw(auth_claims))
         return _unwrap_item(d)
 
     async def start_debug(
@@ -706,9 +767,9 @@ class BackendClient:
     ) -> dict[str, Any]:
         """Start (or refresh) the project's DEBUG container — no bot token needed,
         auto-expires (~30 min) via the backend's cleanup task. Same endpoint the
-        constructor's 'Debug Run' uses: GET /api/project/{id}/debug/."""
+        constructor's 'Debug Run' uses: GET /api/v1/projects/{id}/debug."""
         d = await self._request(
-            "GET", f"/api/project/{project_id}/debug/", **_auth_kw(auth_claims)
+            "GET", f"/api/v1/projects/{project_id}/debug", **_auth_kw(auth_claims)
         )
         return _unwrap_item(d) if isinstance(d, dict) else {}
 
@@ -720,12 +781,18 @@ class BackendClient:
         since_seconds: int | None = None,
         auth_claims: dict | None = None,
     ) -> dict[str, Any]:
+        """NOT YET IMPLEMENTED on the Go backend — release module only exposes
+        list/create/get/stop (see internal/modules/release/routes.go); there is
+        no ``/relase/{id}/logs`` route. This call will raise BackendError(404)
+        until that endpoint is added server-side. See migration report for the
+        exact spec requested from the coordinator.
+        """
         params: dict[str, Any] = {"tail": tail}
         if since_seconds is not None:
             params["since_seconds"] = since_seconds
         d = await self._request(
             "GET",
-            f"/api/relase/{release_id}/logs/",
+            f"/api/v1/relase/{release_id}/logs",
             params=params,
             **_auth_kw(auth_claims),
         )
@@ -739,13 +806,18 @@ class BackendClient:
         since_seconds: int | None = None,
         auth_claims: dict | None = None,
     ) -> dict[str, Any]:
-        """DEBUG konteyner pod loglari — release logs bilan bir xil snapshot format."""
+        """DEBUG konteyner pod loglari — release logs bilan bir xil snapshot format.
+
+        NOT YET IMPLEMENTED on the Go backend (release module has no
+        ``/projects/{id}/debug/logs`` route — only ``/debug``, ``/debug/stop``,
+        ``/info``). Will raise BackendError(404) until added server-side.
+        """
         params: dict[str, Any] = {"tail": tail}
         if since_seconds is not None:
             params["since_seconds"] = since_seconds
         d = await self._request(
             "GET",
-            f"/api/project/{project_id}/debug/logs/",
+            f"/api/v1/projects/{project_id}/debug/logs",
             params=params,
             **_auth_kw(auth_claims),
         )
@@ -760,31 +832,31 @@ class BackendClient:
         page_size: int | None = None,
         auth_claims: dict | None = None,
     ) -> "PagedList":
-        """Owner-scoped credentials (GET /api/v1/credentials/?type_key=).
+        """Owner-scoped credentials (GET /api/v1/credentials?type_key=).
 
         Secrets are masked server-side; only id/name/type_key/label/mode are
         useful for picking a `credential_id`. Owner-scoped via request.user —
-        NOT filtered by project. Paginated DRF list.
+        NOT filtered by project. Paginated (Go: items/total/limit/offset).
+
+        NOTE: no trailing slash — Gin 301-redirects trailing-slash paths to
+        the bare path, and a 301's HTML body would break JSON parsing.
         """
         params: dict[str, Any] = {}
         if type_key:
             params["type_key"] = type_key
-        if page:
-            params["page"] = page
-        if page_size:
-            params["page_size"] = page_size
+        params.update(_page_params(page, page_size))
         d = await self._request(
-            "GET", "/api/v1/credentials/", params=params or None, **_auth_kw(auth_claims)
+            "GET", "/api/v1/credentials", params=params or None, **_auth_kw(auth_claims)
         )
         return _unwrap_list(d)
 
     async def create_credential(
         self, body: dict[str, Any], *, auth_claims: dict | None = None
     ) -> dict[str, Any]:
-        """Owner-scoped credential create (POST /api/v1/credentials/).
+        """Owner-scoped credential create (POST /api/v1/credentials).
         body = {type_key, name, data:{...}}. oauth2 types come from the OAuth flow, not here.
         """
-        d = await self._request("POST", "/api/v1/credentials/", json=body, **_auth_kw(auth_claims))
+        d = await self._request("POST", "/api/v1/credentials", json=body, **_auth_kw(auth_claims))
         return _unwrap_item(d)
 
     async def oauth_start(
@@ -796,19 +868,15 @@ class BackendClient:
     ) -> dict[str, Any]:
         """Begin a browser OAuth consent flow for an OAuth credential type.
 
-        POST /api/v1/credentials/oauth/{provider}/start/  body {"type_key": ...}.
-        The backend signs a state bound to the OWNER (request.user) and returns
-        ``{"authorize_url": "https://accounts.google.com/o/oauth2/..."}``. The
-        agent hands that URL to the user; once the user grants consent the
-        backend's callback creates the credential under the same owner — the
-        agent never sees the token, it just re-lists afterwards.
-
-        ``provider`` is the OAuth provider slug (e.g. "google" for all
-        google_* type_keys); ``type_key`` is the credential type to create.
+        NOT YET IMPLEMENTED on the Go backend — internal/modules/credential
+        has no ``oauth/{provider}/start`` route at all (only code-defined,
+        non-oauth2 CRUD + the read-only "types" list). This call will raise
+        BackendError(404) until the coordinator adds it. See migration report
+        for the exact spec (path, auth, request/response shape) requested.
         """
         d = await self._request(
             "POST",
-            f"/api/v1/credentials/oauth/{provider}/start/",
+            f"/api/v1/credentials/oauth/{provider}/start",
             json={"type_key": type_key},
             **_auth_kw(auth_claims),
         )
@@ -818,7 +886,7 @@ class BackendClient:
         self, credential_id: str | int, body: dict[str, Any], *, auth_claims: dict | None = None
     ) -> dict[str, Any]:
         d = await self._request(
-            "PATCH", f"/api/v1/credentials/{credential_id}/", json=body, **_auth_kw(auth_claims)
+            "PATCH", f"/api/v1/credentials/{credential_id}", json=body, **_auth_kw(auth_claims)
         )
         return _unwrap_item(d)
 
@@ -826,7 +894,7 @@ class BackendClient:
         self, credential_id: str | int, *, auth_claims: dict | None = None
     ) -> None:
         await self._request(
-            "DELETE", f"/api/v1/credentials/{credential_id}/", **_auth_kw(auth_claims)
+            "DELETE", f"/api/v1/credentials/{credential_id}", **_auth_kw(auth_claims)
         )
 
     # ── debug flow errors (read-only) ──────────────────────────────────
@@ -848,6 +916,10 @@ class BackendClient:
         Response is wrapped in the standard ``{"status", "data"}`` envelope and
         carries the rows under a ``errors`` key (NOT DRF ``results``), so we
         unwrap then pluck ``errors``. Always returns a list.
+
+        NOT YET IMPLEMENTED on the Go backend — there is no debug-errors
+        module/route at all. Will raise BackendError(404) until the
+        coordinator adds it. See migration report for the exact spec.
         """
         params: dict[str, Any] = {"project_id": project_id}
         if limit:
@@ -866,7 +938,7 @@ class BackendClient:
 
     # ── plans (billing) ───────────────────────────────────────────────
     async def list_plans(self, *, auth_claims: dict | None = None) -> list[dict[str, Any]]:
-        d = await self._request("GET", "/api/plans/", **_auth_kw(auth_claims))
+        d = await self._request("GET", "/api/v1/plans", **_auth_kw(auth_claims))
         return _unwrap_list(d)
 
     # ── modules (external node types) ──────────────────────────────────
@@ -875,7 +947,7 @@ class BackendClient:
     ) -> list[dict[str, Any]]:
         """Per-project ENABLED module node manifests.
 
-        GET /api/project/{id}/module-manifests/ → {"manifests": [NodeManifest, ...]}.
+        GET /api/v1/projects/{id}/module-manifests → {"manifests": [NodeManifest, ...]}.
         Each manifest is one node type contributed by an enabled external module,
         tagged with `moduleSlug`/`moduleName`. Shape (module describe() contract):
           type            — namespaced node type, e.g. "openrouter.Chat"
@@ -896,7 +968,7 @@ class BackendClient:
         try:
             d = await self._request(
                 "GET",
-                f"/api/project/{project_id}/module-manifests/",
+                f"/api/v1/projects/{project_id}/module-manifests",
                 **_auth_kw(auth_claims),
             )
         except BackendError:
@@ -921,26 +993,23 @@ class BackendClient:
         page_size: int | None = None,
         auth_claims: dict | None = None,
     ) -> "PagedList":
-        """The platform-wide catalog of AVAILABLE modules (GET /api/modules/).
+        """The platform-wide catalog of AVAILABLE modules (GET /api/v1/modules).
 
         Authenticated (any user can browse — enabling is per-project). Each row is
         a ModuleSerializer: {id, slug, name, description, icon, active, nodes:[{type,
         title, category, trigger}], docs, source, ...}. `active=false` modules are
         catalog entries that can't be enabled — filter them out before offering.
 
-        Supports DRF `search` (name/slug/description) and pagination. Returns an
-        empty PagedList on failure so a backend hiccup can't break a run.
+        Supports `search` and pagination. Returns an empty PagedList on
+        failure so a backend hiccup can't break a run.
         """
         params: dict[str, Any] = {"active": "true"}
         if search:
             params["search"] = search
-        if page:
-            params["page"] = page
-        if page_size:
-            params["page_size"] = page_size
+        params.update(_page_params(page, page_size))
         try:
             d = await self._request(
-                "GET", "/api/modules/", params=params, **_auth_kw(auth_claims)
+                "GET", "/api/v1/modules", params=params, **_auth_kw(auth_claims)
             )
         except BackendError:
             logger.warning("Failed to list modules catalog; continuing", exc_info=True)
@@ -954,7 +1023,7 @@ class BackendClient:
         *,
         auth_claims: dict | None = None,
     ) -> dict[str, Any]:
-        """Enable a catalog module FOR A PROJECT (POST /api/project/{id}/modules/).
+        """Enable a catalog module FOR A PROJECT (POST /api/v1/projects/{id}/modules).
 
         SIDE-EFFECTFUL — the backend deploys (or attaches) the module's service and
         wires its node types into the project. Returns the ProjectModule row
@@ -969,7 +1038,7 @@ class BackendClient:
         """
         d = await self._request(
             "POST",
-            f"/api/project/{project_id}/modules/",
+            f"/api/v1/projects/{project_id}/modules",
             json={"module_slug": module_slug},
             **_auth_kw(auth_claims),
         )
@@ -980,11 +1049,11 @@ class BackendClient:
     ) -> list[dict[str, Any]]:
         """All registered credential TYPES (not the user's saved credentials).
 
-        GET /api/v1/credentials/types/ → a list of type descriptors from THREE
-        sources, each tagged with `source` and `editable`:
-          source = "code"          — built-in (openai, ai_studio, ollama, telegram, google_*)
-          source = "admin"         — admin-defined at admin.botspace.uz /settings
-          source = "module:<slug>" — declared by an enabled module's describe()
+        GET /api/v1/credentials/types → a list of type descriptors. On the Go
+        backend this is a BARE LIST (no envelope) sourced only from the
+        code-defined registry — `source` is always "code" and `editable`
+        always false (admin-defined + module-declared types are NOT YET
+        ported; see migration report).
 
         Each type: {key, label, mode, fields:[{name,label,type,secret,required,
         default,options}], source, editable, provider?, scopes?}.
@@ -993,7 +1062,7 @@ class BackendClient:
         """
         try:
             d = await self._request(
-                "GET", "/api/v1/credentials/types/", **_auth_kw(auth_claims)
+                "GET", "/api/v1/credentials/types", **_auth_kw(auth_claims)
             )
         except BackendError:
             logger.warning("Failed to load credential types; continuing", exc_info=True)
@@ -1016,16 +1085,13 @@ class BackendClient:
     ) -> "PagedList":
         params: dict[str, Any] = {}
         if project_id is not None:
-            params["project"] = project_id
-        if page:
-            params["page"] = page
-        if page_size:
-            params["page_size"] = page_size
-        d = await self._request("GET", "/api/file/", params=params or None, **_auth_kw(auth_claims))
+            params["project_id"] = project_id
+        params.update(_page_params(page, page_size))
+        d = await self._request("GET", "/api/v1/file", params=params or None, **_auth_kw(auth_claims))
         return _unwrap_list(d)
 
     async def delete_file(self, file_id: str | int, *, auth_claims: dict | None = None) -> None:
-        await self._request("DELETE", f"/api/file/{file_id}/", **_auth_kw(auth_claims))
+        await self._request("DELETE", f"/api/v1/file/{file_id}", **_auth_kw(auth_claims))
 
     async def upload_file(
         self,
@@ -1037,19 +1103,20 @@ class BackendClient:
         ttl: int | None = None,
         auth_claims: dict | None = None,
     ) -> dict[str, Any]:
-        """POST /api/file/ multipart — upload a file to the project.
+        """POST /api/v1/file multipart — upload a file to the project.
 
         ``ttl`` is in seconds (omit or pass 0/None for permanent storage).
         Returns the FileModel dict: {id, name, url, size, mime, created_at,
-        expires_at, uuid, ...}.
+        expires_at, uuid, ...}. Go's multipart form field is ``project_id``
+        (not Django's ``project``).
         """
         kw = _auth_kw(auth_claims)
         user_id: str | None = kw.get("user_id")
         bearer: str | None = kw.get("bearer")
 
-        url = self._base_url + "/api/file/"
+        url = self._base_url + "/api/v1/file"
         files = {"file": (filename, content_bytes, content_type)}
-        data: dict[str, Any] = {"project": str(project)}
+        data: dict[str, Any] = {"project_id": str(project)}
         if ttl:
             data["ttl"] = str(ttl)
 
@@ -1081,13 +1148,20 @@ class BackendClient:
             except Exception:
                 details = resp.text
             raise BackendError(
-                f"POST /api/file/ → {resp.status_code}",
+                f"POST /api/v1/file → {resp.status_code}",
                 status=resp.status_code,
                 details=details,
             )
         return _unwrap_item(resp.json())
 
     # ── collections (metadata) ─────────────────────────────────────────
+    # NOT YET IMPLEMENTED on the Go backend — there is no standalone
+    # top-level "/collection" module/route (only the CMS-prefixed
+    # `cms_list_collections`/`cms_get_collection` below, which has a
+    # DIFFERENT response shape). Left pointing at the old Django path so
+    # failures are an explicit 404 rather than a silent wrong-shape parse.
+    # See migration report for what the coordinator would need to add (or
+    # whether callers should just be repointed at cms_list_collections).
     async def list_collections(
         self,
         project_id: str | int,
@@ -1097,10 +1171,7 @@ class BackendClient:
         auth_claims: dict | None = None,
     ) -> "PagedList":
         params: dict[str, Any] = {"project": project_id}
-        if page:
-            params["page"] = page
-        if page_size:
-            params["page_size"] = page_size
+        params.update(_page_params(page, page_size))
         d = await self._request("GET", "/api/collection/", params=params, **_auth_kw(auth_claims))
         return _unwrap_list(d)
 
@@ -1111,6 +1182,9 @@ class BackendClient:
         return _unwrap_item(d)
 
     # ── chat (CRM users + history) ─────────────────────────────────────
+    # NOT YET IMPLEMENTED on the Go backend — there is no chat module at
+    # all (grepped internal/modules for "chat": no route). Left pointing at
+    # the old Django paths (will 404) until the coordinator ports it.
     async def list_chat_users(
         self,
         project_id: str | int,
@@ -1120,10 +1194,7 @@ class BackendClient:
         auth_claims: dict | None = None,
     ) -> "PagedList":
         params: dict[str, Any] = {}
-        if page:
-            params["page"] = page
-        if page_size:
-            params["page_size"] = page_size
+        params.update(_page_params(page, page_size))
         d = await self._request(
             "GET", f"/api/chat/users/{project_id}/", params=params or None, **_auth_kw(auth_claims)
         )
@@ -1152,45 +1223,56 @@ class BackendClient:
     ) -> "PagedList":
         params: dict[str, Any] = {}
         if project_id is not None:
-            params["project"] = project_id
-        if page:
-            params["page"] = page
-        if page_size:
-            params["page_size"] = page_size
-        d = await self._request("GET", "/api/message/", params=params or None, **_auth_kw(auth_claims))
+            params["project_id"] = project_id
+        params.update(_page_params(page, page_size))
+        d = await self._request("GET", "/api/v1/messages", params=params or None, **_auth_kw(auth_claims))
         return _unwrap_list(d)
 
     async def create_message(
         self, body: dict[str, Any], *, auth_claims: dict | None = None
     ) -> dict[str, Any]:
-        d = await self._request("POST", "/api/message/", json=body, **_auth_kw(auth_claims))
+        """POST /api/v1/messages. Go's ``CreateRequest`` wants ``project_id``
+        (not Django's ``project``) and ``message_type`` (not ``type``); caller
+        (tools/broadcast) is expected to send those field names.
+
+        CAPABILITY GAP: Go's CreateRequest has NO custom-recipient-list field
+        (Django's ``target_telegram_ids``) — only project-wide broadcast
+        fields exist (project_id, caption, message_type, file_id, button_type,
+        buttons). Targeted broadcasts to an explicit telegram_ids list are not
+        supported by the new backend yet; see migration report.
+        """
+        d = await self._request("POST", "/api/v1/messages", json=body, **_auth_kw(auth_claims))
         return _unwrap_item(d)
 
     async def delete_message(self, message_id: str | int, *, auth_claims: dict | None = None) -> None:
-        await self._request("DELETE", f"/api/message/{message_id}/", **_auth_kw(auth_claims))
+        await self._request("DELETE", f"/api/v1/messages/{message_id}", **_auth_kw(auth_claims))
 
     # ── subscription usage ────────────────────────────────────────────
     async def subscription_current(self, *, auth_claims: dict | None = None) -> dict[str, Any]:
-        d = await self._request("GET", "/api/subscription/", **_auth_kw(auth_claims))
+        d = await self._request("GET", "/api/v1/subscription", **_auth_kw(auth_claims))
         return _unwrap_item(d)
 
     async def subscription_upgrade(
         self,
         *,
-        plan_id: int,
+        plan_id: str | int,
         months: int = 1,
         auth_claims: dict | None = None,
     ) -> dict[str, Any]:
+        """POST /api/v1/subscription/upgrade. Go's ``plan_id`` is a UUID
+        STRING (not Django's integer plan id) — callers must pass the plan's
+        ``id`` from `list_plans()`, not a legacy integer.
+        """
         d = await self._request(
             "POST",
-            "/api/subscription/upgrade/",
-            json={"plan_id": plan_id, "months": months},
+            "/api/v1/subscription/upgrade",
+            json={"plan_id": str(plan_id), "months": months},
             **_auth_kw(auth_claims),
         )
         return _unwrap_item(d)
 
     async def subscription_usage(self, *, auth_claims: dict | None = None) -> dict[str, Any]:
-        d = await self._request("GET", "/api/subscription/usage/", **_auth_kw(auth_claims))
+        d = await self._request("GET", "/api/v1/subscription/usage", **_auth_kw(auth_claims))
         return _unwrap_item(d)
 
     # ── payments ───────────────────────────────────────────────────────
@@ -1201,17 +1283,23 @@ class BackendClient:
         amount: int,
         auth_claims: dict | None = None,
     ) -> dict[str, Any]:
+        """POST /api/v1/payment/link (was Django's /api/payment/create-transaction/).
+        Go's ``CreatePaymentLinkRequest.Amount`` is a STRING field
+        (``validate:"required"`` on a `string`), so ``amount`` is sent as a
+        decimal string, not a JSON number. Response is ``{"link": "..."}``
+        (unchanged field name).
+        """
         d = await self._request(
             "POST",
-            "/api/payment/create-transaction/",
-            json={"method": method, "amount": amount},
+            "/api/v1/payment/link",
+            json={"method": method, "amount": str(amount)},
             **_auth_kw(auth_claims),
         )
         return _unwrap_item(d)
 
     # ── cms ──────────────────────────────────────────────────────────
     def _cms(self, path: str) -> str:
-        return f"/api/cms{path}"
+        return f"/api/v1/cms{path}"
 
     async def cms_list_collections(
         self,
@@ -1222,13 +1310,10 @@ class BackendClient:
         auth_claims: dict | None = None,
     ) -> "PagedList":
         params: dict[str, Any] = {}
-        if page:
-            params["page"] = page
-        if page_size:
-            params["page_size"] = page_size
+        params.update(_page_params(page, page_size))
         d = await self._request(
             "GET",
-            self._cms(f"/projects/{project_id}/collections/"),
+            self._cms(f"/projects/{project_id}/collections"),
             params=params or None,
             **_auth_kw(auth_claims),
         )
@@ -1238,7 +1323,7 @@ class BackendClient:
         self, project_id: str | int, name: str, *, auth_claims: dict | None = None
     ) -> dict[str, Any]:
         d = await self._request(
-            "GET", self._cms(f"/projects/{project_id}/collections/{name}/"), **_auth_kw(auth_claims)
+            "GET", self._cms(f"/projects/{project_id}/collections/{name}"), **_auth_kw(auth_claims)
         )
         return _unwrap_item(d)
 
@@ -1247,7 +1332,7 @@ class BackendClient:
     ) -> dict[str, Any]:
         d = await self._request(
             "POST",
-            self._cms(f"/projects/{project_id}/collections/"),
+            self._cms(f"/projects/{project_id}/collections"),
             json=body,
             **_auth_kw(auth_claims),
         )
@@ -1258,7 +1343,7 @@ class BackendClient:
     ) -> None:
         await self._request(
             "DELETE",
-            self._cms(f"/projects/{project_id}/collections/{name}/"),
+            self._cms(f"/projects/{project_id}/collections/{name}"),
             **_auth_kw(auth_claims),
         )
 
@@ -1270,9 +1355,21 @@ class BackendClient:
         *,
         auth_claims: dict | None = None,
     ) -> dict[str, Any]:
+        """POST .../fields. Go's ``FieldCreateRequest`` json key is ``type``
+        (not Django's ``kind``) — ``tools/cms`` builds ``body`` from
+        ``FieldSpec.model_dump()`` which still emits ``kind`` (kept as-is so
+        the tool's public field-spec vocabulary doesn't change); remap here.
+        NOTE: Go's ``relation_collection`` is a STRING id, but
+        ``FieldSpec.relation_collection`` is typed ``int | None`` — relation
+        fields will fail Go's validator until that tool-side type is widened;
+        see migration report.
+        """
+        body = dict(body)
+        if "kind" in body and "type" not in body:
+            body["type"] = body.pop("kind")
         d = await self._request(
             "POST",
-            self._cms(f"/projects/{project_id}/collections/{name}/fields/"),
+            self._cms(f"/projects/{project_id}/collections/{name}/fields"),
             json=body,
             **_auth_kw(auth_claims),
         )
@@ -1287,9 +1384,18 @@ class BackendClient:
         *,
         auth_claims: dict | None = None,
     ) -> dict[str, Any]:
+        """PATCH .../fields/{field_name}. NOTE: Go's ``FieldUpdateRequest``
+        has no ``type``/``kind`` field at all (a field's data type can't be
+        changed after creation) — only label/required/default/validators/
+        relation_collection/cascade/index/order. A ``kind`` key in ``body``
+        (if the caller sends one) is dropped rather than forwarded, since Go
+        would otherwise reject the whole request as an unknown/invalid field.
+        """
+        body = dict(body)
+        body.pop("kind", None)
         d = await self._request(
             "PATCH",
-            self._cms(f"/projects/{project_id}/collections/{name}/fields/{field_name}/"),
+            self._cms(f"/projects/{project_id}/collections/{name}/fields/{field_name}"),
             json=body,
             **_auth_kw(auth_claims),
         )
@@ -1305,7 +1411,7 @@ class BackendClient:
     ) -> None:
         await self._request(
             "DELETE",
-            self._cms(f"/projects/{project_id}/collections/{name}/fields/{field_name}/"),
+            self._cms(f"/projects/{project_id}/collections/{name}/fields/{field_name}"),
             **_auth_kw(auth_claims),
         )
 
@@ -1329,7 +1435,7 @@ class BackendClient:
             params["sort"] = sort
         d = await self._request(
             "GET",
-            self._cms(f"/projects/{project_id}/collections/{name}/documents/"),
+            self._cms(f"/projects/{project_id}/collections/{name}/documents"),
             params=params,
             **_auth_kw(auth_claims),
         )
@@ -1340,7 +1446,7 @@ class BackendClient:
     ) -> dict[str, Any]:
         d = await self._request(
             "GET",
-            self._cms(f"/projects/{project_id}/collections/{name}/documents/{document_id}/"),
+            self._cms(f"/projects/{project_id}/collections/{name}/documents/{document_id}"),
             **_auth_kw(auth_claims),
         )
         return d if isinstance(d, dict) else {}
@@ -1355,7 +1461,7 @@ class BackendClient:
     ) -> dict[str, Any]:
         d = await self._request(
             "POST",
-            self._cms(f"/projects/{project_id}/collections/{name}/documents/"),
+            self._cms(f"/projects/{project_id}/collections/{name}/documents"),
             json=document,
             **_auth_kw(auth_claims),
         )
@@ -1369,9 +1475,13 @@ class BackendClient:
         *,
         auth_claims: dict | None = None,
     ) -> dict[str, Any]:
+        """NOT YET IMPLEMENTED on the Go backend — internal/modules/cms only
+        has single-document Insert (no ``/documents/bulk`` route). Will raise
+        BackendError(404) until the coordinator adds it. See migration report.
+        """
         d = await self._request(
             "POST",
-            self._cms(f"/projects/{project_id}/collections/{name}/documents/bulk/"),
+            self._cms(f"/projects/{project_id}/collections/{name}/documents/bulk"),
             json={"documents": documents},
             **_auth_kw(auth_claims),
         )
@@ -1388,7 +1498,7 @@ class BackendClient:
     ) -> dict[str, Any]:
         d = await self._request(
             "PATCH",
-            self._cms(f"/projects/{project_id}/collections/{name}/documents/{document_id}/"),
+            self._cms(f"/projects/{project_id}/collections/{name}/documents/{document_id}"),
             json=patch,
             **_auth_kw(auth_claims),
         )
@@ -1404,7 +1514,7 @@ class BackendClient:
     ) -> None:
         await self._request(
             "DELETE",
-            self._cms(f"/projects/{project_id}/collections/{name}/documents/{document_id}/"),
+            self._cms(f"/projects/{project_id}/collections/{name}/documents/{document_id}"),
             **_auth_kw(auth_claims),
         )
 
@@ -1416,10 +1526,14 @@ class BackendClient:
         *,
         auth_claims: dict | None = None,
     ) -> dict[str, Any]:
+        """NOT YET IMPLEMENTED on the Go backend — no ``/documents/{id}/restore``
+        route (soft-delete/undo is not ported). Will raise BackendError(404)
+        until the coordinator adds it. See migration report.
+        """
         d = await self._request(
             "POST",
             self._cms(
-                f"/projects/{project_id}/collections/{name}/documents/{document_id}/restore/"
+                f"/projects/{project_id}/collections/{name}/documents/{document_id}/restore"
             ),
             **_auth_kw(auth_claims),
         )
@@ -1434,9 +1548,13 @@ class BackendClient:
         limit: int = 500,
         auth_claims: dict | None = None,
     ) -> dict[str, Any]:
+        """NOT YET IMPLEMENTED on the Go backend — no ``/documents/aggregate``
+        route (Mongo aggregation pipeline pass-through is not ported). Will
+        raise BackendError(404) until the coordinator adds it.
+        """
         d = await self._request(
             "POST",
-            self._cms(f"/projects/{project_id}/collections/{name}/documents/aggregate/"),
+            self._cms(f"/projects/{project_id}/collections/{name}/documents/aggregate"),
             json={"pipeline": pipeline, "limit": limit},
             **_auth_kw(auth_claims),
         )
@@ -1451,10 +1569,14 @@ class BackendClient:
         document_id: str | None = None,
         auth_claims: dict | None = None,
     ) -> list[dict[str, Any]]:
+        """NOT YET IMPLEMENTED on the Go backend — no ``/audit`` route
+        (document change history is not ported). Will raise
+        BackendError(404) until the coordinator adds it.
+        """
         params = {k: v for k, v in {"action": action, "document_id": document_id}.items() if v}
         d = await self._request(
             "GET",
-            self._cms(f"/projects/{project_id}/collections/{name}/audit/"),
+            self._cms(f"/projects/{project_id}/collections/{name}/audit"),
             params=params or None,
             **_auth_kw(auth_claims),
         )
@@ -1488,19 +1610,22 @@ class BackendClient:
         # header'ini ham talab qiladi ("X-Internal-Token requires X-User-Id").
         # Shu sabab user_id ni _request'ga uzatamiz — _headers ikkala header'ni
         # qo'shadi (aks holda 401 authentication_failed bo'ladi).
-        # Backend project_id ni IntegerField sifatida qabul qiladi — "global",
-        # bo'sh string yoki noma'lum qiymatlar 400 qaytaradi. Faqat haqiqiy
-        # numeric id'lar yuboriladi, qolgan holatlarda null.
-        pid_payload: int | None = None
+        # Go's ReportUsageRequest validates user_id/project_id as UUID
+        # STRINGS (validate:"required,uuid" / "omitempty,uuid") — unlike
+        # Django's bigint pks. auth_claims already carries the real UUID
+        # subject from the JWT, so pass user_id/project_id through as-is
+        # (no more int()/isdigit() coercion — a non-UUID value now means the
+        # caller passed something wrong, not "use env fallback").
+        pid_payload: str | None = None
         if project_id is not None:
             pid_str = str(project_id).strip()
-            if pid_str.isdigit():
-                pid_payload = int(pid_str)
+            if pid_str and pid_str.lower() != "global":
+                pid_payload = pid_str
         await self._request(
             "POST",
-            "/api/subscription/usage/report/",
+            "/api/v1/subscription/usage/report",
             json={
-                "user_id": int(user_id) if str(user_id).strip().isdigit() else user_id,
+                "user_id": str(user_id),
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
                 "cache_read_tokens": cache_read_tokens,
@@ -1514,11 +1639,21 @@ class BackendClient:
 
         Uses X-Internal-Token; no user JWT involved. Backend returns
         {"results": [...]} with each template's flow embedded.
+
+        NOT YET IMPLEMENTED on the Go backend — internal/modules/template has
+        no ``/internal/list`` (or ``/internal/{id}``) X-Internal-Token route;
+        only the public/admin/auth-scoped routes exist. Returns [] (never
+        raises) until the coordinator adds it — the RAG ingest script will
+        simply see zero templates in the meantime.
         """
         if not self._internal_token:
             logger.warning("list_internal_templates skipped — BACKEND_INTERNAL_TOKEN not set")
             return []
-        d = await self._request("GET", "/api/template/internal/list/")
+        try:
+            d = await self._request("GET", "/api/template/internal/list/")
+        except BackendError:
+            logger.warning("list_internal_templates: endpoint not available on this backend")
+            return []
         if isinstance(d, dict) and isinstance(d.get("results"), list):
             return d["results"]
         return []
@@ -1593,7 +1728,10 @@ async def load_project_collections(
                 fname = f.get("name") if isinstance(f, dict) else None
                 if fname:
                     fields.append(str(fname))
-                    kind = f.get("kind") if isinstance(f, dict) else None
+                    # Django's CMS field schema key is "kind"; the Go port
+                    # renamed it to "type" (see internal/modules/cms field
+                    # DTO) — accept either so this works on both backends.
+                    kind = (f.get("kind") or f.get("type")) if isinstance(f, dict) else None
                     if kind:
                         field_kinds[str(fname)] = str(kind)
         except Exception:

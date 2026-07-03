@@ -48,7 +48,12 @@ configMaps:
     AGENT_MAX_OUTPUT_TOKENS: "16384"
     AGENT_MAX_TOOL_CALLS: "80"
     AGENT_MAX_WALL_SECONDS: "900"
-    BACKEND_BASE_URL: "http://web:8000"
+    # Points at the new Go backend (Deployment/Service "backend-golang", port
+    # 8080, serves /api/v1/* natively, in-cluster). Was "http://web:8000"
+    # (old Django "web" Deployment). NOTE: several backend.py calls still
+    # point at endpoints the Go backend does not implement yet — see the
+    # agent-repo migration report before relying on this in production.
+    BACKEND_BASE_URL: "http://backend-golang:8080"
     MONGO_BASE_URL: "mongodb://mongodb:27017"
     ENGINE_BASE_URL: "http://engine-plugin:8090"
     AGENT_RAG_ENABLED: "true"
