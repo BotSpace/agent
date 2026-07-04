@@ -88,7 +88,7 @@ def _make_access(user_id: int, exp_in: int = 3600) -> str:
 async def test_bsp_exchange_unwraps_envelope():
     s = _settings()
     access = _make_access(123)
-    route = respx.post("http://backend.test/auth/token/exchange/").mock(
+    route = respx.post("http://backend.test/auth/token/exchange").mock(
         return_value=httpx.Response(
             200, json={"status": True, "data": {"access": access, "refresh": "ref-1"}}
         )
@@ -105,7 +105,7 @@ async def test_bsp_exchange_unwraps_envelope():
 async def test_bsp_exchange_cached_second_call():
     s = _settings()
     access = _make_access(55)
-    route = respx.post("http://backend.test/auth/token/exchange/").mock(
+    route = respx.post("http://backend.test/auth/token/exchange").mock(
         return_value=httpx.Response(200, json={"data": {"access": access, "refresh": "r"}})
     )
     u1 = await authenticate("Bearer bsp_same", settings=s)
@@ -122,7 +122,7 @@ async def test_bsp_exchange_re_exchanges_near_expiry():
     # Birinchi access deyarli muddati o'tgan (leeway 60s ichida) → qayta exchange.
     near = _make_access(7, exp_in=10)
     fresh = _make_access(7, exp_in=3600)
-    route = respx.post("http://backend.test/auth/token/exchange/").mock(
+    route = respx.post("http://backend.test/auth/token/exchange").mock(
         side_effect=[
             httpx.Response(200, json={"data": {"access": near, "refresh": "r1"}}),
             httpx.Response(200, json={"data": {"access": fresh, "refresh": "r2"}}),
@@ -139,7 +139,7 @@ async def test_bsp_exchange_re_exchanges_near_expiry():
 @respx.mock
 async def test_bsp_exchange_rejected():
     s = _settings()
-    respx.post("http://backend.test/auth/token/exchange/").mock(
+    respx.post("http://backend.test/auth/token/exchange").mock(
         return_value=httpx.Response(401, json={"detail": "invalid"})
     )
     with pytest.raises(MCPAuthError):
