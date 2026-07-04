@@ -81,7 +81,7 @@ async def env_set(input: EnvSetInput, ctx: ToolContext) -> ToolResult:
         return ToolResult.error("No project_id in context or input.")
     try:
         await _backend(ctx).create_env(
-            {"project": pid, "key": input.key, "value": input.value},
+            {"project_id": pid, "key": input.key, "value": input.value},
             auth_claims=ctx.state.get("auth_claims"),
         )
     except BackendError as e:
@@ -90,24 +90,30 @@ async def env_set(input: EnvSetInput, ctx: ToolContext) -> ToolResult:
 
 
 class EnvUnsetInput(BaseModel):
-    env_id: str | int
+    key: str = Field(description="Env var name (as shown by env.list)")
+    project_id: str | int | None = Field(
+        default=None, description="Project id (defaults to current)"
+    )
 
 
 @tool(
     name="env.unset",
     description=(
-        "Remove an environment variable by its globally-unique `env_id` "
-        "(no project_id needed — unlike env.set/env.list which are project-scoped)."
+        "Remove an environment variable by its `key` name, scoped to a project "
+        "(defaults to the current project)."
     ),
     input_model=EnvUnsetInput,
     destructive=True,
 )
 async def env_unset(input: EnvUnsetInput, ctx: ToolContext) -> ToolResult:
+    pid = resolve_project_id(ctx, input.project_id)
+    if pid is None:
+        return ToolResult.error("No project_id in context or input.")
     try:
-        await _backend(ctx).delete_env(input.env_id, auth_claims=ctx.state.get("auth_claims"))
+        await _backend(ctx).delete_env(input.key, pid, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
         return ToolResult.error(format_backend_error(None, e))
-    return ToolResult.ok(f"Env var `{input.env_id}` removed.")
+    return ToolResult.ok(f"Env var `{input.key}` removed from project `{pid}`.")
 
 
 def build_env_tools() -> list[Tool]:
