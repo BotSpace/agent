@@ -1,10 +1,10 @@
-"""Django backend REST client — agent shu orqali project/release/env/file boshqaradi.
+"""Go backend REST client — agent shu orqali project/release/env/file boshqaradi.
 
-Backend endpoint pattern (dashboard `services.ts`'dan olingan):
-- /api/project/                   GET, POST  /  /:id/  GET, PATCH, DELETE
-- /api/relase/                    GET (?project=), POST  (release deploy)
-- /api/enviroment/                GET (?project=), POST  /  /:id/  DELETE
-- /api/file/                      GET (?project=)  /  /:id/  DELETE
+Backend endpoint pattern:
+- /api/v1/projects                GET, POST  /  /:id  GET, PATCH, DELETE
+- /api/v1/relase                  GET (?project=), POST  (release deploy)
+- /api/v1/enviroment              GET (?project=), POST  /  /:key DELETE
+- /api/v1/file                    GET (?project=)  /  /:id  DELETE
 - /api/collection/                GET (?project=)  /  /:id/  GET (metadata; data is in MongoDB)
 - /api/subscription/usage/        GET (current user token usage)
 - /api/chat/users/:project        GET
@@ -549,9 +549,8 @@ class BackendClient:
 
         Returns: (new_access, new_refresh_or_None) yoki None — agar refresh fail.
 
-        NOTE: Go backend endpoint is ``POST /api/v1/auth/refresh`` (not Django's
-        root-level ``/auth/token/refresh/``), body key is ``refresh_token`` (not
-        ``refresh``), and the response is FLAT — ``{"access_token", "refresh_token",
+        NOTE: Go backend endpoint is ``POST /api/v1/auth/refresh``, body key is
+        ``refresh_token``, and the response is FLAT — ``{"access_token", "refresh_token",
         "access_expires_at", "refresh_expires_at", "token_type"}`` — no
         ``{"status","data":{"token":{...}}}`` envelope.
         """
