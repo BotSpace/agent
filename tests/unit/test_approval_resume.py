@@ -53,7 +53,7 @@ def _build(turns: list[Message]):
         llm=_ScriptedLLM(turns),
         registry=build_default_registry(),
         models=ModelRoles(planner="m", executor="m", critic="m", embedding="m"),
-        approve_destructive=False,  # mirrors the worker; flow.clear gates via always_approve
+        approve_destructive=False,  # isolates the always_approve path: flow.clear gates regardless
     )
     return build_graph(cfg)  # default MemorySaver checkpointer
 

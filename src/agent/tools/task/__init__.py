@@ -318,12 +318,14 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
         # persona (which would make the model greet instead of doing the task).
         system_block=spec.full_prompt,
         # Sub-agent ichida destructive tool'lar (release.deploy, flow.save,
-        # cms.delete, ...) approval-interrupt orqali to'xtatilmaydi: foydalanuvchi
-        # main agent'ga vazifa berganida (masalan "deploy qil") allaqachon
-        # niyatini tasdiqlagan. Approval bo'lsa sub-agent yarim yo'lda tugab
-        # qoladi va main agent uchun "no final text" qaytaradi — bu noto'g'ri
-        # "muvaffaqiyat" xulosaga olib keladi (release-985-4 bug case).
-        approve_destructive=False,
+        # cms.delete, ...) ham approval-interrupt orqali to'xtatiladi: qaytarib
+        # bo'lmaydigan amallar main agent bilan bir xil approval gate'dan o'tishi
+        # SHART (Faza 1.5 xavfsizlik tuzatishi). Approval-interrupt SAME
+        # request_id'ga registratsiya qilinadi (sub_services["store"] va parent
+        # request_id orqali), shuning uchun dashboard approve/clarify'ni to'g'ri
+        # sub-graph interrupt'iga yetkazadi va sub-agent yarim yo'lda tugab
+        # qolmaydi — resume orqali davom etadi.
+        approve_destructive=True,
     )
     graph = build_graph(cfg, checkpointer=checkpointer)
 

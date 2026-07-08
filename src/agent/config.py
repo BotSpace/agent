@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field
@@ -159,3 +161,68 @@ def get_settings() -> Settings:
 def normalize_pg_url(url: str) -> str:
     """Strip the SQLAlchemy psycopg driver suffix so psycopg/langgraph accept the DSN."""
     return url.replace("postgresql+psycopg://", "postgresql://", 1)
+
+
+# Known insecure placeholder secrets that MUST NOT reach production. The default
+# value in Settings.session_secret is here so a fresh .env boots loudly instead
+# of running with a guessable signing secret.
+_PLACEHOLDER_SECRETS = {
+    "",
+    "change-me-to-a-32-char-secret-string",
+    "changeme",
+    "secret",
+}
+
+
+def _resolve_public_key_path(settings: Settings) -> Path:
+    p = Path(settings.jwt_public_key_path)
+    if not p.is_absolute():
+        # config.py = src/agent/config.py → parents[2] is the repo root, where
+        # keys/ lives (mirrors deps._load_public_key / mcp.auth._public_key).
+        p = Path(__file__).resolve().parents[2] / settings.jwt_public_key_path
+    return p
+
+
+def validate_security_config(settings: Settings) -> None:
+    """Fail-fast on insecure auth configuration at startup.
+
+    RS256 is the single supported production scheme: the backend signs tokens
+    with its private key and the agent verifies them with the public key. Boot
+    must abort (rather than silently accept an insecure default) when:
+
+      * ``JWT_ALGORITHM`` is not ``RS256`` (no symmetric-secret scheme in prod);
+      * the RS256 public key cannot be located (``JWT_PUBLIC_KEY`` env var or
+        the ``JWT_PUBLIC_KEY_PATH`` file);
+      * ``SESSION_SECRET`` is still a known placeholder value.
+
+    Called from ``create_app`` (real startup) — not from the pydantic model —
+    so unit tests that construct ``Settings`` with explicit overrides are
+    unaffected.
+    """
+    errors: list[str] = []
+
+    if settings.jwt_algorithm != "RS256":
+        errors.append(
+            f"JWT_ALGORITHM must be 'RS256' (got {settings.jwt_algorithm!r}); "
+            "the agent verifies backend-signed tokens with an RS256 public key."
+        )
+
+    if not os.getenv("JWT_PUBLIC_KEY"):
+        key_path = _resolve_public_key_path(settings)
+        if not key_path.exists():
+            errors.append(
+                f"RS256 public key not found: set JWT_PUBLIC_KEY env or place the "
+                f"PEM at {key_path} (JWT_PUBLIC_KEY_PATH={settings.jwt_public_key_path})."
+            )
+
+    if settings.session_secret.strip() in _PLACEHOLDER_SECRETS:
+        errors.append(
+            "SESSION_SECRET is a placeholder — set a real, unique secret "
+            "(shared with the dashboard) before starting the service."
+        )
+
+    if errors:
+        raise RuntimeError(
+            "Insecure auth configuration — refusing to start:\n  - "
+            + "\n  - ".join(errors)
+        )

@@ -10,7 +10,7 @@ from fastapi import Depends, FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
-from ..config import Settings, get_settings
+from ..config import Settings, get_settings, validate_security_config
 from ..logging import configure_logging
 from ..runtime.store import get_run_store
 from ..tools import build_default_registry
@@ -86,6 +86,10 @@ async def _module_sync_loop(initial_delay: int, interval_hours: float) -> None:
 def create_app(settings: Settings | None = None) -> FastAPI:
     s = settings or get_settings()
     configure_logging(s.log_level)
+
+    # Fail-fast: never boot with an insecure/misconfigured JWT setup (wrong
+    # scheme, missing RS256 public key, or a placeholder session secret).
+    validate_security_config(s)
 
     # MCP server (`/mcp`) — Streamable HTTP, stateful (per-connection session). session_manager.run()
     # lifespan'ga ulanishi SHART (aks holda handle_request RuntimeError beradi).

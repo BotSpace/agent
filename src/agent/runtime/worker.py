@@ -48,25 +48,59 @@ def _maybe_traceable(name: str):
     return traceable(name=name, run_type="chain")
 
 
-# Per-run resolution future map: request_id → asyncio.Future[Any]
+# Per-run resolution future map: request_id → asyncio.Future[Any].
+# This is the LOCAL (same-process) rendezvous — the fast path when the worker
+# and the /approve POST are handled by the same replica. For multi-replica /
+# restart robustness the answer is also bridged over Redis via ResolutionStore
+# (see runtime/store.py): submit_resolution publishes it and _wait_resolution
+# runs a Redis poller that resolves the local future from another replica.
 _RESOLUTIONS: dict[str, asyncio.Future[Any]] = {}
 
 
 def submit_resolution(request_id: str, payload: Any) -> bool:
     fut = _RESOLUTIONS.get(request_id)
-    if fut is None or fut.done():
-        return False
-    fut.get_loop().call_soon_threadsafe(fut.set_result, payload)
-    return True
+    if fut is not None and not fut.done():
+        # Fast path: a local waiter is awaiting → resolve it directly.
+        fut.get_loop().call_soon_threadsafe(fut.set_result, payload)
+        return True
+    # No local waiter: the worker may be running on another replica. Hand the
+    # answer off through Redis so that replica's poller can resolve it. When
+    # Redis is unavailable this returns False → the route reports 409.
+    from .store import get_resolution_store
+
+    store = get_resolution_store()
+    if store is not None:
+        return store.publish(request_id, payload)
+    return False
 
 
 async def _wait_resolution(request_id: str, loop: asyncio.AbstractEventLoop) -> Any:
     fut: asyncio.Future = loop.create_future()
     _RESOLUTIONS[request_id] = fut
+
+    from .store import get_resolution_store
+
+    store = get_resolution_store()
+    poller: asyncio.Task | None = None
+    if store is not None:
+        async def _bridge() -> None:
+            # Resolve the local future from a resolution published on ANY
+            # replica. Swallows Redis errors — the in-process future still
+            # works for the single-replica case.
+            try:
+                answer = await store.wait(request_id)
+            except Exception:  # noqa: BLE001
+                return
+            if not fut.done():
+                fut.set_result(answer)
+
+        poller = asyncio.create_task(_bridge())
     try:
         return await fut
     finally:
         _RESOLUTIONS.pop(request_id, None)
+        if poller is not None:
+            poller.cancel()
 
 
 @_maybe_traceable("botmother.agent.run")
@@ -109,7 +143,7 @@ async def run_agent(
             max_tool_calls=s.max_tool_calls,
             emit=emit,
             services={},
-            approve_destructive=False,
+            approve_destructive=True,
         )
         try:
             checkpointer = await create_async_checkpointer(s.database_url)

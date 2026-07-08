@@ -88,7 +88,8 @@ def test_flow_clear_is_destructive_and_always_approve():
 
 
 def test_flow_save_destructive_but_not_always_approve():
-    # flow.save / deploy stay ungated inside sub-agents (approve_destructive=False).
+    # flow.save / deploy gate via `destructive` when approve_destructive=True
+    # (main worker + sub-agents), NOT via always_approve.
     fs = build_default_registry().get("flow.save")
     assert fs.destructive is True
     assert fs.always_approve is False
