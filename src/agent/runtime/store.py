@@ -705,3 +705,85 @@ class RunStore:
 def get_run_store() -> RunStore:
     s = get_settings()
     return RunStore(s.database_url)
+
+
+# ── interrupt/approval resolution rendezvous (cross-replica) ─────────────────
+class ResolutionStore:
+    """Cross-process rendezvous for interrupt (approval/clarify) resolutions.
+
+    The per-run ``asyncio.Future`` used to resume an interrupted graph is
+    process-local, so in a multi-replica deployment the dashboard's
+    ``/approve`` (or ``/clarify``) POST may be served by a DIFFERENT replica
+    than the one running the worker coroutine. This bridges them over a
+    short-lived Redis list keyed by ``request_id``: the POST-handling replica
+    ``RPUSH``es the answer, the worker's replica ``BLPOP``s it and resolves its
+    local future. When Redis is unavailable it degrades to in-process only
+    (single replica still works via the local future).
+    """
+
+    _KEY = "agent:resolution:{}"
+    _TTL_SECONDS = 3600
+
+    def __init__(self, redis_url: str) -> None:
+        self._url = redis_url
+        self._disabled = False
+
+    def _key(self, request_id: str) -> str:
+        return self._KEY.format(request_id)
+
+    def publish(self, request_id: str, payload: Any) -> bool:
+        """Durably enqueue a resolution for a (possibly remote) waiter.
+
+        Synchronous — called from the ``/approve|/clarify`` route when no LOCAL
+        future is awaiting (the worker is on another replica). Returns True if
+        the answer was enqueued, False if Redis is unavailable.
+        """
+        if self._disabled:
+            return False
+        try:
+            import redis  # lazy: optional dep, absent in unit tests
+
+            client = redis.Redis.from_url(self._url)
+            try:
+                pipe = client.pipeline()
+                pipe.rpush(self._key(request_id), json.dumps(payload))
+                pipe.expire(self._key(request_id), self._TTL_SECONDS)
+                pipe.execute()
+            finally:
+                client.close()
+            return True
+        except Exception:  # noqa: BLE001
+            self._disabled = True
+            return False
+
+    async def wait(self, request_id: str) -> Any:
+        """Block until a resolution is pushed (by ``publish`` on ANY replica).
+
+        Raises on any Redis error so the caller can fall back to the in-process
+        future alone.
+        """
+        import redis.asyncio as aioredis  # lazy: optional dep
+
+        client = aioredis.Redis.from_url(self._url)
+        try:
+            while True:
+                res = await client.blpop([self._key(request_id)], timeout=5)
+                if res is None:
+                    continue  # timeout — keep waiting until cancelled
+                _, raw = res
+                return json.loads(raw)
+        finally:
+            await client.aclose()
+
+
+@lru_cache(maxsize=1)
+def get_resolution_store() -> ResolutionStore | None:
+    """Singleton Redis-backed resolution store, or None when Redis isn't
+    available (import fails) — the worker then relies on the in-process future
+    only. Keeps unit tests (no ``redis`` installed) on the in-memory path."""
+    try:
+        import redis  # noqa: F401
+        import redis.asyncio  # noqa: F401
+    except Exception:  # noqa: BLE001
+        return None
+    return ResolutionStore(get_settings().redis_url)

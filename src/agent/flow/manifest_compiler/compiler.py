@@ -164,6 +164,27 @@ def _safe_name(key: str) -> tuple[str, str | None]:
     return key, None
 
 
+# Manifest drift normalisatsiyasi — qarang: docs/manifest_drift_report.md.
+# Ba'zi backend manifestlari hali eskirgan data-key'larni chiqaradi; engine'ning
+# kanonik kontrakti (va AI-credential UUID-string kontrakti) yangi nomlarni
+# kutadi. Kompilyatsiya paytida qayta nomlaymiz — shunda manifest drift bo'lsa
+# ham kompilyatsiya qilingan model DOIM to'g'ri, engine bilan mos kalitni beradi.
+# NODE-SCOPED (global emas) — chunki bir xil kalit boshqa node'da yaroqli:
+#   * Anthropic provider ATAYIN `apiKey` ishlatadi (uning credential type'i yo'q,
+#     validator.py buni tasdiqlaydi) — shuning uchun u ro'yxatda YO'Q.
+_NODE_KEY_RENAMES: dict[str, dict[str, str]] = {
+    "VariableNode": {"name": "variableName"},
+    "AIOpenAIProviderNode": {"apiKey": "credential_id"},
+    "AIGeminiProviderNode": {"apiKey": "credential_id"},
+    "AIOllamaProviderNode": {"apiKey": "credential_id"},
+}
+
+
+def _rename_key(node_type: str, data_key: str) -> str:
+    """Eskirgan manifest data-key'ini engine-kanonik nomga o'giradi (node bo'yicha)."""
+    return _NODE_KEY_RENAMES.get(node_type, {}).get(data_key, data_key)
+
+
 def compile_node_model(manifest: NodeManifest) -> type[BaseModel]:
     """Bitta node manifestdan strict Pydantic model yasaydi."""
     node_type = manifest.get("type", "Unknown")
@@ -177,6 +198,7 @@ def compile_node_model(manifest: NodeManifest) -> type[BaseModel]:
     fields: dict[str, tuple[Any, Any]] = {}
     seen: set[str] = set()
     for data_key, annotation, desc, required, default in emits:
+        data_key = _rename_key(node_type, data_key)
         if not data_key or data_key in seen:
             continue
         seen.add(data_key)
@@ -188,6 +210,7 @@ def compile_node_model(manifest: NodeManifest) -> type[BaseModel]:
     # sifatida tipi default qiymatdan chiqarib emit qilamiz — agent shu kalitlarni
     # to'g'ri default bilan yozadi, engine esa baribir o'zi default beradi.
     for data_key, value in defaults.items():
+        data_key = _rename_key(node_type, data_key)
         if data_key in seen:
             continue
         seen.add(data_key)

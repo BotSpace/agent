@@ -278,3 +278,30 @@ Manba=manifest (engine bilan mos). "- qo'lyozmada" = eskirgan/ko'chgan field.
 
 ## Manifestsiz node'lar (qo'lyozmada bor, manifestda yo'q)
 []
+
+---
+
+## Reconciliation holati (Faza 2.4)
+
+Qo'lyozma `node_data_models.py` ALLAQACHON o'chirilgan — `NODE_DATA_MODELS`
+endi har bir modelni manifestdan `compile_node_model()` orqali kompilyatsiya
+qiladi (`src/agent/tools/flow/node_data_models._CompiledRegistry`). Ya'ni
+**manifest_compiler yagona haqiqat manbasi** va yuqoridagi "comp" ustuni =
+kompilyatsiya natijasi = manifest. Shu sabab hisobotdagi drift'larning ko'pi
+(yangi maydonlar, required farqlari) avtomatik bartaraf — kompilyatsiya
+manifestning to'g'ri kalitlarini beradi.
+
+Kompilyatorga qo'shilgan himoya renamelari (`compiler._NODE_KEY_RENAMES`) —
+manifest regressiya qilsa ham engine-kanonik kalit chiqishi uchun:
+- `VariableNode`: `name` → `variableName`
+- `AIOpenAIProviderNode` / `AIGeminiProviderNode` / `AIOllamaProviderNode`:
+  `apiKey` → `credential_id`
+
+ATAYIN qamrab OLINMAGAN (drift emas, to'g'ri):
+- `AIAnthropicProviderNode.apiKey` — Anthropic'ning credential type'i yo'q,
+  u faqat `apiKey` ishlatadi (qarang `flow/validator.py` ai_provider tekshiruvi).
+
+Qolgan farqlar (`- eskirgan` / `+ yangi` / required) — kod uchun emas, HISOBOT
+o'zi eskirgan: ular endi manifestdan to'g'ridan-to'g'ri keladi va qo'lda
+sinxronlashni talab qilmaydi. Yangi drift faqat manifest o'zgarganda paydo
+bo'ladi va kompilyatsiya orqali avtomatik yopiladi.
