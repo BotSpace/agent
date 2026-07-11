@@ -278,7 +278,7 @@ flow.add_node(
 # Provider credential_id orqali (credentials.list(type_key="ollama") dan id) — qo'lda apiKey EMAS.
 flow.add_ai_ollama_provider(
     id="provider",
-    data={"provider": "ollama", "model": "gemma4:31b-cloud", "credential_id": 12}  # base_url credential'dan keladi — SET QILMA
+    data={"provider": "ollama", "model": "gpt-oss:120b", "credential_id": 12}  # base_url credential'dan keladi — SET QILMA
 )
 flow.add_ai_knowledge_tool(
     id="kb",
