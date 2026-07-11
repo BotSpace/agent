@@ -229,9 +229,35 @@ def _coerce_stringified_json(
         # Faqat JSON object/list ko'rinishidagi string'larni unwrap qilamiz
         if not (stripped.startswith("{") or stripped.startswith("[")):
             continue
-        try:
-            parsed = json.loads(stripped)
-        except json.JSONDecodeError:
+        parsed = _lenient_json_loads(stripped)
+        if parsed is None:
             continue
         out[key] = parsed
     return out
+
+
+def _lenient_json_loads(text: str) -> Any | None:
+    """Parse a JSON string, repairing common LLM mistakes. None if unparseable.
+
+    Notably: models (especially via OpenRouter) escape apostrophes as ``\\'``
+    inside JSON strings — INVALID JSON (only ``\\"`` / ``\\\\`` / ``\\n`` … are
+    allowed). O'zbek matni apostrofga to'la (to'lov, ko'ring), so a stringified
+    `data` payload with an Uzbek systemPrompt fails strict json.loads and the
+    field stays a string → "Input should be a valid dictionary". We first try
+    strict parsing (valid JSON is never altered), then retry after replacing the
+    invalid ``\\'`` escape with a bare apostrophe.
+    """
+    import json
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    # Repair: backslash-apostrophe → apostrophe (invalid JSON escape).
+    repaired = text.replace("\\'", "'")
+    if repaired != text:
+        try:
+            return json.loads(repaired)
+        except json.JSONDecodeError:
+            pass
+    return None
