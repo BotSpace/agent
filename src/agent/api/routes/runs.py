@@ -66,41 +66,46 @@ async def create_run(
     user: CurrentUser = Depends(get_current_user),
     store: RunStore = Depends(get_store),
 ) -> RunCreateResponse:
-    try:
-        from ...integrations.backend import get_backend_client
-        backend = get_backend_client()
-        plan_usage = await backend.subscription_usage(auth_claims=user.claims)
-        usage = plan_usage.get("ai_token_usage") or {}
-        remaining = usage.get("remaining")
-        if remaining is None:
+    # Internal-token callers (X-Internal-Token → user_id "__internal__") have no
+    # user identity/bearer, so the USER-scoped /subscription/usage limit check
+    # would 401 ("missing bearer token"). Internal runs aren't billed to a user,
+    # so skip the check for them instead of failing the whole run with 503.
+    if user.user_id != "__internal__":
+        try:
+            from ...integrations.backend import get_backend_client
+            backend = get_backend_client()
+            plan_usage = await backend.subscription_usage(auth_claims=user.claims)
+            usage = plan_usage.get("ai_token_usage") or {}
+            remaining = usage.get("remaining")
+            if remaining is None:
+                raise HTTPException(
+                    status_code=503,
+                    detail={"message": "Token limitini backend orqali tekshirib bo'lmadi."},
+                )
+            try:
+                remaining_tokens = int(remaining)
+            except (TypeError, ValueError) as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail={"message": "Backend token limit javobi noto'g'ri."},
+                ) from exc
+            if remaining_tokens <= 0:
+                raise HTTPException(
+                    status_code=429,
+                    detail={
+                        "message": "Oylik token limiti tugadi. Tarifni yangilang.",
+                        "tokens_used": usage.get("used", 0),
+                        "tokens_limit": usage.get("limit", 0),
+                        "tokens_remaining": remaining_tokens,
+                    },
+                )
+        except HTTPException:
+            raise
+        except Exception as exc:
             raise HTTPException(
                 status_code=503,
                 detail={"message": "Token limitini backend orqali tekshirib bo'lmadi."},
-            )
-        try:
-            remaining_tokens = int(remaining)
-        except (TypeError, ValueError) as exc:
-            raise HTTPException(
-                status_code=503,
-                detail={"message": "Backend token limit javobi noto'g'ri."},
             ) from exc
-        if remaining_tokens <= 0:
-            raise HTTPException(
-                status_code=429,
-                detail={
-                    "message": "Oylik token limiti tugadi. Tarifni yangilang.",
-                    "tokens_used": usage.get("used", 0),
-                    "tokens_limit": usage.get("limit", 0),
-                    "tokens_remaining": remaining_tokens,
-                },
-            )
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(
-            status_code=503,
-            detail={"message": "Token limitini backend orqali tekshirib bo'lmadi."},
-        ) from exc
 
     # Seed the run with the project's SAVED flow when the client omits one, so a
     # new conversation inspects/edits the existing flow instead of rebuilding it.
