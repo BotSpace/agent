@@ -93,3 +93,37 @@ async def test_tool_does_not_unwrap_genuine_strings():
     # `n` is int, not a JSON candidate — should fail normally with type error.
     res = await reg.execute("t.add", {"n": "not a number"}, ctx)
     assert res.is_error
+
+
+# ── surface flags: sleep is agent-only (not exposed to MCP) ──────────────────
+
+
+def test_sleep_tool_is_agent_only():
+    from agent.tools import build_default_registry, build_main_registry
+    from agent.mcp.server import exported_tools
+
+    sleep = build_default_registry().get("sleep")
+    assert sleep is not None
+    assert sleep.expose_to_agent is True
+    assert sleep.expose_to_mcp is False
+
+    # In the agent registry, absent from the MCP surface.
+    assert build_main_registry().get("sleep") is not None
+    assert "sleep" not in exported_tools(build_default_registry()).values()
+
+
+def test_surface_flags_default_and_reverse():
+    """Defaults expose to both; the reverse (mcp-only) flag is honoured."""
+    class _In2(BaseModel):
+        x: int
+
+    @tool(name="both", description="d", input_model=_In2)
+    async def _both(input: _In2, ctx: ToolContext) -> ToolResult:  # noqa: ARG001
+        return ToolResult.ok("ok")
+
+    @tool(name="mcp.only", description="d", input_model=_In2, expose_to_agent=False)
+    async def _mcp_only(input: _In2, ctx: ToolContext) -> ToolResult:  # noqa: ARG001
+        return ToolResult.ok("ok")
+
+    assert _both.expose_to_agent and _both.expose_to_mcp  # default both
+    assert _mcp_only.expose_to_mcp and not _mcp_only.expose_to_agent

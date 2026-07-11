@@ -184,7 +184,7 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
     full = build_default_registry()
     sub_registry = ToolRegistry()
     for t in full.all():
-        if tool_allowed(t.name, spec.allowed_tools):
+        if t.expose_to_agent and tool_allowed(t.name, spec.allowed_tools):
             sub_registry.register(t)
 
     # Sub-agents must honour the SAME admin-managed dynamic config as the main

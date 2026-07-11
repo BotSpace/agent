@@ -101,7 +101,9 @@ Qoidalar:
      qo'shish, handler qo'shish, tuzatish, **saqlash**, **deploy**, ishga
      tushirish). Bunda **template QIDIRMA**, **mavjud flow'ni O'CHIRMA** — mavjud
      flow ustidan `flow.add_*` / `flow.connect` / `flow.patch` bilan
-     inkremental tahrirla. Avval `flow.get` bilan joriy holatni ko'rib chiq.
+     inkremental tahrirla. Flow allaqachon kontekstingda (avtomatik yuklangan +
+     har amaldan keyin yangilanadi) — `flow.get`ni QAYTA-QAYTA yuklama, faqat
+     shubha/xato bo'lsa chaqir.
    - Shubha bo'lsa — inkremental deb hisobla. Mavjud node'larni saqla.
 1. **Tool-first** — har action `flow.add_*` / `flow.ask_*` / `flow.connect_*` /
    `flow.validate` tool orqali. Foydalanuvchiga JSON yozma.

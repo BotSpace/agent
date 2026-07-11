@@ -285,10 +285,14 @@ def is_excluded(registry_name: str) -> bool:
 
 
 def exported_tools(registry: ToolRegistry) -> dict[str, str]:
-    """MCP tool nomi → registry tool nomi (exclude qilinganlar tashqari)."""
+    """MCP tool nomi → registry tool nomi (exclude qilinganlar tashqari).
+
+    Ikki filtr: (1) nom/namespace bo'yicha `is_excluded` (agent-orkestratsiya
+    tool'lari — plan.*, task.run, ...); (2) tool o'zi `expose_to_mcp=False` deb
+    belgilagan bo'lsa (masalan `sleep` — agent-only)."""
     out: dict[str, str] = {}
     for t in registry.all():
-        if is_excluded(t.name):
+        if is_excluded(t.name) or not t.expose_to_mcp:
             continue
         out[mcp_tool_name(t.name)] = t.name
     return out
