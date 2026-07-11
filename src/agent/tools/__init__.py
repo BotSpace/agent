@@ -17,6 +17,7 @@ from .project import build_project_tools
 from .registry import ToolRegistry
 from .release import build_release_tools
 from .search import build_search_tools
+from .sleep import build_sleep_tools
 from .task import build_task_tools
 
 
@@ -42,12 +43,13 @@ def build_default_registry() -> ToolRegistry:
     reg.extend(build_broadcast_tools())
     reg.extend(build_chat_tools())
     reg.extend(build_search_tools())
+    reg.extend(build_sleep_tools())
     reg.extend(build_task_tools())
     return reg
 
 
 def build_main_registry() -> ToolRegistry:
-    """Main agent uchun registry — TO'LIQ toolset.
+    """Main agent uchun registry — agent surface (TO'LIQ toolset minus MCP-only).
 
     Main agent endi domen ishini (flow qurish, CRM, CMS, deploy, ...) O'ZI
     bevosita bajaradi — chunki u chat tarixini to'liq ko'radi. Sub-agentlar
@@ -56,8 +58,14 @@ def build_main_registry() -> ToolRegistry:
     `task.run` ham bor: main faqat TAHLIL/TEKSHIRUV uchun bitta `analyzer`
     sub-agent chaqira oladi (bot qurish uchun EMAS). Analyzer'ning o'zida
     task.run yo'q — ichma-ich sub-agent bo'lmaydi.
+
+    `expose_to_agent=False` tool'lar (MCP-only) bu registrga kirmaydi.
     """
-    return build_default_registry()
+    reg = ToolRegistry()
+    for t in build_default_registry().all():
+        if t.expose_to_agent:
+            reg.register(t)
+    return reg
 
 
 __all__ = [

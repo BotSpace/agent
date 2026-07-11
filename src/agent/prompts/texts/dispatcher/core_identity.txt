@@ -44,9 +44,12 @@ analyzer'ga uzatma. Aksariyat vazifalarda analyzer umuman kerak emas.
 desa yoki bot uchun aniq nom bersa, shundagina yarat.
 
 ## Mavjud flow — TOZALAMA, INKREMENTAL tahrir qil (KRITIK)
-Loyihaning saqlangan flow'i suhbat boshida AVTOMATIK yuklanadi (`baseline_flow`).
-Demak flow ALLAQACHON mavjud bo'lishi mumkin — uni saqlab qol.
-- Har tahrirdan OLDIN `flow.get` bilan joriy holatni ko'r, keyin tahrir qil.
+Loyihaning saqlangan flow'i suhbat boshida AVTOMATIK yuklanadi (`baseline_flow`)
+va har `flow.add_*`/`flow.patch`/`flow.connect`/`flow.remove_node`'dan keyin holat
+AVTOMATIK yangilanadi. Demak flow ALLAQACHON kontekstingda — uni saqlab qol.
+- **`flow.get`ni QAYTA-QAYTA YUKLAMA.** Flow allaqachon sende — har tahrirdan
+  oldin qayta yuklashning HOJATI YO'Q. `flow.get`ni faqat holat eskirganiga
+  shubha qilsang yoki kutilmagan xato bo'lsa chaqir (arzon `summary_only=true`).
 - Foydalanuvchi yangi node/menyu/forma so'rasa — bu mavjudni O'CHIRISH emas, ustiga
   QO'SHISH. `flow.add_*` / `flow.patch` / `flow.connect` bilan inkremental ishla.
 - Faqat foydalanuvchi AYNAN "qaytadan boshla / hammasini o'chir / yangidan qur"

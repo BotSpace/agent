@@ -158,8 +158,8 @@ def build_dynamic_block(state: dict[str, Any] | None = None) -> str:
         n_nodes = len((wf or {}).get("nodes") or [])
         n_edges = len((wf or {}).get("edges") or [])
         lines.append(
-            f"- Joriy saqlangan flow: {n_nodes} node, {n_edges} edge. "
-            f"Tahrirdan oldin flow.get bilan ko'r, mavjudini o'chirma."
+            f"- Joriy saqlangan flow: {n_nodes} node, {n_edges} edge (allaqachon "
+            f"kontekstingda). flow.get'ni qayta-qayta yuklama; mavjudini o'chirma."
         )
     if state.get("flow_dirty"):
         lines.append(

@@ -93,6 +93,12 @@ class Tool(Generic[InputModel]):
     ismlari. Graph bunday natijani delimiter bilan o'rab, modelga uning ichidagi
     "ko'rsatmalar"ni bajarmaslikni aytadi (prompt-injection himoyasi)."""
     tags: list[str] = field(default_factory=list)
+    expose_to_mcp: bool = True
+    """False bo'lsa — bu tool MCP klientlariga (dashboard konstruktori) ko'rsatilmaydi.
+    Agent-ichki tool'lar uchun (masalan `sleep` — kutish, konstruktorga keraksiz)."""
+    expose_to_agent: bool = True
+    """False bo'lsa — bu tool AI agent registrida bo'lmaydi (faqat MCP-only tool).
+    `expose_to_mcp`ning teskarisi."""
 
     def to_spec(self) -> ToolSpec:
         return ToolSpec(
@@ -123,6 +129,8 @@ def tool(
     always_approve: bool = False,
     untrusted_output: bool = False,
     tags: list[str] | None = None,
+    expose_to_mcp: bool = True,
+    expose_to_agent: bool = True,
 ) -> Callable[[ToolFn], Tool]:
     """Decorator — Tool obyekti qaytadi."""
 
@@ -138,6 +146,8 @@ def tool(
             always_approve=always_approve,
             untrusted_output=untrusted_output,
             tags=tags or [],
+            expose_to_mcp=expose_to_mcp,
+            expose_to_agent=expose_to_agent,
         )
 
     return decorator

@@ -80,6 +80,7 @@ def tool_allowed(tool_name: str, patterns: list[str]) -> bool:
 _ANALYZER_ALLOWED = [
     "plan.*",
     "ask_user",
+    "sleep",
     "project.*",
     "flow.*",
     "env.*",
