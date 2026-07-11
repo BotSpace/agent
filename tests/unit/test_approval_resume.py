@@ -1,23 +1,46 @@
-"""Regression: a destructive tool (flow.clear) must EXECUTE once the user
+"""Regression: an always_approve destructive tool must EXECUTE once the user
 approves it — even though the model re-issues the call with a brand new
 tool_use id after the interrupt resumes.
 
 The old code keyed the approval flag on the per-turn `tool_use` id
 (`approved_{call.id}`), which (a) was an undeclared state channel that the
 checkpointer dropped, and (b) never matched the re-issued call's new id. The
-result was an infinite approval loop: the user kept being asked to approve
-flow.clear over and over. We now key approval on a stable (name, arguments)
-signature stored in a declared `approvals` channel, consumed once.
+result was an infinite approval loop: the user kept being asked to approve the
+op over and over. We now key approval on a stable (name, arguments) signature
+stored in a declared `approvals` channel, consumed once.
+
+Uses a self-contained dummy always_approve tool (`test.wipe`) so the mechanism
+is exercised independently of any product tool.
 """
 # ruff: noqa: I001
 import asyncio
 
 from langgraph.types import Command
+from pydantic import BaseModel
 
 from agent.graph.builder import GraphConfig, build_graph, initial_state
 from agent.llm import ModelRoles
 from agent.llm.base import GenerateResult, Message, ToolUsePart, Usage
-from agent.tools import build_default_registry
+from agent.tools.base import ToolContext, ToolResult, tool
+from agent.tools.registry import ToolRegistry
+
+
+class _WipeInput(BaseModel):
+    confirm: bool = True
+
+
+@tool(
+    name="test.wipe",
+    description="Test-only destructive op that empties the working flow.",
+    input_model=_WipeInput,
+    destructive=True,
+    always_approve=True,
+)
+async def _wipe(input: _WipeInput, ctx: ToolContext) -> ToolResult:  # noqa: ARG001
+    return ToolResult.ok(
+        "wiped",
+        state_updates={"working_flow": {"nodes": [], "edges": []}},
+    )
 
 
 class _ScriptedLLM:
@@ -37,7 +60,7 @@ class _ScriptedLLM:
 def _clear_call(call_id: str) -> Message:
     return Message(
         role="assistant",
-        content=[ToolUsePart(id=call_id, name="flow.clear", arguments={"confirm": True})],
+        content=[ToolUsePart(id=call_id, name="test.wipe", arguments={"confirm": True})],
     )
 
 
@@ -49,11 +72,13 @@ def _baseline() -> dict:
 
 
 def _build(turns: list[Message]):
+    reg = ToolRegistry()
+    reg.register(_wipe)
     cfg = GraphConfig(
         llm=_ScriptedLLM(turns),
-        registry=build_default_registry(),
+        registry=reg,
         models=ModelRoles(planner="m", executor="m", critic="m", embedding="m"),
-        approve_destructive=False,  # isolates the always_approve path: flow.clear gates regardless
+        approve_destructive=False,  # isolates the always_approve path: test.wipe gates regardless
     )
     return build_graph(cfg)  # default MemorySaver checkpointer
 

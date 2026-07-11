@@ -86,7 +86,7 @@ class Tool(Generic[InputModel]):
     always_approve: bool = False
     """True bo'lsa — cfg.approve_destructive holatidan QAT'I NAZAR har doim
     approval interrupt yaratadi (foydalanuvchi tasdiqlamasa bajarilmaydi).
-    Qaytarib bo'lmaydigan, butun ishni yo'q qiladigan amallar uchun (flow.clear)."""
+    Qaytarib bo'lmaydigan, butun ishni yo'q qiladigan amallar uchun."""
     untrusted_output: bool = False
     """True bo'lsa — tool natijasi ishonchsiz (oxirgi foydalanuvchi kiritgan)
     kontentni o'z ichiga oladi: CMS hujjatlari, chat tarixi, foydalanuvchi

@@ -110,7 +110,7 @@ async def test_fresh_session_seeds_and_returns_session_id(patched):
     cp = _FakeCheckpointer()
     ctx = _ctx(cp)
     res = await _handler(
-        TaskRunInput(subagent_type="flow-builder", prompt="Build a /start menu"),
+        TaskRunInput(subagent_type="analyzer", prompt="Build a /start menu"),
         ctx,
     )
     assert not res.is_error
@@ -118,15 +118,15 @@ async def test_fresh_session_seeds_and_returns_session_id(patched):
     assert sid  # a fresh session id was generated and returned
     assert res.data["resumed"] is False
     # Stable thread id keyed on the CONVERSATION thread_id, not run_id.
-    assert res.data["sub_thread_id"] == f"conv-STABLE:sub:flow-builder:{sid}"
+    assert res.data["sub_thread_id"] == f"conv-STABLE:sub:analyzer:{sid}"
 
     base = patched.invoked_with[0]["base"]
     texts = _user_texts(base)
     # The sub-agent spec prompt is now the SYSTEM message (cfg.system_block),
     # NOT seeded into the user turn. The fresh user message carries only the task.
-    assert patched.last_cfg.system_block == REGISTRY["flow-builder"].full_prompt
+    assert patched.last_cfg.system_block == REGISTRY["analyzer"].full_prompt
     assert any("Build a /start menu" in t for t in texts)
-    assert not any("[Sub-agent: flow-builder]" in t for t in texts)
+    assert not any("[Sub-agent: analyzer]" in t for t in texts)
 
 
 @pytest.mark.asyncio
@@ -134,7 +134,7 @@ async def test_same_session_resumes_same_thread_and_appends(patched):
     cp = _FakeCheckpointer()
     ctx1 = _ctx(cp)
     res1 = await _handler(
-        TaskRunInput(subagent_type="flow-builder", prompt="Build a /start menu"),
+        TaskRunInput(subagent_type="analyzer", prompt="Build a /start menu"),
         ctx1,
     )
     sid = res1.data["session_id"]
@@ -147,7 +147,7 @@ async def test_same_session_resumes_same_thread_and_appends(patched):
     ctx2.run_id = "run-DIFFERENT"  # main run id changed across turns
     res2 = await _handler(
         TaskRunInput(
-            subagent_type="flow-builder",
+            subagent_type="analyzer",
             prompt="Now make the buttons inline",
             session_id=sid,
         ),
@@ -162,7 +162,7 @@ async def test_same_session_resumes_same_thread_and_appends(patched):
     base = patched.invoked_with[-1]["base"]
     texts = _user_texts(base)
     assert any("Now make the buttons inline" in t for t in texts)
-    assert not any("[Sub-agent: flow-builder]" in t for t in texts), (
+    assert not any("[Sub-agent: analyzer]" in t for t in texts), (
         "resume must not re-inject the full system/spec prompt"
     )
 
@@ -170,10 +170,10 @@ async def test_same_session_resumes_same_thread_and_appends(patched):
 @pytest.mark.asyncio
 async def test_self_call_rejected(patched):
     cp = _FakeCheckpointer()
-    # Simulate being INSIDE flow-builder (nested task.run).
-    ctx = _ctx(cp, services_extra={"current_subagent_type": "flow-builder", "sub_agent_depth": 1})
+    # Simulate being INSIDE analyzer (nested task.run).
+    ctx = _ctx(cp, services_extra={"current_subagent_type": "analyzer", "sub_agent_depth": 1})
     res = await _handler(
-        TaskRunInput(subagent_type="flow-builder", prompt="recurse into myself"),
+        TaskRunInput(subagent_type="analyzer", prompt="recurse into myself"),
         ctx,
     )
     assert res.is_error
@@ -188,7 +188,7 @@ async def test_depth_cap_enforced(patched):
     # Already at the max nesting depth → any further task.run must be rejected.
     ctx = _ctx(cp, services_extra={"sub_agent_depth": MAX_SUB_AGENT_DEPTH})
     res = await _handler(
-        TaskRunInput(subagent_type="cms-manager", prompt="too deep"),
+        TaskRunInput(subagent_type="analyzer", prompt="too deep"),
         ctx,
     )
     assert res.is_error
@@ -205,11 +205,11 @@ class _InterruptOnceGraph:
     async def ainvoke(self, base, config=None):
         self.calls.append(base)
         if len(self.calls) == 1:
-            # Simulate a sub-graph approval interrupt (flow.clear / always_approve).
+            # Simulate a sub-graph approval interrupt (flow.remove_node / always_approve).
             iobj = SimpleNamespace(
                 value={
                     "kind": "approval",
-                    "tool_name": "flow.clear",
+                    "tool_name": "flow.remove_node",
                     "tool_call_id": "tu-clear",
                     "reason": "wipes the working flow",
                 }
@@ -271,7 +271,7 @@ async def test_subgraph_approval_interrupt_resumes_no_409(patched, monkeypatch):
     ctx = _ctx(cp, services_extra={"store": store, "request_id": "MAIN-REQ-1"})
 
     res = await _handler(
-        TaskRunInput(subagent_type="flow-builder", prompt="clear the flow"),
+        TaskRunInput(subagent_type="analyzer", prompt="clear the flow"),
         ctx,
     )
 
@@ -308,13 +308,13 @@ async def test_nested_delegation_threads_depth_and_identity(patched):
     cp = _FakeCheckpointer()
     ctx = _ctx(cp)
     await _handler(
-        TaskRunInput(subagent_type="flow-builder", prompt="build"),
+        TaskRunInput(subagent_type="analyzer", prompt="build"),
         ctx,
     )
     cfg = patched.last_cfg
     assert cfg.services["sub_agent_depth"] == 1
-    assert cfg.services["current_subagent_type"] == "flow-builder"
-    assert cfg.services["current_sub_agent_id"].startswith("sa-flow-builder-")
+    assert cfg.services["current_subagent_type"] == "analyzer"
+    assert cfg.services["current_sub_agent_id"].startswith("sa-analyzer-")
     # Checkpointer is propagated downstream for nested persistence.
     assert cfg.services["checkpointer"] is cp
 
@@ -389,7 +389,7 @@ async def test_subagent_token_delta_surfaced_for_parent_aggregation(token_patche
     graph.total_in, graph.total_out = 120, 45
     ctx = _ctx(_TokenCheckpointer())
     res = await _handler(
-        TaskRunInput(subagent_type="flow-builder", prompt="build"), ctx
+        TaskRunInput(subagent_type="analyzer", prompt="build"), ctx
     )
     assert not res.is_error
     # Fresh: prior = 0 → delta == full usage.
@@ -409,7 +409,7 @@ async def test_subagent_token_delta_not_double_counted_on_resume(token_patched):
     graph.total_in, graph.total_out = 120, 45
     ctx1 = _ctx(cp)
     res1 = await _handler(
-        TaskRunInput(subagent_type="flow-builder", prompt="build"), ctx1
+        TaskRunInput(subagent_type="analyzer", prompt="build"), ctx1
     )
     sid = res1.data["session_id"]
     thread = res1.data["sub_thread_id"]
@@ -423,7 +423,7 @@ async def test_subagent_token_delta_not_double_counted_on_resume(token_patched):
     ctx2 = _ctx(cp)
     ctx2.run_id = "run-DIFFERENT"
     res2 = await _handler(
-        TaskRunInput(subagent_type="flow-builder", prompt="more", session_id=sid),
+        TaskRunInput(subagent_type="analyzer", prompt="more", session_id=sid),
         ctx2,
     )
     assert res2.data["resumed"] is True

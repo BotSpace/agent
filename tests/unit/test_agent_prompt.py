@@ -2,26 +2,22 @@ from agent.graph.state import AgentState
 from agent.prompts.system import build_system_prompt
 
 
-def test_main_agent_prompt_is_dispatcher():
+def test_main_agent_prompt_does_the_work_itself():
     prompt = build_system_prompt(AgentState())
 
-    # Main agent is a dispatcher — no direct domain tool usage.
-    assert "dispatcher" in prompt.lower()
-    # Sub-agents named
-    assert "flow-builder" in prompt
-    assert "crm-manager" in prompt
-    assert "cms-manager" in prompt
-    assert "deploy-manager" in prompt
-    # Main agent's own tools
+    # Main agent now BUILDS/manages bots directly — it advertises its own name,
+    # its full tool namespaces, and the folded bot-building guide.
+    assert "Botmother AI Agent" in prompt
+    assert "Bot qurish qo'llanmasi" in prompt  # detailed building guide folded in
+    # Its own dispatching/planning levers plus the analysis-only sub-agent.
     assert "task.run" in prompt
+    assert "analyzer" in prompt
     assert "plan.set" in prompt
     assert "project.list" in prompt
-    # Domain tools must NOT be advertised on the main agent.
-    assert "flow.add_node" not in prompt
-    assert "flow.upsert_node" not in prompt
-    assert "flow.connect_button" not in prompt
-    assert "crm.find" not in prompt
-    assert "cms.create_collection" not in prompt
+    # The old 4-subagent dispatcher persona is gone.
+    assert "flow-builder" not in prompt
+    assert "crm-manager" not in prompt
+    assert "deploy-manager" not in prompt
 
 
 def test_prompt_warns_on_flow_dirty():

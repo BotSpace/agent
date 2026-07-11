@@ -63,101 +63,53 @@ def tool_allowed(tool_name: str, patterns: list[str]) -> bool:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Sub-agents
+# Sub-agent — bitta umumiy ANALYZER
 # ─────────────────────────────────────────────────────────────────────────────
+#
+# Avval 4 ta domen sub-agent bor edi (flow-builder / crm-manager / cms-manager /
+# deploy-manager) va main agent BUTUN ishni ularga uzatardi. Muammo: sub-agentlar
+# main chat tarixini ko'rmaydi → chalkashib, tugagan ishni qaytadan qurishga
+# urinishardi va token portlashiga sabab bo'lishardi. Endi butun domen ishi
+# (bot qurish, CRM, CMS, deploy) MAIN agentning O'ZIDA bajariladi (u tarixni
+# to'liq ko'radi). Faqat bitta `analyzer` sub-agent qoladi — TAHLIL/TEKSHIRUV
+# uchun (bot qurish uchun EMAS). Analyzer to'liq toolset oladi, FAQAT `task.run`
+# yo'q — ichma-ich sub-agent bo'lmaydi.
 
-# Flow-builder prompt = asosiy yo'riqnoma + to'liq bot misollari (alohida fayl,
-# foydalanuvchi dinamik kengaytira oladi). Ikkalasi birlashtirilib beriladi.
-_FLOW_BUILDER_PROMPT = (
-    load_prompt("subagents/flow_builder.txt")
-    + "\n\n"
-    + load_prompt("subagents/flow_builder_examples.txt")
-)
+# analyzer'ga task.run'dan BOSHQA hamma imkoniyat beriladi. Prefikslar bilan
+# barcha namespace'lar (task.* ataylab yo'q).
+_ANALYZER_ALLOWED = [
+    "plan.*",
+    "ask_user",
+    "project.*",
+    "flow.*",
+    "env.*",
+    "release.*",
+    "plans.*",
+    "subscription.*",
+    "payment.*",
+    "file.*",
+    "cms.*",
+    "chat.*",
+    "broadcast.*",
+    "credentials.*",
+    "modules.*",
+    "search.*",
+]
 
 
-FLOW_BUILDER = SubAgentSpec(
-    name="flow-builder",
-    description="Bot visual flow muharriri — node, edge, validation, layout, save.",
-    system_prompt=_FLOW_BUILDER_PROMPT.replace(
+ANALYZER = SubAgentSpec(
+    name="analyzer",
+    description="Tahlil/tekshiruv yordamchisi — flow, CRM, CMS, loyiha holatini "
+    "o'qib-tekshirib main agentga qisqa xulosa qaytaradi. Bot qurish uchun emas.",
+    system_prompt=load_prompt("subagents/analyzer.txt").replace(
         "{node_params_table}", render_summary_table()
     ),
-    allowed_tools=[
-        "plan.*",
-        "ask_user",
-        "flow.*",
-        # Credential lifecycle — flow-builder AI-provider / Google / payment / http
-        # node'larini quradi va ularga `credential_id` kerak. Prompt yo'q credential'ni
-        # yaratishni (create/connect_oauth) buyuradi, shuning uchun ular allowed bo'lishi
-        # SHART (aks holda tool_allowed bloklab, node credential_id'siz qoladi).
-        # `delete` destructive — boshqa flow'larni buzmasin deb SCOPE'dan tashqarida.
-        "credentials.list",
-        "credentials.list_types",
-        "credentials.create",
-        "credentials.connect_oauth",
-        "credentials.update",
-        "task.run",
-    ],
+    allowed_tools=_ANALYZER_ALLOWED,
     model_hint="executor",
 )
 
 
-CRM_MANAGER = SubAgentSpec(
-    name="crm-manager",
-    description="Foydalanuvchilar, segmentlar, broadcast — CMS query va chat tarixi.",
-    system_prompt=load_prompt("subagents/crm_manager.txt"),
-    allowed_tools=[
-        "plan.*",
-        "ask_user",
-        "cms.list_collections",
-        "cms.get_collection",
-        "cms.find",
-        "cms.get_document",
-        "cms.aggregate",
-        "chat.*",
-        "broadcast.*",
-        "task.run",
-    ],
-    model_hint="executor",
-)
-
-
-CMS_MANAGER = SubAgentSpec(
-    name="cms-manager",
-    description="MongoDB collections schema va document CRUD — cms.*",
-    system_prompt=load_prompt("subagents/cms_manager.txt"),
-    allowed_tools=[
-        "plan.*",
-        "ask_user",
-        "cms.*",
-        "task.run",
-    ],
-    model_hint="executor",
-)
-
-
-DEPLOY_MANAGER = SubAgentSpec(
-    name="deploy-manager",
-    description="Bot deploy lifecycle — env, release, tarif, to'lov, loglar.",
-    system_prompt=load_prompt("subagents/deploy_manager.txt"),
-    allowed_tools=[
-        "plan.*",
-        "ask_user",
-        "env.*",
-        "release.*",
-        "plans.*",
-        "subscription.*",
-        "payment.*",
-        "file.*",
-        "task.run",
-    ],
-    model_hint="executor",
-)
-
-
-REGISTRY: dict[str, SubAgentSpec] = {
-    spec.name: spec
-    for spec in (FLOW_BUILDER, CRM_MANAGER, CMS_MANAGER, DEPLOY_MANAGER)
-}
+REGISTRY: dict[str, SubAgentSpec] = {ANALYZER.name: ANALYZER}
 
 
 def list_subagents() -> list[SubAgentSpec]:

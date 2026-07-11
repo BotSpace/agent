@@ -80,16 +80,16 @@ def test_ask_user_registered_main_and_subagents():
         )
 
 
-def test_flow_clear_is_destructive_and_always_approve():
-    fc = build_default_registry().get("flow.clear")
-    assert fc is not None
-    assert fc.destructive is True
-    assert fc.always_approve is True
+def test_flow_clear_is_removed():
+    # flow.clear was removed — the AI kept wiping the working flow mid-work.
+    assert build_default_registry().get("flow.clear") is None
 
 
-def test_flow_save_destructive_but_not_always_approve():
-    # flow.save / deploy gate via `destructive` when approve_destructive=True
-    # (main worker + sub-agents), NOT via always_approve.
+def test_flow_save_saves_without_approval():
+    # flow.save now persists immediately — NO approval prompt (neither
+    # destructive-gated nor always_approve). The AI kept double-saving when it
+    # had to re-issue the call after an approval interrupt.
     fs = build_default_registry().get("flow.save")
-    assert fs.destructive is True
+    assert fs is not None
+    assert fs.destructive is False
     assert fs.always_approve is False

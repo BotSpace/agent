@@ -1,15 +1,12 @@
-"""task.run — sub-agent delegation (Claude Code'dagi Agent tool kabi).
+"""task.run — analyzer sub-agent delegation (Claude Code'dagi Agent tool kabi).
 
-Main agent — dispatcher: faqat plan.*, project.*, search.docs, task.run ga ega.
-Domen ishi sub-agent'ga uzatiladi:
-  - flow-builder      — flow.*
-  - crm-manager       — crm.*, chat.*, broadcast.*
-  - cms-manager       — cms.*
-  - deploy-manager    — env.*, release.*, plans.*, subscription.*, payment.*, file.*
+Main agent endi domen ishini (flow qurish, CRM, CMS, deploy) O'ZI bevosita
+bajaradi — unda TO'LIQ toolset bor. `task.run` faqat bitta `analyzer`
+sub-agentni chaqiradi va u FAQAT TAHLIL/TEKSHIRUV uchun (bot qurish uchun EMAS).
 
-Sub-agent alohida thread'da ishlaydi. Asosiy state'ga faqat **qisqa xulosa matn**
-qaytadi — sub-agent'ning o'nlab oraliq tool call'lari main history'ni bosib
-ketmaydi. Dashboard UI sub-agent qadamlarini accordion'da ko'rsata oladi
+Analyzer alohida thread'da ishlaydi va asosiy state'ga faqat **qisqa xulosa
+matn** qaytaradi — uning oraliq tool call'lari main history'ni bosib ketmaydi.
+Dashboard UI sub-agent qadamlarini accordion'da ko'rsata oladi
 (`sub_agent_started`/`sub_agent_finished` event'lari orqali).
 
 ## Persistent, session-resumable sub-agents
@@ -21,11 +18,10 @@ davom ettiradi. `session_id` berilmasa, yangi sessiya yaratiladi va
 natijada qaytariladi — main agent uni keyingi task.run'da qayta ishlatishi
 mumkin.
 
-## Nested delegation
-Sub-agent o'z domenidan tashqari ish uchun yana `task.run` chaqirishi mumkin.
-GUARD'lar: sub-agent O'ZINI chaqira olmaydi (subagent_type == joriy) va
-nesting chuqurligi `MAX_SUB_AGENT_DEPTH` bilan cheklangan (runaway nesting +
-token portlashidan himoya).
+## Ichma-ich sub-agent YO'Q
+Analyzer'da `task.run` yo'q (allowed_tools'da task.* yo'q), shuning uchun u
+boshqa sub-agent chaqira olmaydi. Qo'shimcha himoya: `MAX_SUB_AGENT_DEPTH=1`
+va self-call guard (subagent_type == joriy bo'lsa rad etiladi).
 """
 
 from __future__ import annotations
@@ -45,22 +41,25 @@ from ..base import Tool, ToolContext, ToolResult, tool
 
 logger = logging.getLogger(__name__)
 
-# Maksimal nesting chuqurligi: main agent (depth 0) → sub-agent (depth 1) →
-# nested sub-agent (depth 2). Depth 2'dagi sub-agent boshqa sub-agent chaqira
-# olmaydi. Token portlashi va cheksiz rekursiyadan himoya.
-MAX_SUB_AGENT_DEPTH = 2
+# Maksimal nesting chuqurligi: main agent (depth 0) → analyzer (depth 1).
+# Analyzer'da task.run YO'Q, shuning uchun u yana sub-agent chaqira olmaydi —
+# bu cheklov qo'shimcha himoya (ichma-ich sub-agent bo'lmaydi).
+MAX_SUB_AGENT_DEPTH = 1
 
 
 class TaskRunInput(BaseModel):
     subagent_type: str = Field(
-        description="flow-builder | crm-manager | cms-manager | deploy-manager"
+        default="analyzer",
+        description="Always `analyzer` — the only sub-agent. Use it ONLY for "
+        "analysis/investigation (read the flow, inspect collections, check "
+        "release status/logs), NOT for building bots (do that yourself).",
     )
     prompt: str = Field(
         description="Task + needed context (project_id, ids, ...). Sub-agent has no main history."
     )
     propagate_flow: bool = Field(
         default=True,
-        description="Pass working_flow to sub-agent (flow-builder).",
+        description="Pass the current working_flow to the analyzer so it can inspect it.",
     )
     session_id: str | None = Field(
         default=None,
@@ -127,12 +126,14 @@ async def _prior_token_totals(
 @tool(
     name="task.run",
     description=(
-        "Delegate a domain task to a specialized sub-agent. Returns a short "
-        "summary plus a `session_id`; intermediate tool calls stay out of main "
-        "history. Pass the SAME session_id back to continue that sub-agent where "
-        "it left off (persisted history); omit it to start fresh. "
-        "flow-builder=flow.*, crm-manager=crm/chat/broadcast, cms-manager=cms, "
-        "deploy-manager=env/release/subscription/file."
+        "Spawn the `analyzer` sub-agent for a READ-ONLY analysis/investigation "
+        "task (inspect a flow, check collections, read release status/logs) and "
+        "get back a short summary — intermediate tool calls stay out of main "
+        "history. Use this ONLY to offload investigation; do the actual building "
+        "(flow.*, cms.*, deploy, ...) YOURSELF with your own tools. The analyzer "
+        "has no chat history, so put ALL needed context (project_id, ids, the "
+        "exact question) in `prompt`. Returns a `session_id`; pass it back to "
+        "continue the same analyzer, or omit to start fresh."
     ),
     input_model=TaskRunInput,
 )

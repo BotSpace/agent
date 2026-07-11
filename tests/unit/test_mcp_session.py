@@ -273,7 +273,7 @@ async def test_session_status_returns_collections_and_dirty(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_session_undo_restores_flow_after_clear(monkeypatch):
+async def test_session_undo_restores_flow_after_import(monkeypatch):
     async def fake_load_flow(project_id, **kwargs):
         return {"nodes": [
             {"id": "start", "type": "CommandTriggerNode", "data": {"command": "/start"}},
@@ -290,10 +290,19 @@ async def test_session_undo_restores_flow_after_clear(monkeypatch):
     token = mcp_server._current_user.set(_user())
     try:
         await _call(srv, "session_use_project", {"project_id": "1"})
-        cleared = await _call(srv, "flow_clear", {"confirm": True})
-        assert "session_undo" in cleared.content[0].text
+        # flow.import replaces the whole working flow (destructive) and takes a
+        # pre-op snapshot, exactly like the removed flow.clear did.
+        imported = await _call(
+            srv,
+            "flow_import",
+            {"flow_json": {
+                "nodes": [{"id": "only", "type": "CommandTriggerNode", "data": {"command": "/only"}}],
+                "edges": [],
+            }},
+        )
+        assert imported.isError is False
         ws = get_workspace_store().get("42")
-        assert len(ws.working_flow["nodes"]) == 0
+        assert len(ws.working_flow["nodes"]) == 1
         undone = await _call(srv, "session_undo", {})
     finally:
         mcp_server._current_user.reset(token)

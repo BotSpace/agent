@@ -32,9 +32,8 @@ def test_autonomy_is_universal_dispatcher_and_subagents():
     # Dispatcher static block carries autonomy for EVERY model (was Qwen-only).
     assert load_autonomy_rule()
     assert "ask_user" in STATIC_SYSTEM_BLOCK.lower()
-    # Every sub-agent prompt carries it too (PR moved it out of model_addenda).
-    for name in ("flow-builder", "deploy-manager", "cms-manager", "crm-manager"):
-        assert "avtonom" in REGISTRY[name].full_prompt.lower(), name
+    # The analyzer sub-agent prompt carries it too (appended via NARRATE_RULE).
+    assert "avtonom" in REGISTRY["analyzer"].full_prompt.lower()
 
 
 # ── model-addenda mechanism (dir may be empty, mechanism still works) ───────────

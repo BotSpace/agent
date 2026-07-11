@@ -1,5 +1,5 @@
 ════════════════════════════════════════════════════════════════════════════
-REAL BOT MISOLLARI — flow-builder uchun namuna tool call ketma-ketliklari
+REAL BOT MISOLLARI — bot qurish uchun namuna tool call ketma-ketliklari
 ════════════════════════════════════════════════════════════════════════════
 
 Bu fayldagi har misol noldan to flow.save'gacha to'liq, ishlaydigan tool call
@@ -64,10 +64,10 @@ SPEC:
   1. Trigger: /start.
   2. Asosiy oqim: /start → mahsulotlar (db'dan dinamik) → detal → "Buyurtma" → ism+telefon.
   3. Saqlanadigan: ism, telefon, tanlangan mahsulot → `orders` collection.
-  4. Dinamik collection: `products` (cms-manager'ga delegate + demo) HA.
+  4. Dinamik collection: `products` (`cms.*` bilan O'ZING yarat + demo) HA.
   5. Edge holatlar: bo'sh katalog xabari; "⬅️ Ortga".
 
-NODE TANLOV: avval cms-manager'ga `products` collection delegate. Keyin
+NODE TANLOV: avval `cms.*` bilan `products` collection'ini O'ZING yarat. Keyin
 dinamik ro'yxat → CustomCode `db_find` + dinamik inline tugma (yoki
 `collectionData` keyboard) → CallbackQueryTrigger(global:false) → detal →
 ask_text/ask_contact → save-order CustomCode. → plan.set → qur.
@@ -155,7 +155,7 @@ MISOL 2 — Dinamik katalog + buyurtma (collection'dan)
 ════════════════════════════════════════════════════════════════════════════
 Stsenariy: /start → mahsulotlar (db'dan dinamik) → tanlanganda detal →
 "Buyurtma" → ism/telefon so'rab buyurtma saqlash.
-Avval cms-manager'ga collection delegate qilingan deb faraz qilinadi.
+Avval `cms.*` bilan collection O'ZING yaratilgan deb faraz qilinadi.
 
 ```python
 # Turn 1: node'lar

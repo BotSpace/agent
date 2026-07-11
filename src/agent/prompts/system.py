@@ -95,6 +95,29 @@ def _executor_model_addendum() -> str:
 CORE_IDENTITY: str = load_prompt("dispatcher/core_identity.txt")
 
 
+def _build_guide() -> str:
+    """Detailed bot-building guide + concrete examples, folded into the main
+    agent's cached system prefix.
+
+    The main agent now BUILDS bots itself (no flow-builder sub-agent), so the
+    building mechanics + few-shot examples that used to live in the flow-builder
+    sub-agent prompt must reach the main agent. The `{node_params_table}`
+    placeholder is filled with the compiled node-field summary (same as the old
+    sub-agent spec did). Never raises — returns '' on any load error.
+    """
+    try:
+        from ..tools.flow.node_data_models import render_summary_table
+
+        guide = load_prompt("subagents/flow_builder.txt").replace(
+            "{node_params_table}", render_summary_table()
+        )
+        examples = load_prompt("subagents/flow_builder_examples.txt")
+        return (guide + "\n\n" + examples).strip()
+    except Exception:
+        logger.warning("Failed to build bot-building guide for system prompt", exc_info=True)
+        return ""
+
+
 # ── Static cached prefix ──────────────────────────────────────────────────────
 # Built once at import time; byte-identical across all requests.
 # render_compact_catalog() is deterministic (no timestamps, no random content).
@@ -102,10 +125,13 @@ CORE_IDENTITY: str = load_prompt("dispatcher/core_identity.txt")
 # model) is appended so it is part of the cached prefix and reaches Bedrock.
 _AUTONOMY_RULE: str = load_autonomy_rule()
 _MODEL_ADDENDUM: str = _executor_model_addendum()
+_BUILD_GUIDE: str = _build_guide()
 STATIC_SYSTEM_BLOCK: str = (
     CORE_IDENTITY
     + "\n\n"
     + render_compact_catalog()
+    # Detailed building mechanics + examples (main agent builds bots directly).
+    + (("\n\n" + _BUILD_GUIDE) if _BUILD_GUIDE else "")
     # Autonomy applies to ALL models (was Qwen-only — the reason other models
     # behaved worse). Model-specific addenda (if any) come after it.
     + (("\n\n" + _AUTONOMY_RULE) if _AUTONOMY_RULE else "")
@@ -133,12 +159,12 @@ def build_dynamic_block(state: dict[str, Any] | None = None) -> str:
         n_edges = len((wf or {}).get("edges") or [])
         lines.append(
             f"- Joriy saqlangan flow: {n_nodes} node, {n_edges} edge. "
-            f"flow-builder'ga uzatish uchun propagate_flow=true."
+            f"Tahrirdan oldin flow.get bilan ko'r, mavjudini o'chirma."
         )
     if state.get("flow_dirty"):
         lines.append(
-            "- DIQQAT: saqlanmagan flow o'zgarishlari mavjud. flow-builder ga "
-            "save vazifasini berishni unutma."
+            "- DIQQAT: saqlanmagan flow o'zgarishlari mavjud. flow.save qilishni "
+            "unutma."
         )
     collections = state.get("collections") or []
     if collections:

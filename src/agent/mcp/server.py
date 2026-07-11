@@ -109,7 +109,7 @@ _RESTORE_NOTICE = "ℹ️ Sessiya avtomatik tiklandi (loyiha {pid})"  # noqa: RU
 # flow.import / flow.rollback ham working_flow'ni butunlay almashtiradi — shu
 # sabab ular ham snapshot oladi (session_undo bilan qaytarish mumkin).
 _SNAPSHOT_BEFORE = frozenset(
-    {"flow.apply_template", "flow.apply_recipe", "flow.clear", "flow.save", "flow.import", "flow.rollback"}
+    {"flow.apply_template", "flow.apply_recipe", "flow.save", "flow.import", "flow.rollback"}
 )
 
 
@@ -826,7 +826,7 @@ async def _execute_registry_tool(
 
         content = result.content
         # #14 — recovery hint for destructive ops.
-        if reg_name in ("flow.apply_template", "flow.apply_recipe", "flow.clear") and not result.is_error:
+        if reg_name in ("flow.apply_template", "flow.apply_recipe") and not result.is_error:
             content = (content or "") + "\n(session_undo bilan qaytarish mumkin.)"
         # #5 — surface the transparent restore on the result.
         if restored_pid is not None:

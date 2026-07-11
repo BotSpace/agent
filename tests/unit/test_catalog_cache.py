@@ -64,8 +64,9 @@ def test_compact_catalog_token_estimate():
 
 
 def test_static_block_contains_core_identity():
-    assert "dispatcher" in STATIC_SYSTEM_BLOCK.lower()
-    assert "flow-builder" in STATIC_SYSTEM_BLOCK
+    assert "Botmother AI Agent" in STATIC_SYSTEM_BLOCK
+    # The detailed bot-building guide is folded into the main static prefix.
+    assert "Bot qurish qo'llanmasi" in STATIC_SYSTEM_BLOCK
 
 
 def test_static_block_contains_catalog():

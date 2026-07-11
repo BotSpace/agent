@@ -179,7 +179,7 @@ async def project_create(input: ProjectCreateInput, ctx: ToolContext) -> ToolRes
             )
             note = " Boshlang'ich flow toza /start→welcome bilan almashtirildi."
         except BackendError:
-            note = " (Diqqat: default flow'ni tozalab bo'lmadi — flow.clear bilan tozalashingiz mumkin.)"
+            note = " (Diqqat: default flow'ni tozalab bo'lmadi — flow.remove_node bilan keraksiz node'larni o'chirishingiz mumkin.)"
 
     # #10 — single source of truth: do NOT echo the backend flow JSON here.
     # The flow that session_use_project loads (after the clean overwrite) is
