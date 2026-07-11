@@ -175,6 +175,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # Per-IP rate limiting + access logging (added after CORS → they wrap it, so
+    # AccessLog is outermost and records the final status incl. 429s). /health,
+    # /metrics, /.well-known, /mcp are exempt from the limiter.
+    from .middleware import AccessLogMiddleware, RateLimitMiddleware
+
+    if s.rate_limit_enabled:
+        app.add_middleware(
+            RateLimitMiddleware, limit=s.rate_limit_per_min, window_sec=60.0
+        )
+    if s.access_log_enabled:
+        app.add_middleware(AccessLogMiddleware)
     app.state.settings = s
     app.state.registry = build_default_registry()
 

@@ -32,6 +32,14 @@ class Settings(BaseSettings):
     mcp_enabled: bool = Field(default=True, alias="AGENT_MCP_ENABLED")
     mcp_port: int = Field(default=8200, alias="AGENT_MCP_PORT")
 
+    # ── rate limiting + access logging ──────────────────────────────────
+    # Per-IP sliding-window limiter over the HTTP API (protects the expensive
+    # /runs LLM endpoint from abuse). Aggressive default; tune via env. /health,
+    # /metrics, /.well-known and the /mcp constructor surface are exempt.
+    rate_limit_enabled: bool = Field(default=True, alias="AGENT_RATE_LIMIT_ENABLED")
+    rate_limit_per_min: int = Field(default=60, alias="AGENT_RATE_LIMIT_PER_MIN")
+    access_log_enabled: bool = Field(default=True, alias="AGENT_ACCESS_LOG_ENABLED")
+
     # ── llm ─────────────────────────────────────────────────────────────
     llm_provider: LLMProvider = Field(default="openai", alias="AGENT_LLM_PROVIDER")
     model_planner: str = Field(default="gpt-5.2", alias="AGENT_MODEL_PLANNER")
