@@ -67,7 +67,10 @@ async def test_destructive_annotation():
     handler = srv.request_handlers[mtypes.ListToolsRequest]
     result = await handler(mtypes.ListToolsRequest(method="tools/list"))
     by_name = {t.name: t for t in result.root.tools}
-    assert by_name["flow_save"].annotations.destructiveHint is True
+    # flow.save is no longer destructive — it saves immediately, no approval.
+    assert by_name["flow_save"].annotations.destructiveHint is False
+    # flow.import still replaces the whole flow → destructive.
+    assert by_name["flow_import"].annotations.destructiveHint is True
     assert by_name["flow_get"].annotations.destructiveHint is False
     assert by_name["flow_get"].annotations.readOnlyHint is True
 

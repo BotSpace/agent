@@ -23,9 +23,10 @@ from .task import build_task_tools
 def build_default_registry() -> ToolRegistry:
     """Full registry — barcha domen tool'larini o'z ichiga oladi.
 
-    Bu registry sub-agent'lar uchun manba sifatida ishlatiladi (`task.run` ichida).
-    Main agent BU registry'ni TO'G'RIDAN-TO'G'RI ishlatmaydi — u `build_main_registry()`
-    orqali yaratilgan dispatcher-only registry'ni oladi.
+    Bu registry sub-agent (analyzer) uchun manba sifatida ishlatiladi
+    (`task.run` ichida, `allowed_tools` bo'yicha filtrlanadi — analyzer'da
+    task.run YO'Q). Main agent ham AYNAN shu to'plamni oladi
+    (`build_main_registry()` shu funksiyani qaytaradi).
     """
     reg = ToolRegistry()
     reg.extend(build_plan_tools())
@@ -46,22 +47,17 @@ def build_default_registry() -> ToolRegistry:
 
 
 def build_main_registry() -> ToolRegistry:
-    """Main (dispatcher) agent uchun minimal registry.
+    """Main agent uchun registry — TO'LIQ toolset.
 
-    Main agent o'zi domen ishini bajarmaydi — `task.run` orqali sub-agent'ga
-    uzatadi. Shuning uchun unda faqat:
-    - plan.*       — TodoWrite ekvivalenti
-    - project.*    — loyiha boshqaruvi (CRUD), task.run uchun project_id bilish kerak
-    - search.docs  — Botmother dokumentatsiyasini qidirish
-    - task.run     — sub-agent'ga uzatish
+    Main agent endi domen ishini (flow qurish, CRM, CMS, deploy, ...) O'ZI
+    bevosita bajaradi — chunki u chat tarixini to'liq ko'radi. Sub-agentlar
+    tarixni ko'rmagani uchun chalkashardi, shuning uchun ish main'da qoladi.
+
+    `task.run` ham bor: main faqat TAHLIL/TEKSHIRUV uchun bitta `analyzer`
+    sub-agent chaqira oladi (bot qurish uchun EMAS). Analyzer'ning o'zida
+    task.run yo'q — ichma-ich sub-agent bo'lmaydi.
     """
-    reg = ToolRegistry()
-    reg.extend(build_plan_tools())
-    reg.extend(build_ask_user_tools())
-    reg.extend(build_project_tools())
-    reg.extend(build_search_tools())
-    reg.extend(build_task_tools())
-    return reg
+    return build_default_registry()
 
 
 __all__ = [

@@ -387,55 +387,6 @@ async def flow_add_node(input: FlowAddNodeInput, ctx: ToolContext) -> ToolResult
     )
 
 
-# ── flow.clear ────────────────────────────────────────────────────────────────
-
-
-class FlowClearInput(BaseModel):
-    confirm: bool = Field(
-        default=True,
-        description=(
-            "Tasdiqlash flag. Foydalanuvchi yangi bot quryapti yoki tozalashni "
-            "aniq xohlasagina true qiling."
-        ),
-    )
-
-
-@tool(
-    name="flow.clear",
-    description=(
-        "Working flow'dan BARCHA node va edge'larni bir chaqiruvda o'chiradi. "
-        "DIQQAT: butun mavjud flow'ni yo'q qiladi — faqat foydalanuvchi AYNAN "
-        "'qaytadan boshla / hammasini o'chir / yangidan qur' deb so'rasagina chaqir. "
-        "Bu amal foydalanuvchidan APPROVAL (tasdiq) talab qiladi va u rad etsa "
-        "bajarilmaydi. Oddiy tahrir uchun ishlatma — node qo'shish/o'zgartirish "
-        "uchun flow.add_*/flow.patch ishlat."
-    ),
-    input_model=FlowClearInput,
-    destructive=True,
-    always_approve=True,
-)
-async def flow_clear(input: FlowClearInput, ctx: ToolContext) -> ToolResult:
-    if not input.confirm:
-        return ToolResult.error(
-            "flow.clear destructive — tasdiqlash uchun confirm=true bering."
-        )
-    flow = _load_working_flow(ctx)
-    n_nodes = len(flow.nodes)
-    n_edges = len(flow.edges)
-    if n_nodes == 0 and n_edges == 0:
-        return ToolResult.ok("Flow allaqachon bo'sh.")
-    empty = FlowDocument()
-    return ToolResult.ok(
-        f"Flow tozalandi: {n_nodes} node + {n_edges} edge o'chirildi. "
-        f"Endi flow.add_* tool'lari bilan yangi node'lar qo'shing.",
-        state_updates={
-            "working_flow": empty.model_dump(),
-            "flow_dirty": True,
-            "last_validation": None,
-        },
-    )
-
-
 # ── flow.remove_node ─────────────────────────────────────────────────────────
 
 
@@ -1036,12 +987,10 @@ class FlowSaveInput(BaseModel):
 @tool(
     name="flow.save",
     description=(
-        "Persist the working flow to the backend (project.flow). Triggers approval interrupt "
-        "unless `auto_approve` is configured. After save, baseline_flow is updated and "
-        "flow_dirty is cleared."
+        "Persist the working flow to the backend (project.flow). Saves immediately — NO "
+        "approval prompt. After save, baseline_flow is updated and flow_dirty is cleared."
     ),
     input_model=FlowSaveInput,
-    destructive=True,
 )
 async def flow_save(input: FlowSaveInput, ctx: ToolContext) -> ToolResult:
     flow = _load_working_flow(ctx)
@@ -1219,7 +1168,6 @@ def build_flow_tools() -> list[Tool]:
         *build_flow_template_tools(),
         flow_add_node,
         flow_remove_node,
-        flow_clear,
         flow_patch,
         flow_patch_many,
         flow_connect,

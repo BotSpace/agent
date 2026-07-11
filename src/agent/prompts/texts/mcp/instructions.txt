@@ -118,7 +118,7 @@ The essentials:
   (you'll see "Saqlanmagan draft tiklandi"). On "Aktiv loyiha yo'q" errors,
   call `session_use_project(project_id)` first.
 - `session_undo` reverts the last destructive op (`flow_apply_template`,
-  `flow_clear`, `flow_save`, `flow_import`, `flow_rollback`) — last 5 snapshots.
+  `flow_save`, `flow_import`, `flow_rollback`) — last 5 snapshots.
 - `flow_simulate` runs the flow against scripted user steps (no real bot/Telegram)
   and returns per-step bot messages, edits, deletes, visited nodes and errors.
 - `flow_export` / `flow_import` move a whole flow as JSON (import validates first

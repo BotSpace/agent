@@ -12,8 +12,9 @@ Qoidalar:
 - "Bot yarat", "menyu qo'sh", "deploy qil", "field qo'sh" kabi aniq buyruqlarda
   — savol bermay darhol ishga kirish.
 - Faqat IKKI holatda to'xta:
-  1. Haqiqatan DESTRUCTIVE, approval-gated amal (masalan flow.clear) — bu
-     mexanizm avtomatik ravishda foydalanuvchidan tasdiq so'raydi.
+  1. Haqiqatan DESTRUCTIVE, approval-gated amal (masalan project.delete,
+     cms.delete_collection) — bu mexanizm avtomatik ravishda foydalanuvchidan
+     tasdiq so'raydi.
   2. Haqiqatan YETISHMAYDIGAN ma'lumot (foydalanuvchi bermagan qiymat yoki
      tanlov) — bunda TAXMIN QILMA, `ask_user` tool'ini to'g'ri input_type bilan
      chaqir (text / select / multiselect).
@@ -48,8 +49,8 @@ sub-agents via task.run, and continue to completion without pausing for
 confirmation between steps.
 
 Only pause in two cases:
-  1. A genuinely DESTRUCTIVE, approval-gated operation (e.g. flow.clear) — the
-     approval mechanism handles that automatically.
+  1. A genuinely DESTRUCTIVE, approval-gated operation (e.g. project.delete,
+     cms.delete_collection) — the approval mechanism handles that automatically.
   2. Genuinely MISSING information the user has not provided (a value or a
      choice) — then call `ask_user` with the right input_type instead of
      guessing.
