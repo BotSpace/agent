@@ -86,6 +86,20 @@ async def test_tool_unwraps_stringified_list_field():
 
 
 @pytest.mark.asyncio
+async def test_tool_unwraps_stringified_dict_with_invalid_apostrophe_escape():
+    """OpenRouter models escape apostrophes as \\' inside a stringified JSON
+    field — INVALID JSON. Uzbek text is full of apostrophes (to'lov, ko'ring),
+    so this must still coerce instead of failing 'not a valid dictionary'."""
+    reg = ToolRegistry([nested_tool])
+    ctx = ToolContext(run_id="r", project_id=None, user_id=None)
+    # data value contains a backslash-apostrophe (invalid JSON escape).
+    bad = '{"k": "to\\\'lov ko\\\'ring"}'
+    res = await reg.execute("t.nested", {"name": "z", "data": bad}, ctx)
+    assert not res.is_error, res.content
+    assert res.content == "z:to'lov ko'ring:0"
+
+
+@pytest.mark.asyncio
 async def test_tool_does_not_unwrap_genuine_strings():
     """Oddiy string field (str-typed) hech qachon parse qilinmaydi."""
     reg = ToolRegistry([add])
