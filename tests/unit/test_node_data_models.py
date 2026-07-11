@@ -29,6 +29,22 @@ def test_data_models_forbid_extra_fields():
         Model.model_validate({"messageText": "hi", "unknown_field": 1})
 
 
+def test_string_fields_coerce_numbers():
+    """The LLM keeps sending PaymentNode.amount as a NUMBER (1000) while the
+    field is a string. The engine reads both, so the validator must coerce
+    int/float → str instead of failing with 'Input should be a valid string'."""
+    Model = NODE_DATA_MODELS["PaymentNode"]
+    inst = Model.model_validate(
+        {"amount": 1000, "paymentType": "click", "comment": "x", "buttonText": "Pay"}
+    )
+    assert inst.amount == "1000"
+    # A real string still validates unchanged.
+    inst2 = Model.model_validate(
+        {"amount": "2000", "paymentType": "click", "comment": "x"}
+    )
+    assert inst2.amount == "2000"
+
+
 def test_data_models_reject_wrong_enum():
     Model = NODE_DATA_MODELS["HTTPRequestNode"]
     with pytest.raises(Exception):

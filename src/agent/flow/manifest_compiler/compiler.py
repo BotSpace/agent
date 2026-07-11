@@ -28,9 +28,17 @@ _Emit = tuple[str, Any, str | None, bool, Any]
 
 
 class _StrictData(BaseModel):
-    """Noma'lum kalitlarni rad etadi; alias yoki nom bilan to'ldirish mumkin."""
+    """Noma'lum kalitlarni rad etadi; alias yoki nom bilan to'ldirish mumkin.
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    `coerce_numbers_to_str`: LLM string maydonlarga (masalan PaymentNode.amount)
+    tez-tez SON yozadi (`1000`), string emas (`"1000"`). Engine ikkalasini ham
+    o'qiydi, shuning uchun bu yerda ham sonni satrga coerce qilamiz — aks holda
+    agent "Input should be a valid string" xatosiga tushib takror urinadi.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid", populate_by_name=True, coerce_numbers_to_str=True
+    )
 
 
 # Bu widget turlari DOIM yaroqli qiymatga ega (select→biror option, switch→bool,
