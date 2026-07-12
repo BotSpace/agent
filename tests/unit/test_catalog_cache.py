@@ -31,10 +31,16 @@ def test_compact_catalog_is_deterministic():
     assert a == b, "render_compact_catalog() must be byte-identical across calls"
 
 
-def test_compact_catalog_contains_all_node_types():
+def test_compact_catalog_lists_base_nodes_and_other_category_headers():
+    from agent.flow.manifest_compiler.node_catalog import _BASE_CATEGORIES, get_node_spec
+
     catalog = render_compact_catalog()
     for type_name in NODE_TYPES:
-        assert type_name in catalog, f"Node type '{type_name}' missing from compact catalog"
+        spec = get_node_spec(type_name)
+        if spec and spec.category in _BASE_CATEGORIES:
+            assert type_name in catalog, f"base node '{type_name}' missing from catalog"
+    # Specialized categories are referenced by the on-demand loader hint.
+    assert 'flow.list_node_types(category="' in catalog
 
 
 def test_compact_catalog_no_field_schema_dumps():
@@ -56,7 +62,8 @@ def test_compact_catalog_token_estimate():
     """
     catalog = render_compact_catalog()
     estimated_tokens = len(catalog) / 3.5
-    assert estimated_tokens >= 2_000, f"Catalog too small ({estimated_tokens:.0f} tokens)"
+    # Base categories full + others as headers → intentionally small.
+    assert estimated_tokens >= 500, f"Catalog too small ({estimated_tokens:.0f} tokens)"
     assert estimated_tokens <= 12_000, f"Catalog too large ({estimated_tokens:.0f} tokens)"
 
 
@@ -69,11 +76,24 @@ def test_static_block_contains_core_identity():
     assert "Bot qurish qo'llanmasi" in STATIC_SYSTEM_BLOCK
 
 
-def test_static_block_contains_catalog():
+def test_static_block_contains_base_catalog_and_category_headers():
+    # Only BASE-category node types are spelled out in the always-sent catalog;
+    # specialized categories (payment/ai/...) appear by NAME and are loaded on
+    # demand via flow.list_node_types(category=...).
+    from agent.flow.manifest_compiler.node_catalog import (
+        _BASE_CATEGORIES,
+        get_node_spec,
+    )
+
+    base_present = False
     for type_name in NODE_TYPES:
-        assert type_name in STATIC_SYSTEM_BLOCK, (
-            f"STATIC_SYSTEM_BLOCK missing node type '{type_name}'"
-        )
+        spec = get_node_spec(type_name)
+        if spec and spec.category in _BASE_CATEGORIES:
+            assert type_name in STATIC_SYSTEM_BLOCK, f"base node '{type_name}' missing"
+            base_present = True
+    assert base_present, "no base-category nodes found in catalog"
+    # The lazy-loading hint must be present so the agent knows to fetch more.
+    assert "flow.list_node_types(category=" in STATIC_SYSTEM_BLOCK
 
 
 def test_static_block_no_dynamic_content():
