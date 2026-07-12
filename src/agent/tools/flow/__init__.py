@@ -683,12 +683,13 @@ async def flow_set_languages(input: FlowSetLanguagesInput, ctx: ToolContext) -> 
 
 
 class FlowListNodeTypesInput(BaseModel):
-    query: str | None = Field(
+    query: str | list[str] | None = Field(
         default=None,
         description=(
             "Free-text search across node name + summary + full doc (ToolSearch-style). "
-            "Returns the FULL schema for every matching node. Har so'z substring bo'lib "
-            "mos kelishi kerak (AND). Masalan `query='to'lov'` yoki `query='collection read'`."
+            "Returns the FULL schema for every matching node. Bitta qidiruvda har so'z "
+            "substring bo'lishi kerak (AND). Bir nechta qidiruv: `query=[\"to'lov\", "
+            "\"collection read\"]` — har biri alohida qidiriladi, natijalar BIRLASHTIRILADI (OR)."
         ),
     )
     types: list[str] | None = Field(
@@ -698,21 +699,25 @@ class FlowListNodeTypesInput(BaseModel):
             '["SendTextMessageNode", "IfConditionNode"].'
         ),
     )
-    module: str | None = Field(
+    module: str | list[str] | None = Field(
         default=None,
         description=(
-            "Enabled MODULE slug — o'sha modulning BARCHA node'lari (schema bilan) "
-            "qaytadi. Katalogda modullar alohida kategoriya bo'lib ko'rinadi; "
-            "default'da ularning node'lari yuklanmaydi, shu bilan ol."
+            "Enabled MODULE slug(lar) — o'sha modul(lar)ning BARCHA node'lari (schema "
+            "bilan). Bir nechta modul: `module=[\"a\",\"b\"]`. Modullar katalogda alohida "
+            "kategoriya bo'lib ko'rinadi; default'da node'lari yuklanmaydi, shu bilan ol."
         ),
     )
     type: str | None = Field(
         default=None,
         description="Bitta node turi — to'liq maydon schema'si. (`types=[type]` qisqartmasi.)",
     )
-    category: str | None = Field(
+    category: str | list[str] | None = Field(
         default=None,
-        description="Optional filter: trigger | send | edit | flow_control | data | integration | interaction | subflow | ai",
+        description=(
+            "Filter: bitta yoki BIR NECHTA kategoriya, masalan `category=\"payment\"` yoki "
+            "`category=[\"payment\",\"ai\"]`. Qiymatlar: trigger|send|edit|flow_control|data|"
+            "integration|interaction|subflow|payment|ai (yoki module slug'lari)."
+        ),
     )
 
 
@@ -745,23 +750,30 @@ _MAX_SCHEMA_DUMP = 12
 async def flow_list_node_types(input: FlowListNodeTypesInput, ctx: ToolContext) -> ToolResult:
     from .node_data_models import render_node_schema
 
+    def _as_list(v: Any) -> list[str]:
+        if v is None:
+            return []
+        items = v if isinstance(v, list) else [v]
+        return [str(x).strip() for x in items if str(x).strip()]
+
     want = set(input.types or [])
     if input.type:
         want.add(input.type)
-    query = (input.query or "").strip()
-    module_filter = (input.module or "").strip().lower()
-    # focused = aniq turlar / query / module berilgan → to'liq schema content'da
-    focused = bool(want or query or module_filter)
+    queries = [q for q in _as_list(input.query)]
+    categories = {c.lower() for c in _as_list(input.category)}
+    modules = {m.lower() for m in _as_list(input.module)}
+    # focused = aniq turlar / query / module / category berilgan → to'liq schema content'da
+    focused = bool(want or queries or modules or categories)
 
     def _keep(node_type: str, *doc_fields: str | None, category: str | None) -> bool:
-        if module_filter:
+        if modules:
             return False  # module=... → only that module's nodes (built-ins excluded)
         if want:
             return node_type in want
-        if query:
-            return _node_matches_query(query, node_type, *doc_fields)
-        if input.category:
-            return category == input.category
+        if queries:
+            return any(_node_matches_query(q, node_type, *doc_fields) for q in queries)
+        if categories:
+            return (category or "").lower() in categories
         return True
 
     # Qidiruv NOM + qisqa SUMMARY bo'yicha (to'liq aiDoc emas — aks holda uzun
@@ -793,10 +805,10 @@ async def flow_list_node_types(input: FlowListNodeTypesInput, ctx: ToolContext) 
     for mod in _module_nodes(ctx):
         if not isinstance(mod, dict) or not mod.get("type"):
             continue
-        if module_filter:
+        if modules:
             slug = str(mod.get("module") or mod["type"].split(".", 1)[0]).lower()
             mod_name = str(mod.get("module_name") or "").lower()
-            if module_filter not in (slug, mod_name):
+            if slug not in modules and mod_name not in modules:
                 continue
         elif not _keep(
             mod["type"], mod.get("description"), category=mod.get("category") or "integration"
