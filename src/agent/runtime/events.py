@@ -22,6 +22,7 @@ EventType = Literal[
     "clarification_resolved",
     "budget_update",
     "usage_updated",
+    "token_usage",
     "sub_agent_started",
     "sub_agent_finished",
     "run_completed",
