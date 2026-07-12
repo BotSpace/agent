@@ -85,6 +85,9 @@ class GraphConfig:
     # Hard per-run token backstop (cumulative in+out). Used as the cap when the
     # user's remaining budget is unknown so a runaway loop still stops.
     max_run_tokens: int = 2_000_000
+    # Lazy tools: send only CORE tool schemas + those activated via tools.search
+    # (main agent). Sub-agents leave this False → full filtered toolset.
+    lazy_tools: bool = False
 
 
 # Untrusted tool output (CMS docs, chat history, end-user names) is wrapped in
@@ -175,11 +178,21 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
         # the conversation history and never invalidates the rolling cache.
         dynamic_ctx = build_dynamic_context_message(state)
         model = _pick_model(state, cfg.models)
+        # Lazy tools (main agent): send CORE tools + any activated via tools.search;
+        # else the full registry (sub-agents).
+        if cfg.lazy_tools:
+            from ..tools.lazy import active_tool_specs
+
+            tool_specs = active_tool_specs(
+                cfg.registry.all(), set(state.get("activated_tools") or [])
+            )
+        else:
+            tool_specs = cfg.registry.specs()
         options = GenerateOptions(
             model=model,
             max_tokens=cfg.max_tokens,
             temperature=cfg.temperature,
-            tools=cfg.registry.specs(),
+            tools=tool_specs,
             thinking_budget=cfg.thinking_budget,
         )
         result = await cfg.llm.generate([system, *history, dynamic_ctx], options)

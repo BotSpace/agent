@@ -85,6 +85,11 @@ class AgentState(TypedDict, total=False):
     pre_run_tokens_remaining. Routes the graph to the `limit_exceeded` node which
     appends a user-facing message, then ends as a NORMAL completion."""
 
+    # ── lazy tools ──────────────────────────────────────────────────────
+    activated_tools: list[str]
+    """Lazy tool nomlari — `tools.search` orqali yuklangan. llm_call bu tool'larni
+    CORE tool'lar bilan birga yuboradi (lazy_tools=True bo'lsa)."""
+
     # ── tool-call budget ────────────────────────────────────────────────
     tool_calls_used: int
     """Run davomida bajarilgan tool chaqiruvlari soni. cfg.max_tool_calls ga

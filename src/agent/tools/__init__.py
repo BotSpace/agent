@@ -45,6 +45,11 @@ def build_default_registry() -> ToolRegistry:
     reg.extend(build_search_tools())
     reg.extend(build_sleep_tools())
     reg.extend(build_task_tools())
+    # tools.search — loads full schemas of lazy tools on demand. Its getter sees
+    # the full registry (incl. itself; is_core excludes it from the lazy set).
+    from .lazy import build_tools_search
+
+    reg.register(build_tools_search(lambda: reg.all()))
     return reg
 
 

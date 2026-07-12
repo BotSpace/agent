@@ -34,11 +34,14 @@ def test_main_registry_has_full_toolset():
 
 def test_analyzer_has_all_tools_except_task_run():
     # "give the sub-agent all capabilities except spawning another sub-agent."
+    # task.run (no nesting) and tools.search (lazy loading is main-agent-only —
+    # sub-agents get their full filtered toolset directly) are excluded.
     full = build_default_registry()
     spec = REGISTRY["analyzer"]
+    excluded = {"task.run", "tools.search"}
     for t in full.all():
-        if t.name == "task.run":
-            assert not tool_allowed(t.name, spec.allowed_tools), "analyzer must NOT have task.run"
+        if t.name in excluded:
+            assert not tool_allowed(t.name, spec.allowed_tools), f"analyzer must NOT have {t.name}"
         else:
             assert tool_allowed(t.name, spec.allowed_tools), f"analyzer missing {t.name}"
 
