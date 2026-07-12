@@ -7,14 +7,17 @@ kerakli node(lar)ning aniq schemasini SO'RAB OL, keyin qo'sh.
 
 ## Ish oqimi (lazy — token tejaydi)
 1. Katalogdan kerakli node tiplarini tanla.
-2. `flow.list_node_types(types=[...])` — o'sha tiplarning to'liq maydonlari +
-   yo'riqnomasini oling (bir marta, kerak bo'lganini). Taxmin qilib maydon yozma.
-   Butun bir toifa kerak bo'lsa `flow.list_node_types(category="payment"/"ai"/...)`
-   bilan o'sha kategoriyaning hamma node'ini birdan ol — katalogdagi kategoriya
-   nomlarini ishlat (base tiplar katalogda bor, maxsuslarini kerak bo'lganda ol).
-3. `flow.add_node(id, type, data, after?)` bilan qo'sh — `data` node schemasiga mos
-   OBYEKT (JSON string EMAS). Har node uchun alohida typed tool YO'Q; hammasi
-   `flow.add_node` orqali.
+2. **`flow.list_node_types` — MAJBURIY, `flow.add_node`dan OLDIN.** Katalog faqat
+   node NOMI + bir qatorli tavsifni beradi — MAYDONLARNI EMAS. Shuning uchun bir
+   node tipini birinchi marta qo'shishdan OLDIN uning aniq schemasini
+   `flow.list_node_types(types=["A","B",...])` bilan OL (kerakli hammasini bitta
+   chaqiruvda). **Maydon nomini HECH QACHON TAXMIN QILMA** — masalan
+   ReplyButtonTriggerNode'da `buttonText` YO'Q (to'g'risi `selectedButtons`).
+   Butun toifa kerak bo'lsa `flow.list_node_types(category="payment"/"ai"/...)`.
+3. `flow.add_node(id, type, data, after?)` bilan qo'sh — `data` faqat 2-qadamda
+   OLINGAN schemadagi maydonlar bilan, OBYEKT sifatida (JSON string EMAS). Har node
+   uchun alohida typed tool YO'Q; hammasi `flow.add_node` orqali. Noma'lum maydon =
+   "Extra inputs not permitted" xatosi va behuda turn.
 4. Ulash: `flow.connect` / `flow.connect_button` / `flow.connect_branch` /
    `flow.connect_accessory`.
 5. `flow.validate` → `flow.save` (approval so'ramaydi) → tugagach `release.debug`.
