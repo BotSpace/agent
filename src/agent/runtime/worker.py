@@ -181,11 +181,12 @@ async def run_agent(
         pre_run_remaining: int | None = None
         try:
             from ..integrations.backend import get_backend_client
-            # Read the budget for the BILLED user — i.e. rec.user_id, the same
-            # user tokens are reported to (report_token_usage below). Always
-            # prefer it over auth_claims so we don't check the budget against a
-            # different (chatter) user or fail when auth_claims is absent.
-            fetch_claims = {"user_id": str(rec.user_id)} if rec.user_id else auth_claims
+            # Read the budget with the run's auth_claims — they carry the BEARER
+            # JWT the user-scoped /subscription/usage route requires. Passing only
+            # {"user_id": ...} (no bearer) 401s → remaining=None → mid-run
+            # enforcement silently OFF, so a run blows past the limit. The run
+            # creator IS the billed user (rec.user_id), so auth_claims is correct.
+            fetch_claims = auth_claims or ({"user_id": str(rec.user_id)} if rec.user_id else None)
             usage = await get_backend_client().subscription_usage(auth_claims=fetch_claims)
             remaining = (usage.get("ai_token_usage") or {}).get("remaining")
             pre_run_remaining = int(remaining) if remaining is not None else None

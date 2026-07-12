@@ -212,6 +212,18 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
             "total_output_tokens": cumulative_out,
             "total_cache_read_tokens": cumulative_cache,
         }
+        # Real-time usage: emit the running total after EVERY LLM turn so the UI
+        # updates the token counter live (not only on run_completed).
+        await _emit(
+            cfg.emit,
+            "token_usage",
+            {
+                "input_tokens": cumulative_in,
+                "output_tokens": cumulative_out,
+                "cache_read_tokens": cumulative_cache,
+                "total_tokens": cumulative_in + cumulative_out,
+            },
+        )
         # ── per-turn token-limit enforcement ────────────────────────────
         # Compare this run's OWN cumulative tokens (incl. sub-agent deltas) on
         # EVERY LLM turn against the effective cap:
