@@ -204,6 +204,33 @@ async def run_agent(
             "configurable": {"thread_id": rec.thread_id},
             "recursion_limit": 500,
         }
+
+        async def _report_partial_tokens() -> None:
+            """Report tokens consumed so far from the last checkpoint. Used when a
+            run is STOPPED/cancelled or fails mid-way — otherwise those tokens are
+            burned but never counted against the user's usage. Never raises."""
+            try:
+                snap = await graph.aget_state(config)
+                vals = getattr(snap, "values", {}) or {}
+                c_in = int(vals.get("total_input_tokens", 0) or 0)
+                c_out = int(vals.get("total_output_tokens", 0) or 0)
+                c_cache = int(vals.get("total_cache_read_tokens", 0) or 0)
+                if not (c_in or c_out):
+                    return
+                await store.record_tokens(request_id, c_in, c_out)
+                from ..integrations.backend import get_backend_client
+
+                await get_backend_client().report_token_usage(
+                    user_id=rec.user_id or "",
+                    input_tokens=c_in,
+                    output_tokens=c_out,
+                    cache_read_tokens=c_cache,
+                    project_id=rec.project_id,
+                    auth_claims=auth_claims,
+                )
+            except Exception:
+                logger.warning("Failed to report partial token usage", exc_info=True)
+
         loop = asyncio.get_running_loop()
         result = await graph.ainvoke(state, config=config)
 
@@ -284,6 +311,8 @@ async def run_agent(
     except asyncio.CancelledError:
         # User-initiated cancellation via /cancel endpoint.
         run_outcome = "cancelled"
+        # Count the tokens burned before the stop — else a stopped run is free.
+        await _report_partial_tokens()
         print(f"[agent_worker] RUN CANCELLED ({request_id})", flush=True)
         await emit("run_failed", {"error": "Cancelled by user", "cancelled": True})
         await store.fail(request_id, "Cancelled by user")
@@ -293,6 +322,8 @@ async def run_agent(
         run_outcome = "failed"
         import traceback
 
+        # Tokens consumed before the failure must still be counted.
+        await _report_partial_tokens()
         tb = traceback.format_exc()
         msg = f"{type(exc).__name__}: {exc}" if str(exc) else f"{type(exc).__name__} (no message)"
         print(f"[agent_worker] RUN FAILED ({request_id}):\n{tb}", flush=True)
