@@ -1560,14 +1560,14 @@ class BackendClient:
         *,
         auth_claims: dict | None = None,
     ) -> dict[str, Any]:
-        """NOT YET IMPLEMENTED on the Go backend — internal/modules/cms only
-        has single-document Insert (no ``/documents/bulk`` route). Will raise
-        BackendError(404) until the coordinator adds it. See migration report.
+        """Bulk-insert documents. Go's BulkInsertDocuments binds the body as a
+        BARE JSON ARRAY (``[]map[string]any``) — NOT ``{"documents": [...]}``;
+        wrapping it 400s "expected a JSON array of documents".
         """
         d = await self._request(
             "POST",
             self._cms(f"/projects/{project_id}/collections/{name}/documents/bulk"),
-            json={"documents": documents},
+            json=documents,
             **_auth_kw(auth_claims),
         )
         return d if isinstance(d, dict) else {}
