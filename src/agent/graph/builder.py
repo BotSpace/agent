@@ -82,6 +82,9 @@ class GraphConfig:
     # Backstops the LangGraph recursion_limit (500) far earlier and caps
     # runaway tool loops / cost. Mirrors config.max_tool_calls.
     max_tool_calls: int = 80
+    # Hard per-run token backstop (cumulative in+out). Used as the cap when the
+    # user's remaining budget is unknown so a runaway loop still stops.
+    max_run_tokens: int = 2_000_000
 
 
 # Untrusted tool output (CMS docs, chat history, end-user names) is wrapped in
@@ -196,13 +199,19 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
             "total_output_tokens": cumulative_out,
             "total_cache_read_tokens": cumulative_cache,
         }
-        # ── mid-run token-limit enforcement ─────────────────────────────
-        # Compare this run's OWN tokens (incl. sub-agent deltas already
-        # aggregated into the totals) against the REMAINING budget snapshotted
-        # at run start — NOT the absolute monthly limit. pre_run_tokens_remaining
-        # is None when the usage fetch failed (fail open → no enforcement).
+        # ── per-turn token-limit enforcement ────────────────────────────
+        # Compare this run's OWN cumulative tokens (incl. sub-agent deltas) on
+        # EVERY LLM turn against the effective cap:
+        #   - the user's REMAINING monthly budget snapshotted at run start
+        #     (pre_run_tokens_remaining) when it could be read, ELSE
+        #   - the hard per-run backstop (cfg.max_run_tokens) so a big run in a
+        #     loop can't burn unbounded tokens when the budget is unknown
+        #     (usage endpoint 401/down).
+        # Once reached, `limit_exceeded` routes to limit_exceeded_node which
+        # warns the user and stops the run.
         pre_remaining = state.get("pre_run_tokens_remaining")
-        if pre_remaining is not None and (cumulative_in + cumulative_out) >= pre_remaining:
+        cap = pre_remaining if pre_remaining is not None else cfg.max_run_tokens
+        if cap is not None and (cumulative_in + cumulative_out) >= cap:
             updates["limit_exceeded"] = True
         return updates
 
