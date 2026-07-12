@@ -127,8 +127,8 @@ async def test_state_updates_merge_into_workspace():
     try:
         result = await _call(
             srv,
-            "flow_add_command_trigger",
-            {"id": "start", "data": {"command": "/start"}},
+            "flow_add_node",
+            {"id": "start", "type": "CommandTriggerNode", "data": {"command": "/start"}},
         )
     finally:
         mcp_server._current_user.reset(token)

@@ -79,11 +79,15 @@ _POPULAR_NODES = {
 }
 
 
-def test_popular_nodes_have_named_tools():
+def test_typed_add_tools_removed_use_generic():
+    # Lazy schema loading: the typed flow.add_* tools were removed; every node
+    # type goes through the generic flow.add_node (schema via flow.list_node_types).
     tools = _tools()
+    assert "flow.add_node" in tools
+    assert "flow.list_node_types" in tools
     for type_name, tool_name in _POPULAR_NODES.items():
         assert type_name in NODE_TYPES, f"{type_name} missing from catalog"
-        assert tool_name in tools, f"{tool_name} missing from registry"
+        assert tool_name not in tools, f"{tool_name} should be removed (use flow.add_node)"
 
 
 def test_non_popular_nodes_go_through_generic_add_node():
@@ -118,7 +122,7 @@ async def test_safe_form_actions_build_valid_training_center_flow():
     ctx = ToolContext(run_id="r", project_id="42", user_id="u")
 
     steps = [
-        ("flow.add_command_trigger", {"id": "start", "data": {"command": "/start", "global": True}}),
+        ("flow.add_node", {"id": "start", "type": "CommandTriggerNode", "data": {"command": "/start", "global": True}}),
         (
             "flow.ask_text",
             {

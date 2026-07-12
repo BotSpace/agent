@@ -182,8 +182,9 @@ async def test_dirty_draft_is_persisted_and_restored(monkeypatch):
     try:
         await _call(srv, "session_use_project", {"project_id": "9"})
         # Make the draft dirty via a real flow tool (add a node).
-        await _call(srv, "flow_add_send_text_message",
-                    {"id": "m1", "data": {"messageText": "hi"}, "after": "start"})
+        await _call(srv, "flow_add_node",
+                    {"id": "m1", "type": "SendTextMessageNode",
+                     "data": {"messageText": "hi"}, "after": "start"})
         ws = store.get("42")
         assert ws.flow_dirty is True
         draft_store = mcp_server.get_draft_store()

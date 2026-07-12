@@ -262,6 +262,10 @@ def test_payment_status_tool_node_in_registry_and_catalog():
     assert "AIPaymentStatusToolNode" in NODE_TYPES
 
 
-def test_payment_status_tool_has_named_mcp_action():
+def test_payment_status_node_reachable_via_generic_add():
+    # The typed flow.add_ai_payment_status_tool was removed (lazy loading);
+    # AIPaymentStatusToolNode is still a real node type reachable via add_node.
     tools = _tools()
-    assert "flow.add_ai_payment_status_tool" in tools
+    assert "flow.add_ai_payment_status_tool" not in tools
+    assert "flow.add_node" in tools
+    assert "AIPaymentStatusToolNode" in NODE_TYPES
