@@ -71,7 +71,7 @@ async def fetch_public_config() -> dict[str, Any]:
         _public_config_cache = data
         _public_config_fetched_at = now
         return data
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("fetch_public_config failed (falling back to env): %s", exc)
         return {}
 
@@ -180,7 +180,7 @@ class BackendError(RuntimeError):
         return f"HTTP {self.status}" if self.status else "Backend error"
 
 
-def format_backend_error(action: str | None, err: "BackendError") -> str:
+def format_backend_error(action: str | None, err: BackendError) -> str:
     """Tool'lar uchun yagona format — barcha mavjud sabab manbalarini chiqaradi.
 
     Birinchi qator: action + HTTP status. Keyin har field xatosi alohida
@@ -374,7 +374,7 @@ class PagedList(list):
         return self.current_page < self.total_pages
 
 
-def _unwrap_list(payload: Any) -> "PagedList":
+def _unwrap_list(payload: Any) -> PagedList:
     """Normalize a list response into a page-based ``PagedList``.
 
     Supports THREE shapes we may see depending on which backend answered:
@@ -587,7 +587,7 @@ class BackendClient:
                     new_refresh if isinstance(new_refresh, str) and new_refresh else None,
                 )
             return None
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.warning("Agent token refresh exception: %s", e)
             return None
 
@@ -716,7 +716,7 @@ class BackendClient:
         page: int | None = None,
         page_size: int | None = None,
         auth_claims: dict | None = None,
-    ) -> "PagedList":
+    ) -> PagedList:
         params: dict[str, Any] = {}
         if search:
             params["search"] = search
@@ -749,7 +749,7 @@ class BackendClient:
         page: int | None = None,
         page_size: int | None = None,
         auth_claims: dict | None = None,
-    ) -> "PagedList":
+    ) -> PagedList:
         params: dict[str, Any] = {"project": project_id}
         params.update(_page_params(page, page_size))
         d = await self._request("GET", "/api/v1/enviroment", params=params, **_auth_kw(auth_claims))
@@ -789,7 +789,7 @@ class BackendClient:
         page: int | None = None,
         page_size: int | None = None,
         auth_claims: dict | None = None,
-    ) -> "PagedList":
+    ) -> PagedList:
         params: dict[str, Any] = {"project": project_id}
         params.update(_page_params(page, page_size))
         d = await self._request("GET", "/api/v1/relase", params=params, **_auth_kw(auth_claims))
@@ -887,7 +887,7 @@ class BackendClient:
         page: int | None = None,
         page_size: int | None = None,
         auth_claims: dict | None = None,
-    ) -> "PagedList":
+    ) -> PagedList:
         """Owner-scoped credentials (GET /api/v1/credentials?type_key=).
 
         Secrets are masked server-side; only id/name/type_key/label/mode are
@@ -1048,7 +1048,7 @@ class BackendClient:
         page: int | None = None,
         page_size: int | None = None,
         auth_claims: dict | None = None,
-    ) -> "PagedList":
+    ) -> PagedList:
         """The platform-wide catalog of AVAILABLE modules (GET /api/v1/modules).
 
         Authenticated (any user can browse — enabling is per-project). Each row is
@@ -1138,7 +1138,7 @@ class BackendClient:
         page: int | None = None,
         page_size: int | None = None,
         auth_claims: dict | None = None,
-    ) -> "PagedList":
+    ) -> PagedList:
         params: dict[str, Any] = {}
         if project_id is not None:
             params["project_id"] = project_id
@@ -1225,7 +1225,7 @@ class BackendClient:
         page: int | None = None,
         page_size: int | None = None,
         auth_claims: dict | None = None,
-    ) -> "PagedList":
+    ) -> PagedList:
         params: dict[str, Any] = {"project": project_id}
         params.update(_page_params(page, page_size))
         d = await self._request("GET", "/api/collection/", params=params, **_auth_kw(auth_claims))
@@ -1275,7 +1275,7 @@ class BackendClient:
         page: int | None = None,
         page_size: int | None = None,
         auth_claims: dict | None = None,
-    ) -> "PagedList":
+    ) -> PagedList:
         params: dict[str, Any] = {}
         params.update(_page_params(page, page_size))
         resolved_pid = await self._resolve_chat_project_id(project_id, auth_claims=auth_claims)
@@ -1305,7 +1305,7 @@ class BackendClient:
         page: int | None = None,
         page_size: int | None = None,
         auth_claims: dict | None = None,
-    ) -> "PagedList":
+    ) -> PagedList:
         params: dict[str, Any] = {}
         if project_id is not None:
             params["project_id"] = project_id
@@ -1393,7 +1393,7 @@ class BackendClient:
         page: int | None = None,
         page_size: int | None = None,
         auth_claims: dict | None = None,
-    ) -> "PagedList":
+    ) -> PagedList:
         params: dict[str, Any] = {}
         params.update(_page_params(page, page_size))
         d = await self._request(
@@ -1675,7 +1675,7 @@ class BackendClient:
         cache_read_tokens: int = 0,
         project_id: str | int | None = None,
         *,
-        auth_claims: dict | None = None,  # noqa: ARG002 — interface uchun saqlangan, bu endpoint ishlatmaydi
+        auth_claims: dict | None = None,
     ) -> None:
         """Report AI token usage to backend for subscription tracking.
 

@@ -218,7 +218,7 @@ def test_empty_text_blocks_dropped():
 
 
 # ── prompt caching (cachePoint) ────────────────────────────────────────────────
-from agent.llm.base import GenerateOptions, ToolSpec  # noqa: E402
+from agent.llm.base import GenerateOptions, ToolSpec
 
 
 def _has_cache_point(blocks):

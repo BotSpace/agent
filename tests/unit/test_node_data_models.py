@@ -1,6 +1,7 @@
 """Tests for per-node Pydantic data validators."""
 
 import pytest
+from pydantic import ValidationError
 
 from agent.flow.manifest_compiler.node_catalog import NODE_TYPES
 from agent.tools.base import ToolContext
@@ -25,7 +26,7 @@ def test_every_engine_node_has_data_model():
 def test_data_models_forbid_extra_fields():
     """Unknown fields must be rejected by the per-node validator."""
     Model = NODE_DATA_MODELS["SendTextMessageNode"]
-    with pytest.raises(Exception):  # pydantic ValidationError
+    with pytest.raises(ValidationError):
         Model.model_validate({"messageText": "hi", "unknown_field": 1})
 
 
@@ -47,7 +48,7 @@ def test_string_fields_coerce_numbers():
 
 def test_data_models_reject_wrong_enum():
     Model = NODE_DATA_MODELS["HTTPRequestNode"]
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         Model.model_validate({"url": "https://x", "method": "INVALID"})
 
 
@@ -145,7 +146,7 @@ def test_collection_tool_data_defaults_and_keys():
 
 def test_collection_tool_data_forbids_extra_fields():
     Model = NODE_DATA_MODELS["AICollectionToolNode"]
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         Model.model_validate({"toolName": "x", "description": "d", "bogusField": 1})
 
 
@@ -204,14 +205,14 @@ def test_knowledge_tool_data_custom_fields():
 
 def test_knowledge_tool_data_forbids_extra_fields():
     Model = NODE_DATA_MODELS["AIKnowledgeToolNode"]
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         Model.model_validate({"toolName": "x", "description": "d", "unknown_key": "y"})
 
 
 def test_knowledge_tool_data_requires_content_fields():
     """toolName/description — asosiy content field'lar, talab qilinadi."""
     Model = NODE_DATA_MODELS["AIKnowledgeToolNode"]
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         Model.model_validate({})
 
 
@@ -240,7 +241,7 @@ def test_payment_link_tool_data_accepts_custom_max_amount():
 
 def test_payment_link_tool_data_rejects_bad_provider():
     Model = NODE_DATA_MODELS["AIPaymentLinkToolNode"]
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         Model.model_validate({"paymentType": "payme"})
 
 
@@ -252,7 +253,7 @@ def test_payment_status_tool_data_keys_and_no_required_config():
 
 def test_payment_status_tool_data_forbids_extra_fields():
     Model = NODE_DATA_MODELS["AIPaymentStatusToolNode"]
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         Model.model_validate({"unknown_key": "y"})
 
 

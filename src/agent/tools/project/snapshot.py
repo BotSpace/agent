@@ -157,7 +157,7 @@ async def project_snapshot(input: ProjectSnapshotInput, ctx: ToolContext) -> Too
             lines.append("  Triggerlar: " + ", ".join(flow_sum["triggers"]))
         if flow_sum["type_counts"]:
             tb = ", ".join(
-                f"{t}×{c}"  # noqa: RUF001 — established node-count separator glyph
+                f"{t}×{c}"
                 for t, c in sorted(flow_sum["type_counts"].items())
             )
             lines.append("  Node turlari: " + tb)

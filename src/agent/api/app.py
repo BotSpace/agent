@@ -43,7 +43,7 @@ async def _template_sync_loop(initial_delay: int, interval_hours: float) -> None
                     result.get("fetched"),
                     result.get("indexed"),
                 )
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.exception("Template sync cycle failed; will retry next interval")
             await asyncio.sleep(interval_seconds)
     except asyncio.CancelledError:
@@ -100,7 +100,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             from ..mcp.server import build_mcp_asgi_app
 
             mcp_asgi_app, mcp_session_manager = build_mcp_asgi_app()
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("MCP server qurib bo'lmadi — /mcp o'chiq qoldi")
             mcp_asgi_app = None
             mcp_session_manager = None
@@ -164,7 +164,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             for task in sync_tasks:
                 try:
                     await task
-                except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                except (asyncio.CancelledError, Exception):
                     pass
 
     app = FastAPI(title="Botmother agent API", version="0.1.0", lifespan=lifespan)

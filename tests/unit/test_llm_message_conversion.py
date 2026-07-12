@@ -1,7 +1,7 @@
 """Provider mappings should not drop content parts."""
 
 from agent.llm.anthropic import AnthropicClient
-from agent.llm.base import Message, TextPart, ToolResultPart, ToolUsePart
+from agent.llm.base import Message, TextPart, ToolUsePart
 from agent.llm.openai import OpenAIClient
 
 

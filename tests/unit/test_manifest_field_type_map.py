@@ -67,7 +67,7 @@ def test_no_orphan_map_entries():
 
 @pytest.mark.skipif(not _BACKEND_MODULE_SERVICE.exists(), reason="backend repo yo'q")
 def test_backend_allowed_copy_matches_source():
-    """BACKEND_ALLOWED_FIELD_TYPES nusxasi real backend faylга mos."""
+    """BACKEND_ALLOWED_FIELD_TYPES nusxasi real backend faylga mos."""
     src = _BACKEND_MODULE_SERVICE.read_text(encoding="utf-8")
     block = re.search(r"ALLOWED_FIELD_TYPES\s*=\s*\{(.*?)\}", src, re.DOTALL)
     assert block, "backend'da ALLOWED_FIELD_TYPES topilmadi"

@@ -13,7 +13,6 @@ from pydantic import BaseModel, Field
 
 from ..base import Tool, ToolContext, ToolResult, tool
 
-
 PlanStatus = Literal["pending", "in_progress", "completed", "blocked"]
 
 

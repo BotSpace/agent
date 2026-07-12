@@ -6,7 +6,6 @@ appends the user-facing message — instead of looping into more tool calls.
 The comparison is against `pre_run_tokens_remaining` (already net of pre-run
 usage), NOT the absolute monthly limit.
 """
-# ruff: noqa: I001
 import asyncio
 
 from agent.graph.builder import GraphConfig, build_graph, initial_state
@@ -25,7 +24,7 @@ class _ScriptedLLM:
         self._usage = usage
         self.calls = 0
 
-    async def generate(self, messages, options) -> GenerateResult:  # noqa: ANN001, ARG002
+    async def generate(self, messages, options) -> GenerateResult:
         self.calls += 1
         # Always try to call a tool — proves the budget gate, not a natural
         # end_turn, is what stops the run.

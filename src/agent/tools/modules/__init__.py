@@ -92,7 +92,7 @@ async def modules_search(input: ModulesSearchInput, ctx: ToolContext) -> ToolRes
             kind=MODULE_KIND,
             top_k=input.top_k,
         )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         msg = str(e).lower()
         if "vector" in msg and ("not available" in msg or "control file" in msg):
             return ToolResult.ok(

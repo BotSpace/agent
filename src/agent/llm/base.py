@@ -10,7 +10,6 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, runtime_checkable
 
-
 Role = Literal["system", "user", "assistant", "tool"]
 
 
@@ -57,19 +56,19 @@ class Message:
     content: list[ContentPart] = field(default_factory=list)
 
     @classmethod
-    def user_text(cls, text: str) -> "Message":
+    def user_text(cls, text: str) -> Message:
         return cls(role="user", content=[TextPart(text=text)])
 
     @classmethod
-    def assistant_text(cls, text: str) -> "Message":
+    def assistant_text(cls, text: str) -> Message:
         return cls(role="assistant", content=[TextPart(text=text)])
 
     @classmethod
-    def system_text(cls, text: str) -> "Message":
+    def system_text(cls, text: str) -> Message:
         return cls(role="system", content=[TextPart(text=text)])
 
     @classmethod
-    def system_parts(cls, static: str, dynamic: str) -> "Message":
+    def system_parts(cls, static: str, dynamic: str) -> Message:
         """Two-block system message: cached static prefix + uncached dynamic suffix.
 
         The static block carries the cache_control breakpoint (set by the LLM
@@ -79,7 +78,7 @@ class Message:
         return cls(role="system", content=[TextPart(text=static), TextPart(text=dynamic)])
 
     @classmethod
-    def tool_result(cls, tool_use_id: str, content: str, is_error: bool = False) -> "Message":
+    def tool_result(cls, tool_use_id: str, content: str, is_error: bool = False) -> Message:
         return cls(
             role="tool",
             content=[ToolResultPart(tool_use_id=tool_use_id, content=content, is_error=is_error)],

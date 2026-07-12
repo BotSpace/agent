@@ -14,7 +14,6 @@ from ...runtime.worker import start_run_task, submit_resolution
 from ..deps import CurrentUser, get_current_user, get_store
 from ..sse import event_stream
 
-
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/projects/{project_id}/runs", tags=["runs"])

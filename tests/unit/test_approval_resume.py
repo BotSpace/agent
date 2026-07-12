@@ -12,7 +12,6 @@ stored in a declared `approvals` channel, consumed once.
 Uses a self-contained dummy always_approve tool (`test.wipe`) so the mechanism
 is exercised independently of any product tool.
 """
-# ruff: noqa: I001
 import asyncio
 
 from langgraph.types import Command
@@ -36,7 +35,7 @@ class _WipeInput(BaseModel):
     destructive=True,
     always_approve=True,
 )
-async def _wipe(input: _WipeInput, ctx: ToolContext) -> ToolResult:  # noqa: ARG001
+async def _wipe(input: _WipeInput, ctx: ToolContext) -> ToolResult:
     return ToolResult.ok(
         "wiped",
         state_updates={"working_flow": {"nodes": [], "edges": []}},
@@ -50,7 +49,7 @@ class _ScriptedLLM:
         self._turns = turns
         self.calls = 0
 
-    async def generate(self, messages, options) -> GenerateResult:  # noqa: ANN001, ARG002
+    async def generate(self, messages, options) -> GenerateResult:
         msg = self._turns[min(self.calls, len(self._turns) - 1)]
         self.calls += 1
         stop = "tool_use" if msg.tool_calls else "end_turn"

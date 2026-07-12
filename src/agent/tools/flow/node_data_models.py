@@ -26,11 +26,11 @@ from ...flow.manifest_compiler.loader import load_node_manifests
 
 __all__ = [
     "NODE_DATA_MODELS",
+    "LocalizedText",
     "get_data_model",
     "render_node_schema",
     "render_params_doc",
     "render_summary_table",
-    "LocalizedText",
 ]
 
 def _check_membership_addendum(model: type[BaseModel]) -> type[BaseModel]:

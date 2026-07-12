@@ -16,7 +16,6 @@ from pydantic import BaseModel
 from ...runtime.store import RunStore
 from ..deps import CurrentUser, get_current_user, get_store
 
-
 router = APIRouter(prefix="/projects/{project_id}/threads", tags=["threads"])
 
 

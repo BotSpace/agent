@@ -92,7 +92,7 @@ _active: dict[tuple[str | None, str | None], str] = {}
 
 
 def _now() -> str:
-    return datetime.datetime.utcnow().isoformat()
+    return datetime.datetime.now(datetime.UTC).isoformat()
 
 
 # ── current-trace pointer (in-memory) ──────────────────────────────────────────

@@ -13,8 +13,6 @@ from __future__ import annotations
 from typing import Any
 
 from ..config import get_settings
-
-
 from ..config import normalize_pg_url as _normalize
 
 
@@ -33,7 +31,7 @@ async def create_async_checkpointer(database_url: str | None = None) -> Any | No
     manager = AsyncPostgresSaver.from_conn_string(normalized)
     cp = await manager.__aenter__()
     try:
-        setattr(cp, "_manager", manager)
+        cp._manager = manager
     except Exception:
         pass
     await cp.setup()

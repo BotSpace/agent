@@ -29,7 +29,6 @@ import psycopg
 
 from ..config import get_settings
 
-
 _SCHEMA = """\
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE IF NOT EXISTS agent_memory (
@@ -125,7 +124,7 @@ class VectorStore:
             WHERE {' AND '.join(where)}
             ORDER BY embedding <=> %s
             LIMIT %s
-        """  # noqa: S608
+        """
         # rewrite param order: where..., search_vec, search_vec, top_k
         # Easier to rebuild query with placeholders:
         sql = f"""
@@ -135,7 +134,7 @@ class VectorStore:
             WHERE {' AND '.join(where)}
             ORDER BY embedding <=> %s::vector
             LIMIT %s
-        """  # noqa: S608
+        """
         params = []
         params.append(_vec_literal(embedding))  # similarity score
         params.append(project_id)
