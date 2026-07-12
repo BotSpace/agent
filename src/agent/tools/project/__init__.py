@@ -11,11 +11,8 @@ from ...integrations.backend import (
     format_backend_error,
     pagination_summary,
 )
-from ..base import Tool, ToolContext, ToolResult, tool
-
-
 from .._common import backend_from_ctx as _backend
-
+from ..base import Tool, ToolContext, ToolResult, tool
 
 # ── project.list ─────────────────────────────────────────────────────────────
 

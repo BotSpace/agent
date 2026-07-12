@@ -27,7 +27,7 @@ async def event_stream(
         while True:
             try:
                 ev = await asyncio.wait_for(q.get(), timeout=heartbeat_seconds)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 yield ": heartbeat\n\n"
                 continue
             if ev is None:

@@ -61,7 +61,6 @@ from ..mongo_log import (
     log_tool_result,
 )
 
-
 _SCHEMA = """\
 CREATE TABLE IF NOT EXISTS agent_runs (
     request_id      TEXT PRIMARY KEY,
@@ -476,7 +475,7 @@ class RunStore:
                     }
                 )
             return threads
-        except Exception:  # noqa: BLE001
+        except Exception:
             return []
 
     async def delete_thread(
@@ -510,7 +509,7 @@ class RunStore:
                     deleted = cur.rowcount
                 await conn.commit()
             return int(deleted or 0)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return 0
 
     async def delete_all_threads(
@@ -540,7 +539,7 @@ class RunStore:
                     deleted = cur.rowcount
                 await conn.commit()
             return int(deleted or 0)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return 0
 
     async def get_thread_turns(
@@ -623,7 +622,7 @@ class RunStore:
 
                 # 2) walk events in seq order: assistant text + tool call/result
                 tool_results: dict[str, dict[str, Any]] = {}
-                for seq, etype, payload in events_by_req.get(req, []):
+                for _seq, etype, payload in events_by_req.get(req, []):
                     if etype == "tool_result":
                         tid = payload.get("tool_call_id")
                         if tid is not None:
@@ -662,7 +661,7 @@ class RunStore:
                             }
                         )
             return turns
-        except Exception:  # noqa: BLE001
+        except Exception:
             return []
 
     # ── messages (history) ─────────────────────────────────────────────
@@ -752,7 +751,7 @@ class ResolutionStore:
             finally:
                 client.close()
             return True
-        except Exception:  # noqa: BLE001
+        except Exception:
             self._disabled = True
             return False
 
@@ -782,8 +781,8 @@ def get_resolution_store() -> ResolutionStore | None:
     available (import fails) — the worker then relies on the in-process future
     only. Keeps unit tests (no ``redis`` installed) on the in-memory path."""
     try:
-        import redis  # noqa: F401
+        import redis
         import redis.asyncio  # noqa: F401
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
     return ResolutionStore(get_settings().redis_url)

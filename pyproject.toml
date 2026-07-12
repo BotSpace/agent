@@ -80,7 +80,14 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "RUF"]
-ignore = ["E501"]
+ignore = [
+  "B008",   # FastAPI's Depends(...) defaults are the framework's canonical DI API.
+  "E402",   # Several modules intentionally initialize optional imports before local imports.
+  "E501",
+  "RUF001", # Uzbek/Russian prose legitimately uses Unicode punctuation and letters.
+  "RUF002",
+  "UP046",  # Keep Python 3.12-compatible Generic syntax (PEP 695 migration is separate).
+]
 
 [tool.mypy]
 python_version = "3.12"

@@ -19,7 +19,6 @@ from .graph import GraphConfig, build_graph, initial_state
 from .llm import ModelRoles, get_client
 from .tools import build_default_registry, build_main_registry
 
-
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 
 

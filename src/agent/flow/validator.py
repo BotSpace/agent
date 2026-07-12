@@ -5,7 +5,14 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from .manifest_compiler.node_catalog import (NODE_TYPES, acc_port_accepts, button_edge_types, get_node_spec, is_trigger, state_saving_types)
+from .manifest_compiler.node_catalog import (
+    NODE_TYPES,
+    acc_port_accepts,
+    button_edge_types,
+    get_node_spec,
+    is_trigger,
+    state_saving_types,
+)
 from .schema import FlowDocument
 
 

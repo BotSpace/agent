@@ -32,10 +32,11 @@ _COL_NAME = "conversations"
 # Module-level lazy singleton
 _client: Any = None
 _col: Any = None
+_background_tasks: set[asyncio.Task[Any]] = set()
 
 
 def _now() -> str:
-    return datetime.datetime.utcnow().isoformat()
+    return datetime.datetime.now(datetime.UTC).isoformat()
 
 
 def _get_col() -> Any:
@@ -62,9 +63,15 @@ def _fire(coro: Any) -> None:
     """Schedule a coroutine as a fire-and-forget task (never blocks caller)."""
     try:
         loop = asyncio.get_running_loop()
-        loop.create_task(coro)
+        task = loop.create_task(coro)
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
     except RuntimeError:
-        pass
+        # Avoid "coroutine was never awaited" when logging is called outside
+        # an event loop (for example during a synchronous startup failure).
+        close = getattr(coro, "close", None)
+        if close is not None:
+            close()
 
 
 async def _safe(coro: Any) -> None:

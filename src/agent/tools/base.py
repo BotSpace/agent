@@ -27,7 +27,6 @@ from pydantic import BaseModel, ValidationError
 
 from ..llm.base import ToolSpec
 
-
 InputModel = TypeVar("InputModel", bound=BaseModel)
 
 
@@ -63,11 +62,11 @@ class ToolResult:
     (list_node_types, flow.get, cms.find/get_document, ...)."""
 
     @classmethod
-    def ok(cls, content: str, **kwargs: Any) -> "ToolResult":
+    def ok(cls, content: str, **kwargs: Any) -> ToolResult:
         return cls(content=content, is_error=False, **kwargs)
 
     @classmethod
-    def error(cls, content: str, **kwargs: Any) -> "ToolResult":
+    def error(cls, content: str, **kwargs: Any) -> ToolResult:
         return cls(content=content, is_error=True, **kwargs)
 
 
@@ -209,7 +208,6 @@ def _coerce_stringified_json(
     ularning qiymati `{...}` yoki `[...]` ko'rinishidagi string bo'lsa,
     JSON parse qiladi. Boshqa string'lar tegmaydi.
     """
-    import json
 
     if not isinstance(raw_args, dict):
         return raw_args
@@ -219,7 +217,7 @@ def _coerce_stringified_json(
         return raw_args
 
     out = dict(raw_args)
-    for key, info in fields.items():
+    for key, _info in fields.items():
         value = out.get(key)
         if not isinstance(value, str):
             continue

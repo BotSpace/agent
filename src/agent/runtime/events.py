@@ -6,7 +6,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-
 EventType = Literal[
     "run_started",
     "thinking_delta",

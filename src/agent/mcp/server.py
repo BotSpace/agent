@@ -103,7 +103,7 @@ _DOCS_GUIDE = "docs_guide"
 # (flow_simulate, flow_export, ...). Ular uchun alohida MCP handler YO'Q.
 
 # Transparent session-restore notice (#5) — prepended to the result text.
-_RESTORE_NOTICE = "ℹ️ Sessiya avtomatik tiklandi (loyiha {pid})"  # noqa: RUF001
+_RESTORE_NOTICE = "ℹ️ Sessiya avtomatik tiklandi (loyiha {pid})"
 
 # Registry tool'lar — bajarilishidan OLDIN avtomatik undo snapshot olinadi (#11).
 # flow.import / flow.rollback ham working_flow'ni butunlay almashtiradi — shu

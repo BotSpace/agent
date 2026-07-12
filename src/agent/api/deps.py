@@ -83,7 +83,7 @@ async def get_current_user(
         # BackendClient refreshes the access on its first 401. Without a valid
         # refresh, the session really is over → 401.
         if not refresh_header:
-            raise HTTPException(status_code=401, detail="Token expired")
+            raise HTTPException(status_code=401, detail="Token expired") from None
         try:
             _decode(refresh_header)  # validates signature + exp
             claims = _decode(creds.credentials, verify_exp=False)

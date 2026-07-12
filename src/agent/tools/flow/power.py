@@ -899,7 +899,7 @@ def _fmt_test_results(agg: dict[str, Any]) -> str:
     """'✅ 3/4 test o'tdi; ❌ 'referral': step 2 — ...'"""
     total = agg.get("total", 0)
     passed = agg.get("passed", 0)
-    icon = "✅" if passed == total and total else ("❌" if total else "ℹ️")  # noqa: RUF001
+    icon = "✅" if passed == total and total else ("❌" if total else "ℹ️")
     parts = [f"{icon} {passed}/{total} test o'tdi"]
     for r in agg.get("results", []):
         if r.get("ok"):
