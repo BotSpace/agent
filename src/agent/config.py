@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     max_output_tokens: int = Field(default=16_000, alias="AGENT_MAX_OUTPUT_TOKENS")
     max_tool_calls: int = Field(default=80, alias="AGENT_MAX_TOOL_CALLS")
     max_wall_seconds: int = Field(default=900, alias="AGENT_MAX_WALL_SECONDS")
+    # Hard per-run token backstop: even when the user's monthly budget can't be
+    # read (usage endpoint 401/down), a runaway loop must stop. Checked on every
+    # LLM turn against the run's cumulative tokens.
+    max_run_tokens: int = Field(default=2_000_000, alias="AGENT_MAX_RUN_TOKENS")
 
     # ── persistence ─────────────────────────────────────────────────────
     database_url: str = Field(

@@ -35,12 +35,13 @@ class _ScriptedLLM:
         return GenerateResult(message=msg, stop_reason="tool_use", usage=self._usage)
 
 
-def _build(usage: Usage):
+def _build(usage: Usage, *, max_run_tokens: int = 2_000_000):
     cfg = GraphConfig(
         llm=_ScriptedLLM(usage),
         registry=__import__("agent.tools", fromlist=["build_default_registry"]).build_default_registry(),
         models=ModelRoles(planner="m", executor="m", critic="m", embedding="m"),
         approve_destructive=False,
+        max_run_tokens=max_run_tokens,
     )
     return build_graph(cfg)
 
@@ -96,9 +97,10 @@ def test_under_budget_does_not_trip():
         assert not result.get("limit_exceeded")
 
 
-def test_none_remaining_fails_open():
-    # pre_run_tokens_remaining=None → enforcement disabled even with huge usage.
-    graph = _build(Usage(input_tokens=10_000, output_tokens=10_000))
+def test_none_remaining_under_backstop_does_not_trip():
+    # pre_run_tokens_remaining=None → falls back to the hard per-run backstop.
+    # Well under it → the run proceeds (no premature stop).
+    graph = _build(Usage(input_tokens=1_000, output_tokens=1_000), max_run_tokens=2_000_000)
     state = initial_state(
         run_id="r", project_id="1185", user_id="u", thread_id="t3",
         user_prompt="do something",
@@ -111,3 +113,17 @@ def test_none_remaining_fails_open():
         result = None
     if result is not None:
         assert not result.get("limit_exceeded")
+
+
+def test_none_remaining_hits_hard_backstop():
+    # Budget unreadable (None) but a runaway loop must still stop at the hard
+    # per-run backstop. First turn burns 60+50=110 > cap 100 → limit_exceeded.
+    graph = _build(Usage(input_tokens=60, output_tokens=50), max_run_tokens=100)
+    state = initial_state(
+        run_id="r", project_id="1185", user_id="u", thread_id="t4",
+        user_prompt="do something",
+    )
+    state["pre_run_tokens_remaining"] = None
+    config = {"configurable": {"thread_id": "t4"}, "recursion_limit": 50}
+    result = asyncio.run(graph.ainvoke(state, config=config))
+    assert result.get("limit_exceeded") is True

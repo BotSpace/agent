@@ -141,6 +141,7 @@ async def run_agent(
             models=models,
             max_tokens=s.max_output_tokens,
             max_tool_calls=s.max_tool_calls,
+            max_run_tokens=s.max_run_tokens,
             emit=emit,
             services={},
             approve_destructive=True,

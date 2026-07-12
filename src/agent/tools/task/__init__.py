@@ -313,6 +313,7 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
         registry=sub_registry,
         models=sub_roles,
         max_tokens=s.max_output_tokens,
+        max_run_tokens=s.max_run_tokens,
         emit=_wrap_emit,
         services=sub_services,
         # Sub-agent's OWN spec prompt is the system message — NOT the dispatcher
