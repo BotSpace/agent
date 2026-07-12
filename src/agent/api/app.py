@@ -237,8 +237,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         from ..integrations.backend import get_backend_client
 
         backend = get_backend_client()
-        plan_usage = await backend.subscription_usage(auth_claims=user.claims)
-        usage = plan_usage.get("ai_token_usage") or {}
+        try:
+            plan_usage = await backend.subscription_usage(auth_claims=user.claims)
+            usage = plan_usage.get("ai_token_usage") or {}
+        except Exception as exc:  # noqa: BLE001
+            # Never 500 the usage widget on a backend hiccup — return unknown.
+            logger.warning("usage fetch failed: %s", exc)
+            usage = {}
         return {
             "user_id": user.user_id,
             "limit": usage.get("limit", 0),
