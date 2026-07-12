@@ -24,15 +24,29 @@ _BACKEND_PATH = "/api/v1/shared/manifest/builtin-nodes/"
 
 
 def _fetch_from_backend() -> list:
+    return _fetch_payload()["manifests"]
+
+
+@lru_cache(maxsize=1)
+def _fetch_payload() -> dict:
+    """Backend builtin-nodes javobini (manifests + categories) bir marta oladi."""
     from ...config import get_settings
 
     url = get_settings().backend_base_url.rstrip("/") + _BACKEND_PATH
-    with urllib.request.urlopen(url, timeout=15) as resp:
+    with urllib.request.urlopen(url, timeout=15) as resp:  # noqa: S310 (trusted internal URL)
         payload = json.loads(resp.read())
-    manifests = payload.get("manifests") if isinstance(payload, dict) else payload
-    if not isinstance(manifests, list):
+    if isinstance(payload, list):  # bare list (eski shakl)
+        payload = {"manifests": payload}
+    if not isinstance(payload, dict) or not isinstance(payload.get("manifests"), list):
         raise RuntimeError(f"backend manifest javobi noto'g'ri: {url}")
-    return manifests
+    return payload
+
+
+@lru_cache(maxsize=1)
+def load_node_category_docs() -> dict[str, dict]:
+    """Kategoriya → {label, doc} — backend node_categories.json'dan. Bo'lmasa {}."""
+    cats = _fetch_payload().get("categories")
+    return cats if isinstance(cats, dict) else {}
 
 
 @lru_cache(maxsize=1)

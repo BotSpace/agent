@@ -18,11 +18,19 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 
 from .compiler import compile_node_model
-from .loader import load_node_manifests
+from .loader import load_node_category_docs, load_node_manifests
 
 _CATEGORY_ORDER = (
     "trigger", "send", "edit", "flow_control", "data",
-    "integration", "interaction", "subflow", "ai",
+    "integration", "interaction", "subflow", "payment", "ai",
+)
+
+# Categories whose node list is ALWAYS spelled out in the cached system prompt
+# (the core building blocks — few, common). Every OTHER category is listed by
+# NAME + count only; the agent pulls that category's nodes on demand via
+# flow.list_node_types(category="..."). This keeps the always-sent catalog tiny.
+_BASE_CATEGORIES = frozenset(
+    {"trigger", "send", "edit", "flow_control", "interaction"}
 )
 
 
@@ -181,15 +189,30 @@ def render_compact_catalog() -> str:
     for spec in _node_types().values():
         if spec.category in buckets:
             buckets[spec.category].append(spec)
+    cat_docs = load_node_category_docs()
 
     lines: list[str] = [
         "## Node tiplari kataloqi\n"
-        "Har qatorda: node nomi + qisqacha nima qilishi. Maydonlar (params) va "
-        "to'liq yo'riqnoma uchun `flow.list_node_types(type=...)` chaqir.\n\n"
+        "Asosiy (base) kategoriyalar to'liq keltirilgan (nom + nima qilishi). "
+        "Boshqa kategoriyalar faqat NOMI bilan — ichidagi node'larni kerak bo'lganda "
+        "`flow.list_node_types(category=\"<nom>\")` bilan yukla. Bitta node maydonlari "
+        "uchun `flow.list_node_types(type=...)`.\n\n"
     ]
     for cat in _CATEGORY_ORDER:
         items = buckets[cat]
         if not items:
+            continue
+        if cat not in _BASE_CATEGORIES:
+            # Specialized category — name + count + a short doc (from the backend
+            # manifest's node_categories) only; nodes loaded on demand so their
+            # summaries don't sit in every request's prompt.
+            doc = (cat_docs.get(cat) or {}).get("doc", "")
+            lines.append(
+                f"### {cat.upper()} ({len(items)} node) — "
+                f"`flow.list_node_types(category=\"{cat}\")` bilan yukla\n"
+            )
+            if doc:
+                lines.append(f"  {doc}\n")
             continue
         lines.append(f"### {cat.upper()}\n")
         for spec in items:
