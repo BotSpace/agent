@@ -78,7 +78,7 @@ async def test_missing_or_malformed_header():
 def _make_access(user_id: int, exp_in: int = 3600) -> str:
     return jwt.encode(
         {"user": {"id": user_id}, "exp": int(time.time()) + exp_in},
-        "irrelevant-not-verified",
+        "irrelevant-not-verified-but-long-enough-for-hs256",
         algorithm="HS256",
     )
 
