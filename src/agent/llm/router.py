@@ -63,7 +63,7 @@ class ModelRoles:
         self.embedding = embedding
 
     @classmethod
-    def from_settings(cls, settings: Settings | None = None) -> "ModelRoles":
+    def from_settings(cls, settings: Settings | None = None) -> ModelRoles:
         s = settings or get_settings()
         return cls(
             planner=s.model_planner,

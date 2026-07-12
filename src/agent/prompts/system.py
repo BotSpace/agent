@@ -30,8 +30,8 @@ from pathlib import Path
 from typing import Any
 
 from ..flow.manifest_compiler.node_catalog import render_compact_catalog
-from .loader import load_prompt
 from ..llm.base import Message
+from .loader import load_prompt
 
 logger = logging.getLogger(__name__)
 

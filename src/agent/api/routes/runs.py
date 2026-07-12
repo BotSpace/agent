@@ -13,7 +13,6 @@ from ...runtime.worker import start_run_task, submit_resolution
 from ..deps import CurrentUser, get_current_user, get_store
 from ..sse import event_stream
 
-
 router = APIRouter(prefix="/projects/{project_id}/runs", tags=["runs"])
 
 

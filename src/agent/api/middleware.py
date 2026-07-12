@@ -23,7 +23,7 @@ _NOISE_PREFIXES = ("/health", "/metrics", "/.well-known")
 # Additionally exempt from RATE LIMITING: the MCP constructor surface makes many
 # legitimate high-frequency tool calls while a user builds a bot in the
 # dashboard — limiting it would break the builder. It is still access-logged.
-_RATE_EXEMPT_PREFIXES = _NOISE_PREFIXES + ("/mcp",)
+_RATE_EXEMPT_PREFIXES = (*_NOISE_PREFIXES, "/mcp")
 
 
 def _client_ip(request: Request) -> str:
