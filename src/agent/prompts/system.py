@@ -177,21 +177,29 @@ def build_dynamic_block(state: dict[str, Any] | None = None) -> str:
             lines.append("- Available collections: " + "; ".join(rendered))
     module_nodes = state.get("module_nodes") or []
     if module_nodes:
-        rendered_m: list[str] = []
+        # Each ENABLED module is shown as its OWN category (name + node count)
+        # only — its node types/schemas are NOT dumped here. The agent loads a
+        # module's nodes on demand with flow.list_node_types(module="<slug>").
+        by_module: dict[str, dict[str, Any]] = {}
         for m in module_nodes:
             if not isinstance(m, dict) or not m.get("type"):
                 continue
-            tag = " [trigger]" if m.get("is_trigger") else ""
-            rendered_m.append(f"{m['type']}{tag}")
-        if rendered_m:
+            slug = str(m.get("module") or m["type"].split(".", 1)[0])
+            entry = by_module.setdefault(slug, {"name": m.get("module_name") or slug, "n": 0})
+            entry["n"] += 1
+        if by_module:
+            mod_lines = "; ".join(
+                f'{e["name"]} ({e["n"]} node, module="{slug}")'
+                for slug, e in by_module.items()
+            )
             lines.append(
-                "- Module node types (per-project, ENABLED modules — ONLY these are "
-                "usable; a non-enabled module's nodes are unknown): "
-                + "; ".join(rendered_m)
-                + ". Add with flow.add_node(type='moduleId.NodeName'); module "
+                "- Enabled MODULES (each is a separate category; nodes NOT loaded here — "
+                "fetch a module's nodes on demand with "
+                "flow.list_node_types(module=\"<slug>\")): " + mod_lines
+                + ". Add with flow.add_node(type='moduleSlug.NodeName'); module "
                 "credential fields take a credential_id of the manifest type_key. "
-                "Need a capability NOT in this list? modules.search → ask the user → "
-                "modules.enable → reload session. See docs_guide(topic='modules')."
+                "Need a capability NO enabled module covers? modules.search → ask the "
+                "user → modules.enable → reload session."
             )
     else:
         # No modules enabled for this project: nudge the discovery path so the

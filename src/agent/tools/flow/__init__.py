@@ -698,6 +698,14 @@ class FlowListNodeTypesInput(BaseModel):
             '["SendTextMessageNode", "IfConditionNode"].'
         ),
     )
+    module: str | None = Field(
+        default=None,
+        description=(
+            "Enabled MODULE slug — o'sha modulning BARCHA node'lari (schema bilan) "
+            "qaytadi. Katalogda modullar alohida kategoriya bo'lib ko'rinadi; "
+            "default'da ularning node'lari yuklanmaydi, shu bilan ol."
+        ),
+    )
     type: str | None = Field(
         default=None,
         description="Bitta node turi — to'liq maydon schema'si. (`types=[type]` qisqartmasi.)",
@@ -727,7 +735,10 @@ _MAX_SCHEMA_DUMP = 12
         "node(s) when you need the detailed field schema. Three ways to fetch: "
         "`query=<text>` searches name+summary+doc and returns full schema for every match "
         "(ToolSearch-style); `types=[A, B, ...]` fetches several named types at once; "
-        "`type=<Name>` a single type. `category=<name>` filters/overviews a category."
+        "`type=<Name>` a single type. `category=<name>` filters/overviews a category "
+        "(payment/ai/... — base ones are already in the catalog). `module=<slug>` "
+        "returns all nodes of one enabled module (each module is its own category, "
+        "not loaded by default)."
     ),
     input_model=FlowListNodeTypesInput,
 )
@@ -738,10 +749,13 @@ async def flow_list_node_types(input: FlowListNodeTypesInput, ctx: ToolContext) 
     if input.type:
         want.add(input.type)
     query = (input.query or "").strip()
-    # focused = aniq turlar yoki query berilgan → to'liq schema'ni content'da ko'rsatamiz
-    focused = bool(want or query)
+    module_filter = (input.module or "").strip().lower()
+    # focused = aniq turlar / query / module berilgan → to'liq schema content'da
+    focused = bool(want or query or module_filter)
 
     def _keep(node_type: str, *doc_fields: str | None, category: str | None) -> bool:
+        if module_filter:
+            return False  # module=... → only that module's nodes (built-ins excluded)
         if want:
             return node_type in want
         if query:
@@ -779,7 +793,12 @@ async def flow_list_node_types(input: FlowListNodeTypesInput, ctx: ToolContext) 
     for mod in _module_nodes(ctx):
         if not isinstance(mod, dict) or not mod.get("type"):
             continue
-        if not _keep(
+        if module_filter:
+            slug = str(mod.get("module") or mod["type"].split(".", 1)[0]).lower()
+            mod_name = str(mod.get("module_name") or "").lower()
+            if module_filter not in (slug, mod_name):
+                continue
+        elif not _keep(
             mod["type"], mod.get("description"), category=mod.get("category") or "integration"
         ):
             continue
