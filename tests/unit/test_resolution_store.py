@@ -1,9 +1,8 @@
 """Faza 2.4 — cross-replica interrupt resolution.
 
-Redis isn't installed in the unit-test env, so ``get_resolution_store()`` returns
-None and the worker falls back to the in-process future. These tests pin that
-fallback contract (the graph's resolve/resume API must keep working) and the
-Redis-backed store's degrade-to-disabled behaviour.
+Redis is an application dependency. These tests pin the in-process fallback
+contract and the Redis-backed store's degrade-to-disabled behaviour without
+making assertions about which packages happen to be installed in the runner.
 """
 
 import asyncio
@@ -14,13 +13,16 @@ from agent.runtime import worker
 from agent.runtime.store import ResolutionStore, get_resolution_store
 
 
-def test_resolution_store_absent_without_redis():
-    # redis not installed → in-memory fallback (None store).
-    assert get_resolution_store() is None
+def test_resolution_store_is_configured_when_redis_dependency_is_installed():
+    assert isinstance(get_resolution_store(), ResolutionStore)
 
 
 def test_submit_returns_false_when_no_local_waiter():
-    # No local future + no Redis → nothing to resolve → 409 signalled to route.
+    # Force the fallback path: no local future + no working Redis means there
+    # is nothing to resolve and the route can signal 409.
+    store = get_resolution_store()
+    assert store is not None
+    store._disabled = True
     assert worker.submit_resolution("no-such-request", {"approved": True}) is False
 
 
