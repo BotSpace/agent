@@ -113,8 +113,8 @@ async def test_tool_does_not_unwrap_genuine_strings():
 
 
 def test_sleep_tool_is_agent_only():
-    from agent.tools import build_default_registry, build_main_registry
     from agent.mcp.server import exported_tools
+    from agent.tools import build_default_registry, build_main_registry
 
     sleep = build_default_registry().get("sleep")
     assert sleep is not None
@@ -132,11 +132,11 @@ def test_surface_flags_default_and_reverse():
         x: int
 
     @tool(name="both", description="d", input_model=_In2)
-    async def _both(input: _In2, ctx: ToolContext) -> ToolResult:  # noqa: ARG001
+    async def _both(input: _In2, ctx: ToolContext) -> ToolResult:
         return ToolResult.ok("ok")
 
     @tool(name="mcp.only", description="d", input_model=_In2, expose_to_agent=False)
-    async def _mcp_only(input: _In2, ctx: ToolContext) -> ToolResult:  # noqa: ARG001
+    async def _mcp_only(input: _In2, ctx: ToolContext) -> ToolResult:
         return ToolResult.ok("ok")
 
     assert _both.expose_to_agent and _both.expose_to_mcp  # default both
