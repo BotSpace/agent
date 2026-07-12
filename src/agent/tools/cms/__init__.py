@@ -185,6 +185,14 @@ class CreateCollectionInput(BaseModel):
     project_id: str | int | None = None
 
 
+def _slugify(name: str) -> str:
+    """snake_case/erkin nomdan collection slug (backend `slug` majburiy)."""
+    import re
+
+    s = re.sub(r"[^a-z0-9_]+", "_", name.strip().lower()).strip("_")
+    return s or "collection"
+
+
 @tool(
     name="cms.create_collection",
     description=(
@@ -203,21 +211,41 @@ async def create_collection(input: CreateCollectionInput, ctx: ToolContext) -> T
     pid = resolve_project_id(ctx, input.project_id)
     if pid is None:
         return ToolResult.error("No project_id.")
-    body = input.model_dump(exclude={"project_id"})
-    # primary_field=None bo'lsa body'dan tushirib qoldiramiz (backend default'i
-    # buzilmasin); berilgan bo'lsa backend serializer'ga uzatiladi.
-    if body.get("primary_field") is None:
-        body.pop("primary_field", None)
+    # Go backend: create takes {name, slug(required), description, primary_field};
+    # fields are added SEPARATELY. Derive slug from name and add each field after.
+    slug = _slugify(input.name)
+    create_body: dict[str, Any] = {"name": input.name, "slug": slug}
+    if input.description:
+        create_body["description"] = input.description
+    if input.primary_field is not None:
+        create_body["primary_field"] = input.primary_field
     try:
-        c = await _backend(ctx).cms_create_collection(pid, body, auth_claims=ctx.state.get("auth_claims"))
+        c = await _backend(ctx).cms_create_collection(pid, create_body, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
         return _error(e)
-    # #6 — surface the backend-assigned id explicitly (needed for relations).
     new_id = c.get("id") if isinstance(c, dict) else None
+
+    # Add the initial schema fields (backend client remaps kind→type).
+    added: list[str] = []
+    failed: list[str] = []
+    for f in input.fields:
+        try:
+            await _backend(ctx).cms_add_field(
+                pid, slug, f.model_dump(), auth_claims=ctx.state.get("auth_claims")
+            )
+            added.append(f.name)
+        except BackendError as e:
+            failed.append(f"{f.name}: {e.human_message()}")
+
+    msg = f"Collection `{c.get('name')}` created (id={new_id}, slug={slug})."
+    if added:
+        msg += f" Fields added: {', '.join(added)}."
+    if failed:
+        msg += f" ⚠️ Field FAILED: {'; '.join(failed)}."
+    msg += " Use the id as `relation_collection` when linking from another collection."
     return ToolResult.ok(
-        f"Collection `{c.get('name')}` created (id={new_id}). "
-        "Use this id as `relation_collection` when linking from another collection.",
-        data={"collection": c, "id": new_id},
+        msg,
+        data={"collection": c, "id": new_id, "fields_added": added, "fields_failed": failed},
     )
 
 
