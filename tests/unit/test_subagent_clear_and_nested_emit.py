@@ -32,52 +32,47 @@ _handler = _task_run_tool.handler
 # ── A. build discipline (main-prompt guarantees) ────────────────────────────
 
 
-def test_prompt_guards_against_wiping_existing_flow_on_save_deploy():
+def test_prompt_guards_against_wiping_existing_flow():
     p = STATIC_SYSTEM_BLOCK
-    # The "don't wipe an existing flow" guard must exist.
-    assert "Mavjud flow'ni O'CHIRMA" in p
-    # save / deploy / ishga tushir must be named as never-wipe cases.
-    for word in ("saqla", "deploy", "ishga tushir"):
-        assert word in p, f"wipe-guard missing the {word!r} case"
-    # The removed flow.clear tool must not be referenced anywhere.
+    # The "don't wipe an existing flow" guard must exist, and the removed
+    # flow.clear tool must not be referenced anywhere.
+    assert "O'CHIRMA" in p
     assert "flow.clear" not in p
 
 
-def test_prompt_template_first_is_conditional_on_empty_flow():
+def test_prompt_teaches_lazy_schema_loading():
+    # Core of the token-saving design: fetch a node's full schema on demand.
     p = STATIC_SYSTEM_BLOCK
-    assert "working_flow BO'SH" in p
-    assert "template QIDIRMA" in p
+    assert "flow.list_node_types" in p
+    assert "flow.add_node" in p
 
 
 def test_prompt_teaches_collections_first():
     """Dynamic/list data must go through a CMS collection the agent creates
     itself, never hardcoded into the flow."""
     p = STATIC_SYSTEM_BLOCK
-    assert "collections-first" in p
-    assert "Dinamik ma'lumot" in p
+    assert "HARDCODE QILMA" in p
+    assert "cms." in p
     # Collections are created by the main agent itself now (no cms-manager).
     assert "cms-manager" not in p
 
 
-def test_prompt_ai_provider_ollama_is_cloud():
+def test_prompt_ai_provider_ollama_default():
     p = STATIC_SYSTEM_BLOCK
-    assert "flow.add_ai_ollama_provider" in p
-    # base_url moved to the credential — the agent must not set baseURL anymore.
+    # Default provider = Ollama with the gpt-oss:120b model; baseURL not set.
+    assert "Ollama" in p
+    assert "gpt-oss:120b" in p
     assert "https://ollama.com/v1" not in p
     assert "localhost:11434" not in p
-    assert "http://localhost" not in p
-    for tool in ("flow.add_ai_openai_provider", "flow.add_ai_gemini_provider",
-                 "flow.add_ai_anthropic_provider"):
-        assert tool in p
+    # Accessory wiring ports for the AI agent are taught.
     assert "acc:ai_model" in p
     assert "acc:ai_tool" in p
 
 
-def test_prompt_asks_user_for_llm_choice():
+def test_prompt_asks_user_for_credentials():
     p = STATIC_SYSTEM_BLOCK
     assert "ask_user" in p
-    assert "Ollama" in p and ("bepul" in p or "tavsiya" in p)
-    assert "apiKey" in p
+    assert "credentials.list" in p or "credential_id" in p
 
 
 def test_analyzer_spec_has_no_dead_budget_fields():

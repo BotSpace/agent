@@ -1162,9 +1162,18 @@ async def flow_save(input: FlowSaveInput, ctx: ToolContext) -> ToolResult:
 
 
 def build_flow_tools() -> list[Tool]:
+    # LAZY schema loading: drop the ~23 typed `flow.add_*` tools (each carried a
+    # full per-node JSON schema → ~16K tokens/request). All node types go through
+    # the generic `flow.add_node`; the agent fetches a type's schema on demand
+    # with `flow.list_node_types`. The connect_*/ask_* helpers from
+    # build_flow_action_tools are kept.
+    action_tools = [
+        t for t in build_flow_action_tools()
+        if not (t.name.startswith("flow.add_") and t.name != "flow.add_node")
+    ]
     return [
         flow_get,
-        *build_flow_action_tools(),
+        *action_tools,
         *build_flow_template_tools(),
         flow_add_node,
         flow_remove_node,

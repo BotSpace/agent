@@ -1,13 +1,11 @@
-"""flow.add_edit_or_send typed tool mavjudligi va MCP'ga chiqishi."""
+"""Typed flow.add_* tools were removed (lazy schema loading) — the node types
+they covered now go through the generic flow.add_node."""
 
 from agent.tools.flow import build_flow_tools
 
 
-def test_edit_or_send_typed_tool_registered():
+def test_typed_message_add_tools_removed():
     tools = {t.name: t for t in build_flow_tools()}
-    assert "flow.add_edit_or_send" in tools
-    desc = tools["flow.add_edit_or_send"].description
-    assert "PREFERRED" in desc
-
-    send_desc = tools["flow.add_send_text_message"].description
-    assert "ONLY" in send_desc  # reply keyboard cheklovi aytilgan
+    assert "flow.add_node" in tools
+    assert "flow.add_edit_or_send" not in tools
+    assert "flow.add_send_text_message" not in tools

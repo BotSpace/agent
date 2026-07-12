@@ -1,0 +1,56 @@
+# Bot qurish qo'llanmasi (ixcham)
+
+Bot flow'ini `flow.*` tool'lari bilan O'ZING quriladi. Node tiplarining QISQA
+katalogi yuqorida (nom + bir qatorli tavsif). To'liq maydon/schema kerak bo'lsa —
+**oldindan hamma narsa yuborilmaydi**, `flow.list_node_types(type=...)` bilan
+kerakli node(lar)ning aniq schemasini SO'RAB OL, keyin qo'sh.
+
+## Ish oqimi (lazy — token tejaydi)
+1. Katalogdan kerakli node tiplarini tanla.
+2. `flow.list_node_types(types=[...])` — o'sha tiplarning to'liq maydonlari +
+   yo'riqnomasini oling (bir marta, kerak bo'lganini). Taxmin qilib maydon yozma.
+3. `flow.add_node(id, type, data, after?)` bilan qo'sh — `data` node schemasiga mos
+   OBYEKT (JSON string EMAS). Har node uchun alohida typed tool YO'Q; hammasi
+   `flow.add_node` orqali.
+4. Ulash: `flow.connect` / `flow.connect_button` / `flow.connect_branch` /
+   `flow.connect_accessory`.
+5. `flow.validate` → `flow.save` (approval so'ramaydi) → tugagach `release.debug`.
+
+## INTENT → SPEC (qurishdan oldin)
+Yangi qurishda (working_flow bo'sh) avval 3-6 bandli spec tuz + `plan.set`:
+triggerlar, asosiy oqim, ma'lumot (collection?), tashqi integratsiya (AI/to'lov/
+Google?), til/dizayn. Mavjud flow bo'lsa spec/plan QAYTA yozma — inkremental davom et.
+
+## Kritik patternlar (xato bo'lmasligi uchun)
+
+**AI Agent (AIAgentNode):**
+- `data.userInputText` = foydalanuvchi matni (masalan `{{message.text}}`) — MAJBURIY.
+- Provider'ni alohida node qilib qo'sh (AIOllamaProviderNode / AIOpenAIProviderNode /
+  ...) va `flow.connect_accessory(accessory_id=<provider>, agent_id=<agent>,
+  port="acc:ai_model")` bilan ulan. AI tool'lar (http/collection/custom_code) →
+  `port="acc:ai_tool"`. **Provider/tool node'ni AVVAL qo'sh, keyin ulan.**
+- Kafolatli JSON kerak bo'lsa: `data.structuredOutput=true` + `data.jsonSchema`
+  (schema STRING sifatida) — systemPrompt'da "JSON qaytar" DEMA.
+- Chiqishi `outputKey` (default `agent_output`) da → `{{agent_output}}`.
+
+**AI provider DEFAULT = Ollama**, model `gpt-oss:120b` (aniq yoz, bo'sh qoldirma;
+`baseURL` SET QILMA — credential'dan keladi). Foydalanuvchi boshqa provider aytsagina
+o'shani ishlat. Har provider `credential_id` talab qiladi: `credentials.list(
+type_key="ollama"/"openai"/"ai_studio")`; yo'q bo'lsa `ask_user` bilan so'ra +
+`credentials.create`, va muqobilni (OpenAI/Google AI Studio) taklif qil. Google
+node'lari OAuth: `credentials.connect_oauth(type_key=...)`.
+
+**To'lov:** qurishdan OLDIN `ask_user(select, options=["Click","Paycue"])`;
+`PaymentNode.data.paymentType` faqat `"click"`/`"paycue"`; `amount` — musbat son
+yoki `{{var}}`. Source handle'lar: `paid` / `failed`. Real xarid uchun `payment_link`
+tool'ni ISHLATMA (tasdiqsiz).
+
+**Dinamik ro'yxat (kurs/mahsulot/FAQ):** flow'ga HARDCODE QILMA — `cms.*` bilan
+collection yarat + 3-5 demo yozuv, flow undan o'qisin (`LoadCollectionListNode` /
+CustomCode `db_find`).
+
+## Mavjud flow — O'CHIRMA
+Saqlangan flow avtomatik yuklangan va har amaldan keyin yangilanadi — u ALLAQACHON
+kontekstingda. `flow.get`ni QAYTA-QAYTA yuklama. Yangi node so'ralsa — ustiga QO'SH,
+o'chirma. Faqat "noldan qayta qur" aniq aytilsa almashtir. Buzilsa — `flow.history`
+→ `flow.rollback`.

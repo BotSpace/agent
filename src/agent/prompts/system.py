@@ -96,23 +96,16 @@ CORE_IDENTITY: str = load_prompt("dispatcher/core_identity.txt")
 
 
 def _build_guide() -> str:
-    """Detailed bot-building guide + concrete examples, folded into the main
-    agent's cached system prefix.
+    """Concise bot-building guide folded into the main agent's cached prefix.
 
-    The main agent now BUILDS bots itself (no flow-builder sub-agent), so the
-    building mechanics + few-shot examples that used to live in the flow-builder
-    sub-agent prompt must reach the main agent. The `{node_params_table}`
-    placeholder is filled with the compiled node-field summary (same as the old
-    sub-agent spec did). Never raises — returns '' on any load error.
+    LAZY schema loading: the full per-node field schemas are NOT sent up front
+    (that ballooned the prompt to ~82K/req). The prompt carries only the compact
+    catalog (names + one-line summaries) + this concise guide; the agent fetches
+    a specific node's full schema on demand via flow.list_node_types(type=...).
+    Never raises — returns '' on any load error.
     """
     try:
-        from ..tools.flow.node_data_models import render_summary_table
-
-        guide = load_prompt("subagents/flow_builder.txt").replace(
-            "{node_params_table}", render_summary_table()
-        )
-        examples = load_prompt("subagents/flow_builder_examples.txt")
-        return (guide + "\n\n" + examples).strip()
+        return load_prompt("dispatcher/build_guide.txt").strip()
     except Exception:
         logger.warning("Failed to build bot-building guide for system prompt", exc_info=True)
         return ""
