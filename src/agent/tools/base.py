@@ -98,6 +98,20 @@ class Tool(Generic[InputModel]):
     expose_to_agent: bool = True
     """False bo'lsa — bu tool AI agent registrida bo'lmaydi (faqat MCP-only tool).
     `expose_to_mcp`ning teskarisi."""
+    core: bool = False
+    """True bo'lsa — bu tool DOIM to'liq schema bilan yuboriladi (asosiy, ko'p
+    ishlatiladigan). False (default) — LAZY: prompt'da faqat summary ko'rinadi,
+    to'liq schema `tools.search` bilan yuklanadi (token tejash)."""
+
+    @property
+    def summary(self) -> str:
+        """Bir qatorli qisqa tavsif — description'ning birinchi jumlasi."""
+        d = " ".join(self.description.split())
+        for sep in (". ", " — ", "; "):
+            if sep in d:
+                d = d.split(sep, 1)[0]
+                break
+        return d[:140]
 
     def to_spec(self) -> ToolSpec:
         return ToolSpec(
@@ -130,6 +144,7 @@ def tool(
     tags: list[str] | None = None,
     expose_to_mcp: bool = True,
     expose_to_agent: bool = True,
+    core: bool = False,
 ) -> Callable[[ToolFn], Tool]:
     """Decorator — Tool obyekti qaytadi."""
 
@@ -147,6 +162,7 @@ def tool(
             tags=tags or [],
             expose_to_mcp=expose_to_mcp,
             expose_to_agent=expose_to_agent,
+            core=core,
         )
 
     return decorator

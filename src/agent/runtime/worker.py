@@ -145,6 +145,7 @@ async def run_agent(
             emit=emit,
             services={},
             approve_destructive=True,
+            lazy_tools=True,
         )
         try:
             checkpointer = await create_async_checkpointer(s.database_url)

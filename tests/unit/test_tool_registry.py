@@ -141,3 +141,35 @@ def test_surface_flags_default_and_reverse():
 
     assert _both.expose_to_agent and _both.expose_to_mcp  # default both
     assert _mcp_only.expose_to_mcp and not _mcp_only.expose_to_agent
+
+
+# ── lazy tools: core always, rest via tools.search ───────────────────────────
+
+
+def test_core_and_lazy_partition():
+    from agent.tools import build_default_registry
+    from agent.tools.lazy import active_tool_specs, is_core
+
+    tools = build_default_registry().all()
+    assert is_core("flow.add_node") and is_core("plan.set") and is_core("tools.search")
+    assert not is_core("broadcast.send") and not is_core("flow.simulate")
+    # With nothing activated, only CORE tools are sent.
+    names = {s.name for s in active_tool_specs(tools, set())}
+    assert "flow.add_node" in names and "broadcast.send" not in names
+    # After activation, the lazy tool appears.
+    names2 = {s.name for s in active_tool_specs(tools, {"broadcast.send"})}
+    assert "broadcast.send" in names2
+
+
+@pytest.mark.asyncio
+async def test_tools_search_activates_lazy_tools():
+    from agent.tools import build_default_registry
+
+    reg = build_default_registry()
+    search = reg.get("tools.search")
+    assert search is not None and search.expose_to_mcp is False
+    ctx = ToolContext(run_id="r", project_id="1", user_id="u")
+    res = await search.run({"query": "broadcast"}, ctx)
+    assert not res.is_error
+    activated = res.state_updates.get("activated_tools") or []
+    assert "broadcast.send" in activated

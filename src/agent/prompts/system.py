@@ -116,15 +116,31 @@ def _build_guide() -> str:
 # render_compact_catalog() is deterministic (no timestamps, no random content).
 # A model-specific addendum (model_addenda/<id>.txt for the configured executor
 # model) is appended so it is part of the cached prefix and reaches Bedrock.
+def _lazy_tools_catalog() -> str:
+    """Compact name+summary catalog of LAZY tools (loaded on demand via
+    tools.search). Never raises — '' on any error."""
+    try:
+        from ..tools import build_default_registry
+        from ..tools.lazy import lazy_catalog
+
+        return lazy_catalog(build_default_registry().all())
+    except Exception:
+        logger.warning("Failed to build lazy tool catalog", exc_info=True)
+        return ""
+
+
 _AUTONOMY_RULE: str = load_autonomy_rule()
 _MODEL_ADDENDUM: str = _executor_model_addendum()
 _BUILD_GUIDE: str = _build_guide()
+_LAZY_TOOL_CATALOG: str = _lazy_tools_catalog()
 STATIC_SYSTEM_BLOCK: str = (
     CORE_IDENTITY
     + "\n\n"
     + render_compact_catalog()
     # Detailed building mechanics + examples (main agent builds bots directly).
     + (("\n\n" + _BUILD_GUIDE) if _BUILD_GUIDE else "")
+    # Lazy tools shown as name+summary; full schema via tools.search on demand.
+    + (("\n\n" + _LAZY_TOOL_CATALOG) if _LAZY_TOOL_CATALOG else "")
     # Autonomy applies to ALL models (was Qwen-only — the reason other models
     # behaved worse). Model-specific addenda (if any) come after it.
     + (("\n\n" + _AUTONOMY_RULE) if _AUTONOMY_RULE else "")
