@@ -12,10 +12,8 @@ from ...integrations.backend import (
     format_backend_error,
     pagination_summary,
 )
-from ..base import Tool, ToolContext, ToolResult, tool
-
-
 from .._common import backend_from_ctx as _backend
+from ..base import Tool, ToolContext, ToolResult, tool
 
 
 class FileListInput(BaseModel):
@@ -119,7 +117,7 @@ class FileUploadInput(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _check_source(self) -> "FileUploadInput":
+    def _check_source(self) -> FileUploadInput:
         if self.content is None and self.url is None:
             raise ValueError("Provide either `content` (text) or `url` (download source).")
         if self.content is not None and self.url is not None:

@@ -16,7 +16,6 @@ from openai import AsyncOpenAI
 from .base import LLMError
 from .openai import OpenAIClient, _wrap_for_langsmith
 
-
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 

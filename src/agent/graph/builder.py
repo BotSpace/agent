@@ -120,7 +120,7 @@ def _trim_history(history: list[Message], *, max_chars: int) -> list[Message]:
             # Tool result / structured part: estimate via text fallback.
             try:
                 size = sum(len(getattr(p, "content", "") or "") for p in m.content)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 size = 256
         if kept_rev and total + size > max_chars:
             break

@@ -6,11 +6,10 @@ from ..config import get_settings
 from .metrics import (
     LLM_INPUT_TOKENS,
     LLM_OUTPUT_TOKENS,
-    LLM_REQUESTS,
     LLM_REQUEST_DURATION,
+    LLM_REQUESTS,
     record_llm_usage,
 )
-
 
 __all__ = [
     "LLM_INPUT_TOKENS",
@@ -22,7 +21,7 @@ __all__ = [
 ]
 
 
-def configure_otel(app=None) -> bool:  # noqa: ANN001
+def configure_otel(app=None) -> bool:
     s = get_settings()
     if not s.otel_endpoint:
         return False

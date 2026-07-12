@@ -15,8 +15,8 @@ __all__ = [
     "FIELD_TYPE_MAP",
     "FieldKind",
     "FieldTypeSpec",
-    "known_field_types",
     "NodeManifest",
+    "known_field_types",
     "load_node_manifests",
     "manifest_checksum",
 ]

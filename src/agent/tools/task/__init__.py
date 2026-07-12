@@ -78,7 +78,7 @@ async def _checkpointer_has_state(checkpointer: Any, config: dict[str, Any]) -> 
         return False
     try:
         snapshot = await checkpointer.aget(config)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return False
     return snapshot is not None
 
@@ -107,7 +107,7 @@ async def _prior_token_totals(
                 int(vals.get("total_input_tokens", 0) or 0),
                 int(vals.get("total_output_tokens", 0) or 0),
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
     # Fallback: xom checkpointer snapshot channel_values'i.
     if checkpointer is not None:
@@ -118,7 +118,7 @@ async def _prior_token_totals(
                 int(cv.get("total_input_tokens", 0) or 0),
                 int(cv.get("total_output_tokens", 0) or 0),
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
     return (0, 0)
 
@@ -169,13 +169,13 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
         )
 
     # Lazy import to avoid circular dep at module load time.
-    from ...graph import GraphConfig, build_graph, initial_state
-    from ...llm import Message, ModelRoles
     from ...config import get_settings
+    from ...graph import GraphConfig, build_graph, initial_state
     from ...integrations.dynamic_config import (
         build_effective_client,
         effective_model_roles,
     )
+    from ...llm import Message, ModelRoles
     from ...memory import close_async_checkpointer, create_async_checkpointer
     from ...tools import build_default_registry
     from ...tools.registry import ToolRegistry
@@ -293,7 +293,7 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
         try:
             checkpointer = await create_async_checkpointer(s.database_url)
             own_checkpointer = checkpointer is not None
-        except Exception as cp_err:  # noqa: BLE001
+        except Exception as cp_err:
             logger.warning("Sub-agent checkpointer init failed, in-memory: %s", cp_err)
             checkpointer = None
 
@@ -335,7 +335,7 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
         if own_checkpointer and checkpointer is not None:
             try:
                 await close_async_checkpointer(checkpointer)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
 
     invoke_config = {
@@ -502,7 +502,7 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
                 except Exception:
                     result = {}
         # Fall through to normal result handling below
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         # To'liq traceback'ni log'ga yozamiz — UI'ga faqat qisqa xulosa boradi,
         # lekin debug uchun stack pod log'larida bo'lishi shart.
         tb = traceback.format_exc()

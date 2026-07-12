@@ -89,7 +89,7 @@ async def _wait_resolution(request_id: str, loop: asyncio.AbstractEventLoop) -> 
             # works for the single-replica case.
             try:
                 answer = await store.wait(request_id)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 return
             if not fut.done():
                 fut.set_result(answer)
@@ -301,7 +301,7 @@ async def run_agent(
         try:
             AGENT_RUNS.labels(run_outcome).inc()
             AGENT_RUN_DURATION.observe(time.monotonic() - run_started_at)
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.debug("agent run metric record failed", exc_info=True)
         store.unregister_task(request_id)
         if checkpointer is not None:
