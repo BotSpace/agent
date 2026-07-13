@@ -493,7 +493,7 @@ def validate(
             )
 
     # ── 6. Unknown {{var}} references (#9b, conservative) ──────────────
-    issues.extend(_unknown_variable_warnings(flow))
+    issues.extend(_unknown_variable_warnings(flow, module_map))
 
     # ── 7. Screen-specific button → global trigger over-use ────────────
     # AI tez-tez har inline tugma uchun root GLOBAL CallbackQueryTriggerNode
@@ -789,8 +789,18 @@ def _collect_state_keys(flow: FlowDocument) -> set[str]:
     return keys
 
 
-def _unknown_variable_warnings(flow: FlowDocument) -> list[ValidationIssue]:
+def _unknown_variable_warnings(
+    flow: FlowDocument, module_map: dict | None = None
+) -> list[ValidationIssue]:
     state_keys = _collect_state_keys(flow)
+    # Module nodes write their own state vars (manifest `produces_state`, e.g.
+    # youtube.Download → yt_file/yt_title). Register those (and their public_
+    # variants) so a downstream `{{yt_title}}` isn't flagged as unknown.
+    for mod in (module_map or {}).values():
+        for key in (mod.get("produces_state") or []):
+            if isinstance(key, str) and key:
+                state_keys.add(key)
+                state_keys.add(f"public_{key}")
     allowed_roots = state_keys | set(_STANDARD_CONTEXT_VARS)
     out: list[ValidationIssue] = []
     for node in flow.nodes:
