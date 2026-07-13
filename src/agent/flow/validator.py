@@ -363,7 +363,9 @@ def validate(
             # Only validate source handles for non-accessory edges.
             source_node = nodes_by_id.get(edge.source)
             if source_node is not None:
-                unsupported = _unsupported_source_handle(source_node, edge.sourceHandle)
+                unsupported = _unsupported_source_handle(
+                    source_node, edge.sourceHandle, module_map
+                )
                 if unsupported is not None:
                     issues.append(
                         ValidationIssue(
@@ -888,7 +890,9 @@ def _callback_handled_globally(
     return False
 
 
-def _unsupported_source_handle(node, source_handle: str | None) -> str | None:
+def _unsupported_source_handle(
+    node, source_handle: str | None, module_map: dict | None = None
+) -> str | None:
     handle = source_handle or "source-handler"
     if handle == "source-handler":
         return None
@@ -903,7 +907,7 @@ def _unsupported_source_handle(node, source_handle: str | None) -> str | None:
                 "Use `target-handler-{nodeId}-{button.text}` with the exact button text."
             )
 
-    allowed = set(_allowed_source_handles(node))
+    allowed = set(_allowed_source_handles(node, module_map))
     if handle not in allowed:
         return (
             f"`{node.type}` `{node.id}` does not support source handle `{handle}`. "
@@ -912,9 +916,24 @@ def _unsupported_source_handle(node, source_handle: str | None) -> str | None:
     return None
 
 
-def _allowed_source_handles(node) -> set[str]:
-    spec = get_node_spec(node.type)
-    allowed = set(spec.source_handles if spec else ["source-handler"])
+def _allowed_source_handles(node, module_map: dict | None = None) -> set[str]:
+    # MODULE nodes (moduleId.NodeName) aren't in the static catalog — their real
+    # source handles (e.g. output-success/output-error) come from the per-project
+    # manifest carried in module_map. Without this the validator wrongly allows
+    # only "source-handler" and rejects every module branch edge.
+    mod = (module_map or {}).get(node.type)
+    if mod is not None:
+        mod_handles = {
+            str(h.get("id"))
+            for h in (mod.get("source_handles") or [])
+            if isinstance(h, dict) and h.get("id")
+        }
+        allowed = mod_handles or {"source-handler"}
+        # module nodes may still declare dynamic outputs in data.outputs below
+        spec = None
+    else:
+        spec = get_node_spec(node.type)
+        allowed = set(spec.source_handles if spec else ["source-handler"])
     if node.type == "IfConditionNode" and isinstance(node.data.get("branches"), list):
         allowed.update(f"branch_{index}" for index, _ in enumerate(node.data["branches"]))
     if node.type == "RandomNode":
