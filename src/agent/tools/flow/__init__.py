@@ -794,6 +794,7 @@ async def flow_list_node_types(input: FlowListNodeTypesInput, ctx: ToolContext) 
                 "summary": s.summary,
                 "description": s.description,
                 "source_handles": s.source_handles,
+                "produces_state": s.produces_state,
                 "is_trigger": s.is_trigger,
                 "fields": schema["fields"],
                 "validator": schema["validator"],
@@ -855,6 +856,7 @@ async def flow_list_node_types(input: FlowListNodeTypesInput, ctx: ToolContext) 
                     + handle_note
                 ),
                 "source_handles": handle_ids,
+                "produces_state": mod.get("produces_state") or [],
                 "is_trigger": bool(mod.get("is_trigger")),
                 "module": mod.get("module"),
                 "fields": fields,
