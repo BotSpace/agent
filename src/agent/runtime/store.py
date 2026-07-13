@@ -621,7 +621,8 @@ class RunStore:
                     await cur.execute(
                         """SELECT request_id, seq, type, payload FROM agent_events
                            WHERE request_id = ANY(%s)
-                             AND type IN ('assistant_message', 'tool_call', 'tool_result')
+                             AND type IN ('assistant_message', 'tool_call',
+                                          'tool_result', 'plan_set', 'plan_update')
                            ORDER BY request_id, seq ASC""",
                         (request_ids,),
                     )
@@ -650,7 +651,36 @@ class RunStore:
                         if tid is not None:
                             tool_results[str(tid)] = payload
 
+                # One inline plan turn per run, materialised at the first plan_set
+                # position and mutated in place by later plan_set/plan_update so
+                # history shows the plan where it was created, in its final state.
+                plan_turn: dict[str, Any] | None = None
                 for seq, etype, payload in events_by_req.get(req, []):
+                    if etype == "plan_set":
+                        plan = payload.get("plan")
+                        if isinstance(plan, list):
+                            if plan_turn is None:
+                                plan_turn = {
+                                    "kind": "plan", "id": f"{req}-plan{seq}", "plan": plan,
+                                }
+                                turns.append(plan_turn)
+                            else:
+                                plan_turn["plan"] = plan
+                        continue
+                    if etype == "plan_update":
+                        if plan_turn is None:
+                            continue
+                        plan = payload.get("plan")
+                        if isinstance(plan, list):
+                            plan_turn["plan"] = plan
+                        else:
+                            item = payload.get("item")
+                            if isinstance(item, dict) and item.get("id"):
+                                plan_turn["plan"] = [
+                                    item if p.get("id") == item.get("id") else p
+                                    for p in plan_turn["plan"]
+                                ]
+                        continue
                     if etype == "assistant_message":
                         text = (payload.get("text") or "").strip()
                         if text:
