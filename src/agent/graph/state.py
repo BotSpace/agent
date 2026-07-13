@@ -97,6 +97,20 @@ class AgentState(TypedDict, total=False):
     aytadi. recursion_limit (500) faqat oxirgi to'siq; bu byudjet xarajat va
     cheksiz sikllarni ancha oldin to'xtatadi."""
 
+    goal: str
+    """The run's objective (the initiating user prompt). Re-sent in the dynamic
+    context every turn so the agent stays on task and doesn't drift, even after
+    old turns are compacted out of the sent history."""
+
+    # ── history compaction ──────────────────────────────────────────────
+    history_summary: str
+    """Running summary of the OLDEST turns, folded in when the history nears the
+    context-token budget (instead of dropping them). Cached so it isn't
+    recomputed every turn — see graph/builder.py _compact_history."""
+
+    history_summary_count: int
+    """Number of leading ``messages`` already folded into history_summary."""
+
     tool_budget_exhausted: bool
     """Set True by tool_exec when tool_calls_used reaches cfg.max_tool_calls.
     Forces exactly ONE more tools-DISABLED llm_call (model must produce a final

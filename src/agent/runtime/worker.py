@@ -147,6 +147,7 @@ async def run_agent(
             max_tokens=s.max_output_tokens,
             max_tool_calls=s.max_tool_calls,
             max_run_tokens=s.max_run_tokens,
+            max_history_tokens=s.max_history_tokens,
             emit=emit,
             emit_ephemeral=emit_ephemeral,
             services={},

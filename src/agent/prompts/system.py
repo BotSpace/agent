@@ -157,11 +157,18 @@ def build_dynamic_block(state: dict[str, Any] | None = None) -> str:
     state = state or {}
     project_id = state.get("project_id") or "—"
     user_id = state.get("user_id") or "—"
-    lines: list[str] = [
-        "## Kontekst",
-        f"- project_id: {project_id}",
-        f"- user_id: {user_id}",
-    ]
+    lines: list[str] = ["## Kontekst"]
+    goal = state.get("goal")
+    if isinstance(goal, str) and goal.strip():
+        g = goal.strip()
+        if len(g) > 500:
+            g = g[:500] + "…"
+        lines.append(
+            f"- 🎯 MAQSAD (shu vazifaning asosiy talabi — undan CHIQMA, har "
+            f"qadamda shunga xizmat qil): {g}"
+        )
+    lines.append(f"- project_id: {project_id}")
+    lines.append(f"- user_id: {user_id}")
     if state.get("baseline_flow"):
         wf = state["baseline_flow"]
         n_nodes = len((wf or {}).get("nodes") or [])
