@@ -55,4 +55,11 @@
   `flow_connect(source_handle="output-success")` deb ANIQ handle'ni ber — noto'g'ri
   handle bilan edge REACT FLOW'da UMUMAN KO'RINMAYDI (ulangan bo'lsa ham). Har
   output uchun alohida edge (success→keyingi qadam, error→xatolik).
+• ⛔ Modul node'da success/error handle bo'lsa — u O'ZI shoxlanadi. Keyin
+  `IfConditionNode` QO'SHMA (ikki marta tekshiruv, keraksiz). To'g'ridan-to'g'ri
+  output-success → keyingi qadam, output-error → xato xabari.
+• Modul FAYL ishlab chiqarsa (masalan youtube.Download → `yt_file` UUID; state
+  ro'yxati `produces_state`da) — uni yuborish uchun Send*Node'da
+  `videoSourceType/…SourceType="file_id"` + `videoFileId/…FileId="{{yt_file}}"`.
+  URL EMAS — Telegram media URL'ni bloklaydi; modul UUID beradi.
 • To'liq qoidalar: docs_guide(topic="flow"); node maydonlari: flow_list_node_types.
