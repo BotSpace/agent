@@ -38,6 +38,13 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 MODULE_PROJECT_ID = "_global"
 MODULE_KIND = "module"
 
+# GET /api/v1/modules is behind middleware.Auth, so this server-to-server ingest
+# (no user session) has no bearer token and used to 401 — leaving the module
+# catalog un-indexed and modules.search permanently empty. Authenticate via the
+# X-Internal-Token + X-User-Id impersonation path instead: the catalog is global
+# (ListModules doesn't filter by user), so a synthetic system id is enough.
+_SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000"
+
 
 def _summary_text(mod: dict[str, Any]) -> str:
     """Build the searchable text for one catalog module.
@@ -119,7 +126,9 @@ def _metadata(mod: dict[str, Any]) -> dict[str, Any]:
 
 
 async def ingest(*, rebuild: bool = False) -> dict[str, int]:
-    modules = await load_modules_catalog()
+    modules = await load_modules_catalog(
+        auth_claims={"user_id": _SYSTEM_USER_ID}
+    )
     logger.info("Fetched %d modules from backend catalog", len(modules))
     if not modules:
         logger.warning(
