@@ -210,7 +210,10 @@ async def run_agent(
 
         config = {
             "configurable": {"thread_id": rec.thread_id},
-            "recursion_limit": 500,
+            # High enough that the tool-call budget (max_tool_calls=500) is the
+            # real limit, not LangGraph node-visit recursion (each turn ≈ 2 node
+            # visits, so allow well over 500 turns).
+            "recursion_limit": 2000,
         }
 
         async def _report_partial_tokens() -> None:
