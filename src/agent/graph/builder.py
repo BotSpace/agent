@@ -152,6 +152,34 @@ async def _emit(emit: EventEmitter | None, name: str, payload: dict[str, Any]) -
         await res  # type: ignore[func-returns-value]
 
 
+async def _autosave_flow(cfg: "GraphConfig", state: dict[str, Any], flow_dict: Any) -> None:
+    """Write-through persist of a flow mutation straight to the project's DB row.
+
+    Every flow edit (add_node / connect / patch / …) lands in the database
+    immediately, so the working flow is never RAM-only and a session reset /
+    long-run interruption can't lose in-progress edits. Best-effort — never
+    raises into the tool loop (a partial/invalid flow is fine; the backend stores
+    the JSON as-is). ``flow.save`` still performs the VALIDATED save with
+    versioning + regression tests.
+    """
+    try:
+        from ..tools._common import _concrete
+
+        pid = _concrete(state.get("project_id"))
+        if not pid or not isinstance(flow_dict, dict):
+            return
+        from ..integrations.backend import BackendClient, get_backend_client
+
+        backend = (cfg.services or {}).get("backend")
+        if not isinstance(backend, BackendClient):
+            backend = get_backend_client()
+        await backend.update_project(
+            pid, {"flow": flow_dict}, auth_claims=state.get("auth_claims")
+        )
+    except Exception:
+        logger.debug("flow write-through autosave skipped", exc_info=True)
+
+
 async def _stream_turn(
     cfg: "GraphConfig",
     messages: list[Message],
@@ -319,6 +347,7 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
         tool_messages: list[Message] = []
         pending_approval: dict[str, Any] | None = None
         pending_clarification: dict[str, Any] | None = None
+        flow_mutated = False
         current_state: dict[str, Any] = dict(state)
         calls_used = int(state.get("tool_calls_used", 0) or 0)
 
@@ -452,6 +481,13 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
             for k, v in (result.state_updates or {}).items():
                 current_state[k] = v
                 updates[k] = v
+            # Note a flow edit so we write it through to the DB once at the end of
+            # the turn (below) — no RAM-only working copy, but coalesced so N
+            # mutations in one turn cost a single save.
+            if not result.is_error and isinstance(
+                (result.state_updates or {}).get("working_flow"), dict
+            ):
+                flow_mutated = True
             if result.interrupt:
                 pending_clarification = {**result.interrupt, "tool_call_id": call.id}
                 # Do NOT append a placeholder tool_result for the interrupting
@@ -485,6 +521,24 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
             updates["pending_approval"] = pending_approval
         if pending_clarification is not None:
             updates["pending_clarification"] = pending_clarification
+        # Write-through: persist this turn's flow edits to the DB now (durability
+        # — no RAM-only working copy) and emit flow_changed so the live flow view
+        # can refresh. Skipped while pausing on a clarification (saved on resume).
+        if flow_mutated and pending_clarification is None:
+            wf = current_state.get("working_flow")
+            if isinstance(wf, dict):
+                await _autosave_flow(cfg, current_state, wf)
+                from ..tools._common import _concrete
+
+                await _emit(
+                    cfg.emit,
+                    "flow_changed",
+                    {
+                        "project_id": _concrete(current_state.get("project_id")),
+                        "nodes": len(wf.get("nodes") or []),
+                        "edges": len(wf.get("edges") or []),
+                    },
+                )
         return updates
 
     async def approval_interrupt(state: AgentState) -> dict[str, Any]:
