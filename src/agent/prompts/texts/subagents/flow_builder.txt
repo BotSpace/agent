@@ -521,13 +521,15 @@ XOM `sheets_response`ni `{{#each}}` bilan ISHLATMA (array emas).
 **FILTER (faqat ayrim qatorlar kerak bo'lsa).** Read'da sheetdan olingan rowsni IN-MEMORY
 filterlash mumkin — STATIK (AI-slot YO'Q, builder o'zi yozadi). `data.filterConditions=[{field, op, value}]`
 + `data.filterMatch` (`"and"`|`"or"`, default `"and"`). op ∈ eq|ne|gt|gte|lt|lte|in|nin|contains|exists;
-`value`da `{{chat_id}}`/`{{state_*}}` ishlaydi. Masalan `price>100000`, yoki tanlangan kategoriya:
-`category=={{state_category}}`. Filterlangan natija HAM `rowsVariable`'ga yoziladi → `{{#each}}` bilan o'qiladi.
+`value`da `{{chat_id}}`/`{{key}}` (yalang'och nom — ASOSIY usul) ishlaydi.
+⚠️ `{{state_key}}` (pastki chiziq) HECH QACHON resolve BO'LMAYDI — saqlangan qiymatni
+oddiy `{{key}}` bilan o'qi. Masalan `price>100000`, yoki tanlangan kategoriya: `category=={{category}}`.
+Filterlangan natija HAM `rowsVariable`'ga yoziladi → `{{#each}}` bilan o'qiladi.
 ```
 GoogleSheetsNode data:
   operation:"read", spreadsheet_id:"...", sheet:"Sheet1", range:"A1:C100",
   rowsVariable:"products_rows",
-  filterConditions:[{field:"category", op:"eq", value:"{{state_category}}"}]
+  filterConditions:[{field:"category", op:"eq", value:"{{category}}"}]
 → keyingi EditOrSendMessageNode matni:
 {{#each products_rows}}{{@number}}. {{name}} — {{price}}
 {{/each}}{{^products_rows}}Bu kategoriyada mahsulot yo'q.{{/products_rows}}
@@ -761,7 +763,8 @@ ortiqcha murakkablik.
 `message.video.file_id`, `message.document.file_id`, `message.animation.file_id`,
 `message.media.kind`, `message.media.file_id`, `message.media.message_id`,
 `telegram_update.message`, `raw_update.message`, `callback_query.data`, `user_id`,
-`user_first_name`, `user_username`, `state_*` (StateNode'dan),
+`user_first_name`, `user_username`, `public_*` (StateNode/trigger save'dan;
+oddiy `{{key}}` bilan o'qiladi — `{{state_key}}` EMAS),
 `collection_*`, `message_id_<nodeID>`.
 
 **Misol — ro'yxatdan o'tkazish:** `/start` → `ask_contact` → CustomCode "phone-validate" (`outputs:[ok,invalid]`, ~10q) → CustomCode "user-upsert" (`outputs:[new,existing]`, ~15q) → `EditOrSendMessageNode` (har branch uchun).
@@ -902,8 +905,9 @@ static EMAS); sen faqat credential_id + ixtiyoriy default spreadsheetId/sheet tu
 
 **FIXED vs AI** — har field uchun:
 - `source='fixed'` → SEN `value` belgilaysan: constant yoki flow placeholder —
-  `{{chat_id}}`, `{{user_id}}`, `{{first_name}}`, `{{username}}`, `{{state_<key>}}`
-  (oldin so'ralgan/saqlangan), `{{collection_<key>}}`. Engine runtime'da resolve
+  `{{chat_id}}`, `{{user_id}}`, `{{first_name}}`, `{{username}}`, `{{<key>}}`
+  (oldin so'ralgan/saqlangan qiymat — yalang'och nom; `{{state_<key>}}` EMAS),
+  `{{collection_<key>}}`. Engine runtime'da resolve
   qiladi; BUTUN-placeholder XOM tipni saqlaydi (`value="{{chat_id}}"` int qoladi).
   FIXED slot'ni runtime AI O'ZGARTIROLMAYDI — shuning uchun `user_id="{{chat_id}}"`
   qilib tool'ni JORIY foydalanuvchiga XAVFSIZ biriktir (AI boshqa user yozuvlarini

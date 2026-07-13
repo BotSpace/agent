@@ -555,7 +555,7 @@ def test_set_context_keys_are_known_variables():
             FlowNode(
                 id="m",
                 type="SendTextMessageNode",
-                data={"messageText": "Ro'yxat: {{enroll_id}} / {{state_enroll_id}} / {{course}}"},
+                data={"messageText": "Ro'yxat: {{enroll_id}} / {{course}}"},
             ),
         ],
         edges=[
@@ -564,9 +564,40 @@ def test_set_context_keys_are_known_variables():
         ],
     )
     result = validate(flow)
-    # No unknown_variable warning for keys written via set_context (nor state_*).
+    # No unknown_variable warning for bare keys written via set_context.
     unknown = [i for i in result.warnings if i.code == "unknown_variable"]
     assert unknown == [], [i.message for i in unknown]
+
+
+def test_underscore_state_form_is_flagged():
+    """The dead `{{state_key}}` underscore form never resolves in the engine
+    (saved state lives under `public_key`), so the validator must surface it as
+    an unknown_variable warning instead of silently accepting it — this is the
+    guardrail that catches the generator regressing to the broken form."""
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="t", type="CommandTriggerNode", data={"command": "/start"}),
+            FlowNode(
+                id="code",
+                type="CustomCodeNode",
+                data={"jsCode": "set_context('enroll_id', 42);"},
+            ),
+            FlowNode(
+                id="m",
+                type="SendTextMessageNode",
+                data={"messageText": "Ro'yxat: {{state_enroll_id}}"},
+            ),
+        ],
+        edges=[
+            FlowEdge(id="e1", source="t", target="code"),
+            FlowEdge(id="e2", source="code", target="m"),
+        ],
+    )
+    result = validate(flow)
+    unknown = [i for i in result.warnings if i.code == "unknown_variable"]
+    assert any("state_enroll_id" in i.message for i in unknown), [
+        i.message for i in unknown
+    ]
 
 
 def test_unset_variable_still_warns():

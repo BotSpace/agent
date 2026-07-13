@@ -30,9 +30,20 @@ class ThreadListResponse(BaseModel):
     threads: list[ThreadSummary]
 
 
+class ActiveRun(BaseModel):
+    request_id: str
+    status: str
+    last_seq: int
+    pending_approval: dict[str, Any] | None = None
+    pending_clarification: dict[str, Any] | None = None
+
+
 class ThreadTurnsResponse(BaseModel):
     thread_id: str
     turns: list[dict[str, Any]]
+    # Set when the thread has a still-running run, so a refreshed page can
+    # re-attach to its live SSE instead of showing a frozen transcript.
+    active_run: ActiveRun | None = None
 
 
 @router.get("", response_model=ThreadListResponse)
@@ -73,7 +84,14 @@ async def get_thread(
     turns = await store.get_thread_turns(
         project_id=project_id, user_id=user.user_id, thread_id=thread_id
     )
-    return ThreadTurnsResponse(thread_id=thread_id, turns=turns)
+    active = await store.get_active_run(
+        project_id=project_id, user_id=user.user_id, thread_id=thread_id
+    )
+    return ThreadTurnsResponse(
+        thread_id=thread_id,
+        turns=turns,
+        active_run=ActiveRun(**active) if active else None,
+    )
 
 
 class ThreadDeleteResponse(BaseModel):
