@@ -410,13 +410,14 @@ Oldingi xabarni aniq tahrirlash kerak bo'lsa: `targetMessageNodeId="<menu-node-i
 **QAT'IY: kelgan ma'lumotni saqlash uchun ALOHIDA `StateNode` QO'SHMA.**
 Trigger node'ning O'ZIDA `state` field bor — shu bilan ma'lumot AVTOMATIK
 saqlanadi, qo'shimcha node KERAK EMAS:
-- `MessageTriggerNode` `data.state = {key, type}` — masalan
-  `{key: "user_phone", type: "text"}` yoki kontakt uchun
-  `{key: "user_phone", type: "contact_phone_number"}`.
-  **⛔ `phone_number` EMAS — doim `contact_phone_number`** (validator xato beradi).
-  Media uchun universal capture: `{key: "media_file_id", type: "file_id"}`.
-  Bu photo/video/document/animation/audio/voice/video_note/sticker uchun Telegram
-  `file_id` yozadi, forwarded/channel-forward media ham shu contractda keladi.
+- **Telefon/kontakt → `flow.ask_contact` ishlat** (request_contact tugmasi bilan
+  to'g'ri ushlaydi). MessageTriggerNode bilan QO'LDA telefon ushlama.
+- `MessageTriggerNode` FLAT maydonlar bilan saqlaydi: `save_state:true`,
+  `state_key:"..."`, `state_type:"..."`. **`state_type` FAQAT
+  {text, number, photo, video, document, any}** — `contact_phone_number`/`file_id`
+  bu yerда ISHLAMAYDI (validator xato beradi). Matn kiritish uchun
+  `state_type:"text"`; media uchun `type:"photo"/"video"/"document"` +
+  `state_type:"any"` (yoki `flow.ask_*` tool'lari — afzal).
 - Inline tugma bosilganda saqlash kerak bo'lsa — trigger'ning `data.state`
   field'idan foydalan (alohida StateNode emas).
 - `CommandTriggerNode` `withArgs:true` + `data.state` — buyruq argumentini

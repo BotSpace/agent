@@ -197,7 +197,8 @@ async def flow_search_template(input: FlowSearchTemplateInput, ctx: ToolContext)
     advice = (
         f"Best match similarity={best_sim:.2f}. "
         + (
-            "Strong match — call flow.apply_template with this id and then edit."
+            "Strong match — call flow.apply_template with this SLUG (not the id) "
+            "and then edit."
             if best_sim >= SIMILARITY_GOOD
             else "Weak match — building from scratch is likely better."
         )
@@ -223,13 +224,16 @@ async def flow_search_template(input: FlowSearchTemplateInput, ctx: ToolContext)
 
 
 class FlowApplyTemplateInput(BaseModel):
-    template_id: int | None = Field(
+    template_id: str | int | None = Field(
         default=None,
-        description="Template DB id from flow.search_template results.",
+        description="Template DB id (UUID) from flow.search_template results.",
     )
     slug: str | None = Field(
         default=None,
-        description="Template slug. Pass either template_id OR slug.",
+        description=(
+            "Template slug from flow.search_template results. PREFER slug — it "
+            "resolves reliably; pass either slug OR template_id."
+        ),
     )
 
 
