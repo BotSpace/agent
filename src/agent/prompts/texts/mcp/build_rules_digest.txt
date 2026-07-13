@@ -14,8 +14,15 @@
 • XABAR NODE: DOIM flow_add_edit_or_send (EditOrSendMessageNode) — xabarni joyida
   edit qiladi, menyu chatda to'planmaydi. flow_add_send_text_message FAQAT reply
   keyboard (request_contact/request_location) kerak bo'lganda.
-• KEYBOARD: default INLINE (keyboard_kind:"inline"). Reply keyboard faqat
-  kontakt/joylashuv so'rashda.
+• KEYBOARD: keyboard_kind FAQAT "inline" yoki "reply" — "none" YO'Q. Tugmasiz
+  oddiy xabarda keyboard_kind'ni UMUMAN yozma (default inline). Reply keyboard
+  faqat kontakt/joylashuv so'rashda.
+• MA'LUMOT SO'RASH (ism/telefon/matn): flow_ask_text / flow_ask_contact ishlat —
+  ular ask+capture'ni to'g'ri quradi. Telefon/kontakt → flow_ask_contact
+  (request_contact). MessageTriggerNode bilan qo'lda ushlasang, state_type FAQAT
+  {text,number,photo,video,document,any} — "contact_phone_number" MessageTrigger'da
+  ISHLAMAYDI (u trigger data.state/reply-capture uchun). Telefonni MessageTrigger
+  bilan ushlama — flow_ask_contact ishlat.
 • ⛔ TUGMA ULASH — INLINE tugma uchun ROOT/GLOBAL trigger YARATMA (eng ko'p xato!):
   ekranga xos tugma (menyu→bo'lim, "Kurslar", "Sotib olish") → `flow_connect_button(
   source="<tugma turgan node>", target="<keyingi node>", button_text="...")` —

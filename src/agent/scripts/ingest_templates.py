@@ -75,7 +75,7 @@ async def _clear_existing() -> int:
     return rows
 
 
-async def _delete_one(template_id: int) -> None:
+async def _delete_one(template_id: str | int) -> None:
     s = get_settings()
     dsn = _normalize_psycopg_url(s.database_url)
     async with await psycopg.AsyncConnection.connect(dsn) as conn:
@@ -111,7 +111,7 @@ async def ingest(*, rebuild: bool = False) -> dict[str, int]:
         # In upsert mode (no rebuild): drop the prior row for this template
         # so the embedding refreshes instead of accumulating duplicates.
         if not rebuild:
-            await _delete_one(int(tid))
+            await _delete_one(tid)
         # Only the env KEYS go into metadata (not descriptions) to keep the
         # vector row small; descriptions are fetched on apply_template. Skip
         # RELEASE_BOT_TOKEN — it has its own release flow, not a user env.
@@ -122,7 +122,10 @@ async def ingest(*, rebuild: bool = False) -> dict[str, int]:
             and str(e.get("key")).strip() != "RELEASE_BOT_TOKEN"
         ]
         metadata = {
-            "template_id": int(tid),
+            # Backend template ids are UUID strings — store as-is. The old
+            # int() cast crashed on UUIDs (and left stale integer ids that
+            # apply_template's UUID/slug lookup couldn't resolve).
+            "template_id": str(tid),
             "slug": tpl.get("slug"),
             "name": tpl.get("name"),
             "categories": [c.get("name") for c in (tpl.get("categories") or [])],

@@ -261,7 +261,12 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
         await _emit(
             cfg.emit,
             "assistant_message",
-            {"text": result.message.text, "model": model, "usage": result.usage.__dict__},
+            {
+                "text": result.message.text,
+                "model": model,
+                "provider": getattr(cfg.llm, "provider", None),
+                "usage": result.usage.__dict__,
+            },
         )
         cumulative_in = state.get("total_input_tokens", 0) + (result.usage.input_tokens or 0)
         cumulative_out = state.get("total_output_tokens", 0) + (result.usage.output_tokens or 0)
