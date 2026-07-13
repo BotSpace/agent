@@ -128,6 +128,39 @@ def _emit_field(f: dict, defaults: dict) -> list[_Emit]:
                 out.append((dk, str, None, False, defaults.get(dk)))
         return out
 
+    if ftype == "mediaMessage":
+        # The media widget (frontend) writes `<kind>SourceType` + one of
+        # `<kind>FileId` / `<kind>Url` / upload — the conditional source fields
+        # aren't in the manifest, so the compiler must add them or the agent
+        # can't set a video/photo/etc. source (strict model rejects the key).
+        kind = str(f.get("mediaKind") or "media")
+        return [
+            (
+                f"{kind}SourceType",
+                Literal["upload", "file_id", "url"],  # type: ignore[valid-type]
+                f"How the {kind} is provided: 'file_id' (Telegram file_id OR a "
+                f"platform file UUID like {{{{yt_file}}}} from a module), 'url' "
+                f"(direct link), or 'upload'.",
+                False,
+                defaults.get(f"{kind}SourceType") or "upload",
+            ),
+            (
+                f"{kind}FileId",
+                str,
+                f"{kind} file_id/UUID — set when {kind}SourceType='file_id' "
+                f"(e.g. {{{{yt_file}}}}).",
+                False,
+                defaults.get(f"{kind}FileId"),
+            ),
+            (
+                f"{kind}Url",
+                str,
+                f"Direct {kind} URL — set when {kind}SourceType='url'.",
+                False,
+                defaults.get(f"{kind}Url"),
+            ),
+        ]
+
     # Oddiy: bitta `key`.
     key = f.get("key")
     if not key:
