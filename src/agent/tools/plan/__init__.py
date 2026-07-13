@@ -57,6 +57,20 @@ def _set_plan(items: list[dict[str, Any]]) -> dict[str, Any]:
     return {"current_plan": items}
 
 
+async def _emit_plan(ctx: ToolContext, event: str, plan: list[dict[str, Any]]) -> None:
+    """Emit a plan_set/plan_update event so the plan is persisted to agent_events
+    (→ chat history) and streamed to the UI as an inline plan turn. Best-effort."""
+    emit = ctx.emit
+    if emit is None:
+        return
+    try:
+        res = emit(event, {"plan": plan})
+        if hasattr(res, "__await__"):
+            await res
+    except Exception:
+        pass
+
+
 @tool(
     name="plan.set",
     description=(
@@ -69,6 +83,7 @@ def _set_plan(items: list[dict[str, Any]]) -> dict[str, Any]:
 )
 async def plan_set(input: PlanSetInput, ctx: ToolContext) -> ToolResult:
     items = [item.model_dump() for item in input.items]
+    await _emit_plan(ctx, "plan_set", items)
     return ToolResult.ok(
         f"Plan set with {len(items)} item(s).",
         state_updates=_set_plan(items),
@@ -95,6 +110,7 @@ async def plan_update(input: PlanUpdateInput, ctx: ToolContext) -> ToolResult:
                 item["title"] = input.title
             if input.notes is not None:
                 item["notes"] = input.notes
+            await _emit_plan(ctx, "plan_update", plan)
             return ToolResult.ok(
                 f"Updated item `{input.id}` → {item.get('status')}",
                 state_updates=_set_plan(plan),
@@ -113,6 +129,7 @@ async def plan_complete(input: PlanCompleteInput, ctx: ToolContext) -> ToolResul
     for item in plan:
         if item.get("id") == input.id:
             item["status"] = "completed"
+            await _emit_plan(ctx, "plan_update", plan)
             return ToolResult.ok(
                 f"Completed `{input.id}`",
                 state_updates=_set_plan(plan),
@@ -170,6 +187,7 @@ async def plan_advance(input: PlanAdvanceInput, ctx: ToolContext) -> ToolResult:
     if not_found:
         msg += f" (topilmadi: {not_found})"
 
+    await _emit_plan(ctx, "plan_update", plan)
     return ToolResult.ok(
         msg,
         state_updates=_set_plan(plan),
