@@ -40,6 +40,12 @@
   CheckMembership→is-member/not-member, ForLoop→loop-body/no-items,
   PaymentNode→paid/failed (to'lov natijasiga FAQAT shu tarmoqlar — PaymentStatusTrigger
   QO'SHMA); tugma → flow_connect_button.
+• KO'P TARMOQLI TANLOV (bitta qiymat, 3+ variant: status/tur/til) → IfCondition
+  ZANJIRI o'rniga `SwitchNode` AFZAL (tozaroq, kam node). `data`: `value`
+  (`{{status}}`), `cases:[{id:"c1",match:"approved",label:"..."},...]` (har case
+  UNIKAL `id`), `default:true`. Output handle'lari DINAMIK:
+  `flow_connect(source="<switch>", source_handle="output-<case.id>")` har case
+  uchun (masalan `output-c1`), mos kelmasa `output-default`.
 • Dinamik ma'lumot (mahsulot/kurs/FAQ ro'yxati) flow'ga hardcode QILINMAYDI —
   avval collection yarating (cms_create_collection + cms_insert), flow undan o'qisin.
 • CheckMembershipNode: channels:[{value:"@kanal"}] (chatId emas!).
