@@ -8,6 +8,7 @@ from ..config import Settings, get_settings
 from .anthropic import AnthropicClient
 from .base import LLMClient, LLMError
 from .bedrock import BedrockClient
+from .deepseek import DeepSeekClient
 from .openai import OpenAIClient
 from .openrouter import OpenRouterClient
 
@@ -18,6 +19,8 @@ def build_client(provider: str, settings: Settings | None = None) -> LLMClient:
         return AnthropicClient(api_key=s.anthropic_api_key)
     if provider == "openai":
         return OpenAIClient(api_key=s.openai_api_key)
+    if provider == "deepseek":
+        return DeepSeekClient(api_key=s.deepseek_api_key)
     if provider == "openrouter":
         return OpenRouterClient(
             api_key=s.openrouter_api_key,
