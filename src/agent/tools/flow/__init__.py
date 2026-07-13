@@ -829,6 +829,18 @@ async def flow_list_node_types(input: FlowListNodeTypesInput, ctx: ToolContext) 
             }
             for cf in (mod.get("credential_fields") or [])
         ]
+        # Real source handle ids from the module manifest — an edge whose
+        # sourceHandle doesn't match one of these is INVISIBLE in the editor.
+        mod_handles = [
+            h for h in (mod.get("source_handles") or []) if isinstance(h, dict) and h.get("id")
+        ]
+        handle_ids = [str(h["id"]) for h in mod_handles] or ["source-default"]
+        handle_note = (
+            "  OUTPUT handles (use as source_handle when connecting FROM this "
+            "node): " + ", ".join(f"{h['id']}={h.get('label') or h['id']}" for h in mod_handles)
+            if mod_handles
+            else ""
+        )
         payload.append(
             {
                 "type": mod["type"],
@@ -840,8 +852,9 @@ async def flow_list_node_types(input: FlowListNodeTypesInput, ctx: ToolContext) 
                         if mod.get("is_trigger")
                         else ""
                     )
+                    + handle_note
                 ),
-                "source_handles": ["source-default"],
+                "source_handles": handle_ids,
                 "is_trigger": bool(mod.get("is_trigger")),
                 "module": mod.get("module"),
                 "fields": fields,
