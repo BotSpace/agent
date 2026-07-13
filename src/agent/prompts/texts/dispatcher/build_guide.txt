@@ -83,6 +83,15 @@ node'lari OAuth: `credentials.connect_oauth(type_key=...)`.
   `…SourceType="file_id"` + `…FileId="{{yt_file}}"`. URL EMAS.
 - Batafsil: `docs_guide(topic="modules")`.
 
+**TARMOQLASH — ko'p variant bo'lsa `SwitchNode` (IfCondition zanjiri EMAS):**
+Bitta qiymatni 3+ variantga solishtirish (status/tur/til) kerak bo'lsa,
+`IfConditionNode` zanjiri o'rniga BITTA `SwitchNode` ishlat — tozaroq. `data`:
+`value` (masalan `{{status}}`), `cases:[{id:"c1",match:"approved",label:"..."},
+{id:"c2",match:"pending",...}]` (har case UNIKAL `id`), `default:true`. Output
+handle'lari DINAMIK — har case uchun `flow.connect(source="<switch>",
+source_handle="output-<case.id>")` (masalan `output-c1`); mos kelmasa
+`output-default`. (Faqat 2 tarmoq/haqiqiy shart uchun IfCondition qoladi.)
+
 **To'lov:** qurishdan OLDIN `ask_user(select, options=["Click","Paycue"])`;
 `PaymentNode.data.paymentType` faqat `"click"`/`"paycue"`; `amount` — musbat son
 yoki `{{var}}`. Source handle'lar: `paid` / `failed`. Real xarid uchun `payment_link`
