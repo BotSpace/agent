@@ -500,13 +500,29 @@ async def _handle_session_use_project(
         return _result_to_mcp("project_id majburiy.", is_error=True, data=None)
 
     store = get_workspace_store()
+    backend = get_backend_client()
+
+    # Ownership gate: GET /projects/{id} is owner-scoped on the backend (404 for
+    # someone else's project), so a project the caller doesn't own is rejected
+    # HERE — before we switch the active project or load any flow. Without this
+    # check session_use_project accepted any id.
+    try:
+        project = await backend.get_project(project_id, auth_claims=user.claims)
+    except Exception:
+        project = None
+    if not isinstance(project, dict) or not project:
+        return _result_to_mcp(
+            f"Loyiha topilmadi yoki sizga ruxsat yo'q: {project_id}",
+            is_error=True,
+            data=None,
+        )
+
     async with store.lock(user.user_id):
         # Aktiv loyiha pointer'i per-CLIENT (user_id, client_key) — bir user'ning
         # boshqa klienti boshqa loyihada ishlayotgan bo'lsa, unga tegmaymiz.
         ws = store.set_active(user.user_id, project_id, client_key=user.client_key)
         ws.sync_auth_claims(user.claims)
 
-        backend = get_backend_client()
         # #1 — restore an unsaved draft if one was persisted for this
         # (user, project) and is still dirty. Otherwise load the saved flow.
         draft = await get_draft_store().load(user_id=user.user_id, project_id=project_id)
@@ -548,13 +564,10 @@ async def _handle_session_use_project(
             ws.module_nodes = module_nodes
             ws.snapshots = []
 
-        # Remember the project's display name for session_status (#7).
-        try:
-            project = await backend.get_project(project_id, auth_claims=ws.auth_claims)
-            if isinstance(project, dict) and project.get("name"):
-                ws.project_name = str(project["name"])
-        except Exception:
-            pass
+        # Remember the project's display name for session_status (#7) — reuse
+        # the project fetched for the ownership gate above.
+        if project.get("name"):
+            ws.project_name = str(project["name"])
 
         await _persist_draft(ws)
         # #2 — this is an EXPLICIT project selection; mark it so session recovery

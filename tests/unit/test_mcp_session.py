@@ -113,6 +113,36 @@ async def test_session_use_project_seeds_flow(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_session_use_project_rejects_unowned(monkeypatch):
+    """A project the caller doesn't own (backend GET /projects/{id} is
+    owner-scoped -> 404 -> get_project raises) must be rejected without
+    switching the active project."""
+
+    class _DenyingBackend:
+        async def get_project(self, project_id, *, auth_claims=None):
+            raise RuntimeError("HTTP 404: not found")
+
+    # load_* must never be reached — assert by making them explode if called.
+    async def _boom(*args, **kwargs):
+        raise AssertionError("must not load a project the caller doesn't own")
+
+    monkeypatch.setattr(mcp_server, "get_backend_client", lambda: _DenyingBackend())
+    monkeypatch.setattr(mcp_server, "load_saved_flow", _boom)
+
+    srv = build_mcp_server()
+    token = mcp_server._current_user.set(_user())
+    try:
+        result = await _call(srv, "session_use_project", {"project_id": "999"})
+    finally:
+        mcp_server._current_user.reset(token)
+
+    assert result.isError is True
+    assert "999" in result.content[0].text
+    # The active project must NOT have been switched to the unowned id.
+    assert get_workspace_store().get("42").project_id != "999"
+
+
+@pytest.mark.asyncio
 async def test_session_status_no_project():
     srv = build_mcp_server()
     token = mcp_server._current_user.set(_user())
