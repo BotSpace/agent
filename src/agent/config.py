@@ -8,7 +8,7 @@ from typing import Literal
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-LLMProvider = Literal["anthropic", "openai", "bedrock", "openrouter"]
+LLMProvider = Literal["anthropic", "openai", "bedrock", "openrouter", "deepseek"]
 
 
 class Settings(BaseSettings):
@@ -51,6 +51,7 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
+    deepseek_api_key: str | None = Field(default=None, alias="DEEPSEEK_API_KEY")
     openrouter_api_key: str | None = Field(default=None, alias="OPENROUTER_API_KEY")
     openrouter_site_url: str | None = Field(
         default="https://botspace.uz", alias="OPENROUTER_SITE_URL",

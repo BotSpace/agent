@@ -49,6 +49,7 @@ _INTERNAL_KEY_AWS_SECRET_ACCESS_KEY = "ai_agent.aws_secret_access_key"
 # nor public config supplies a base_url. bedrock has no default (region-based).
 _PROVIDER_DEFAULT_BASE_URL: dict[str, str | None] = {
     "openai": "https://api.openai.com/v1",
+    "deepseek": "https://api.deepseek.com",
     "openrouter": "https://openrouter.ai/api/v1",
     "ollama": "https://ollama.com/v1",
     "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
@@ -267,6 +268,18 @@ async def build_effective_client():
             )
         )
         return client
+
+    if provider == "deepseek":
+        from ..llm.deepseek import DEEPSEEK_BASE_URL, DeepSeekClient
+
+        effective_key = api_key or s.deepseek_api_key
+        effective_burl = base_url or DEEPSEEK_BASE_URL
+        logger.info(
+            "Building DeepSeekClient with effective key=%s base_url=%s",
+            "***" if effective_key else None,
+            effective_burl,
+        )
+        return DeepSeekClient(api_key=effective_key, base_url=effective_burl)
 
     if provider == "openai":
         effective_key = api_key or s.openai_api_key
