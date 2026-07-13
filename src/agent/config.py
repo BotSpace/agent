@@ -69,6 +69,12 @@ class Settings(BaseSettings):
     max_input_tokens: int = Field(default=200_000, alias="AGENT_MAX_INPUT_TOKENS")
     max_output_tokens: int = Field(default=16_000, alias="AGENT_MAX_OUTPUT_TOKENS")
     max_tool_calls: int = Field(default=80, alias="AGENT_MAX_TOOL_CALLS")
+    # History token budget per turn — how much of the model's context window the
+    # conversation may use before OLD turns get compacted into a summary. Default
+    # is tuned for deepseek-v4 (1M-token context), a bit under it to leave room
+    # for the system prompt + tool schemas + output. Lower it (env) if you switch
+    # to a smaller-context model so the request never overflows the window.
+    max_history_tokens: int = Field(default=900_000, alias="AGENT_MAX_HISTORY_TOKENS")
     max_wall_seconds: int = Field(default=900, alias="AGENT_MAX_WALL_SECONDS")
     # Hard per-run token backstop: even when the user's monthly budget can't be
     # read (usage endpoint 401/down), a runaway loop must stop. Checked on every

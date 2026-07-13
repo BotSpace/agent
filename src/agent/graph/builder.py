@@ -82,6 +82,14 @@ class GraphConfig:
     # plenty of room for system prompt + tool schemas under typical
     # 128K context windows.
     max_history_chars: int = 120_000
+    # Token budget for the conversation history sent per turn — set as high as
+    # the model's context window allows (minus room for system prompt + tools +
+    # output), so we USE the full window. Compaction only kicks in when the
+    # history would actually exceed this (near the context limit): the oldest
+    # turns are folded into a running summary — like Claude Code / Codex — not
+    # dropped. Env-configurable (AGENT_MAX_HISTORY_TOKENS); default tuned for
+    # deepseek-v4's 1M window. Falls back to token-trim if summarization fails.
+    max_history_tokens: int = 900_000
     # Max tool calls per run. Once reached, tool_exec stops executing new
     # tools and returns a budget-exhausted result so the model finalizes.
     # Backstops the LangGraph recursion_limit (500) far earlier and caps
@@ -111,37 +119,143 @@ def _wrap_untrusted(content: str) -> str:
     return f"{_UNTRUSTED_OPEN}{content}{_UNTRUSTED_CLOSE}"
 
 
-def _trim_history(history: list[Message], *, max_chars: int) -> list[Message]:
-    """Keep the most-recent suffix of the conversation under max_chars.
+def _msg_chars(m: Message) -> int:
+    """Approximate character size of a message's content."""
+    size = sum(len(p.text) if hasattr(p, "text") else 0 for p in m.content) or 0
+    if not size:
+        try:
+            size = sum(len(getattr(p, "content", "") or "") for p in m.content)
+        except Exception:
+            size = 256
+    return size
 
-    Walks BACKWARDS from the newest message, including each as long as
-    the budget allows. Stops dropping at a tool-result boundary so the
-    next message after the cut isn't a tool_result with no matching
-    tool_call above it (would 400 on OpenAI/Anthropic). When the cut
-    would split such a pair, we drop one more message (the assistant
-    that issued the tool_call) until aligned.
+
+def _est_tokens(msgs: list[Message]) -> int:
+    """Rough token estimate (chars/4) — good enough for budgeting decisions."""
+    return sum(_msg_chars(m) for m in msgs) // 4
+
+
+def _drop_leading_tool(msgs: list[Message]) -> list[Message]:
+    out = list(msgs)
+    while out and out[0].role == "tool":
+        out.pop(0)
+    return out
+
+
+def _tail_start_for_budget(history: list[Message], max_tokens: int) -> int:
+    """Index of the earliest trailing message such that history[idx:] fits the
+    token budget. Walks backwards; returns 0 if everything fits."""
+    total = 0
+    idx = len(history)
+    for i in range(len(history) - 1, -1, -1):
+        t = _msg_chars(history[i]) // 4
+        if idx < len(history) and total + t > max_tokens:
+            break
+        total += t
+        idx = i
+    return idx
+
+
+def _trim_history(history: list[Message], *, max_chars: int) -> list[Message]:
+    """Token-budgeted drop-oldest trim (fallback path / when compaction is off).
+
+    Keeps the most-recent suffix under the token budget (derived from max_chars),
+    stopping at a tool-result boundary so the tail never starts with an orphan
+    tool_result (the LLM client's normalize_tool_turns is a second safety net).
     """
     if not history:
         return history
-    total = 0
-    kept_rev: list[Message] = []
-    for m in reversed(history):
-        size = sum(len(p.text) if hasattr(p, "text") else 0 for p in m.content) or 0
-        if not size:
-            # Tool result / structured part: estimate via text fallback.
-            try:
-                size = sum(len(getattr(p, "content", "") or "") for p in m.content)
-            except Exception:
-                size = 256
-        if kept_rev and total + size > max_chars:
-            break
-        kept_rev.append(m)
-        total += size
-    kept = list(reversed(kept_rev))
-    # Drop leading tool-result messages — they have no matching tool_call.
-    while kept and kept[0].role == "tool":
-        kept.pop(0)
-    return kept
+    max_tokens = max(1, max_chars // 4)
+    start = _tail_start_for_budget(history, max_tokens)
+    return _drop_leading_tool(history[start:])
+
+
+def _summary_message(text: str) -> Message:
+    """A user-role note carrying the compacted earlier-conversation summary."""
+    return Message.user_text(
+        "[Avvalgi suhbatning ixcham xulosasi — kontekst to'lgani uchun eski "
+        "xabarlar shu xulosaga yig'ildi. Qaror/holat/ID'lar shu yerda:]\n" + text
+    )
+
+
+_COMPACT_PROMPT = (
+    "Siz suhbat kontekstini IXCHAMLAYSIZ. Quyida (agar bo'lsa) avvalgi xulosa va "
+    "undan keyingi suhbat bo'lagi berilgan. Ularni BITTA ixcham xulosaga birlashtiring. "
+    "SAQLA: foydalanuvchi maqsadi, qabul qilingan qarorlar, joriy loyiha/flow holati "
+    "(node id'lar, qo'shilgan/o'chirilgan narsalar), muhim ID'lar (project_id, "
+    "credential, collection), bajarilmagan (pending) ishlar. TASHLA: takror, salomlashish, "
+    "xom tool natijalari. 300 so'zdan oshirmang. Faqat xulosani qaytaring."
+)
+
+
+async def _summarize_history(
+    cfg: "GraphConfig", model: str, prev_summary: str | None, msgs: list[Message]
+) -> str:
+    """One cheap LLM call folding prev_summary + msgs into a compact summary."""
+    parts: list[str] = []
+    if prev_summary:
+        parts.append("AVVALGI XULOSA:\n" + prev_summary)
+    excerpt: list[str] = []
+    for m in msgs:
+        txt = " ".join(
+            p.text for p in m.content if hasattr(p, "text") and getattr(p, "text", "")
+        ).strip()
+        if not txt:
+            # tool result / structured — include a short marker
+            txt = " ".join(
+                str(getattr(p, "content", "") or "")[:300] for p in m.content
+            ).strip()
+        if txt:
+            excerpt.append(f"{m.role}: {txt}")
+    parts.append("SUHBAT BO'LAGI:\n" + "\n".join(excerpt))
+    req = [
+        Message.system_text(_COMPACT_PROMPT),
+        Message.user_text("\n\n".join(parts)),
+    ]
+    opts = GenerateOptions(model=model, max_tokens=700, temperature=0.2, tools=[])
+    result = await cfg.llm.generate(req, opts)
+    return (result.message.text or "").strip() or (prev_summary or "")
+
+
+async def _compact_history(
+    history: list[Message], *, cfg: "GraphConfig", state: AgentState, model: str
+) -> tuple[list[Message], dict[str, Any]]:
+    """Fit history to the token budget by folding the OLDEST messages into a
+    running summary (cached in state) instead of dropping them. Returns
+    (messages_to_send, state_updates). Any failure falls back to token-trim."""
+    budget = cfg.max_history_tokens
+    if not history:
+        return history, {}
+    prev_summary = state.get("history_summary")
+    covered = int(state.get("history_summary_count") or 0)
+    covered = max(0, min(covered, len(history)))
+
+    if _est_tokens(history) <= budget and not prev_summary:
+        return history, {}  # comfortably fits, nothing summarized yet
+
+    try:
+        # Recent tail kept verbatim within ~70% of budget; older-uncovered folds.
+        recent_budget = max(1, int(budget * 0.7))
+        tail_start = _tail_start_for_budget(history, recent_budget)
+        fold_end = max(covered, tail_start)
+        to_fold = history[covered:fold_end]
+        new_summary = prev_summary
+        new_covered = covered
+        if to_fold:
+            new_summary = await _summarize_history(cfg, model, prev_summary, to_fold)
+            new_covered = fold_end
+        tail = _drop_leading_tool(history[new_covered:])
+        sent = ([_summary_message(new_summary)] if new_summary else []) + tail
+        updates: dict[str, Any] = {}
+        if new_summary != prev_summary or new_covered != covered:
+            updates = {
+                "history_summary": new_summary,
+                "history_summary_count": new_covered,
+            }
+        return sent, updates
+    except Exception:
+        logger.warning("history compaction failed; token-trim fallback", exc_info=True)
+        return _trim_history(history, max_chars=cfg.max_history_chars), {}
 
 
 async def _emit(emit: EventEmitter | None, name: str, payload: dict[str, Any]) -> None:
@@ -249,11 +363,22 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
             else build_system_message(state)
         )
         history = state.get("messages") or []
-        history = _trim_history(history, max_chars=cfg.max_history_chars)
+        model = _pick_model(state, cfg.models)
+        # Compact old turns into a running summary when near the context limit
+        # (instead of dropping them). Returns the messages to send + any summary
+        # cache to persist. compact_updates is merged into this turn's updates.
+        history, compact_updates = await _compact_history(
+            history, cfg=cfg, state=state, model=model
+        )
+        if compact_updates:
+            await _emit(
+                cfg.emit,
+                "context_compacted",
+                {"covered": compact_updates.get("history_summary_count", 0)},
+            )
         # Dynamic context injected as a TRAILING user message so it sits after
         # the conversation history and never invalidates the rolling cache.
         dynamic_ctx = build_dynamic_context_message(state)
-        model = _pick_model(state, cfg.models)
         # Tool-call budget exhausted: withhold ALL tools so the model can only
         # respond with text — its forced final turn. Guarantees termination even
         # if the model keeps trying to call tools.
@@ -306,6 +431,9 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
             "total_input_tokens": cumulative_in,
             "total_output_tokens": cumulative_out,
             "total_cache_read_tokens": cumulative_cache,
+            # Persist the compaction summary cache so old turns stay folded and
+            # aren't re-summarized every turn.
+            **compact_updates,
         }
         # Real-time usage: emit the running total after EVERY LLM turn so the UI
         # updates the token counter live (not only on run_completed).
@@ -700,6 +828,10 @@ def initial_state(
         "user_id": user_id,
         "thread_id": thread_id,
         "messages": [Message.user_text(user_prompt)],
+        # The run's objective — re-injected into the dynamic context every turn
+        # so the agent never drifts from it (esp. after history compaction drops
+        # the original prompt from the sent window).
+        "goal": user_prompt,
         # Reset per-run token counters. These are plain (last-value-wins)
         # channels; on a resumed conversation thread the checkpointer would
         # otherwise KEEP the previous turns' totals, so the run would report,
