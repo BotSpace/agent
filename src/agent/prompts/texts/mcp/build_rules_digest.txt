@@ -11,9 +11,9 @@
   ro'yxat) — parseMode:"HTML" da ular literal chiqadi yoki "can't parse
   entities" xatosi beradi. Qalin=<b>, kursiv=<i>. CustomCode send_message'da ham
   shu: parse_mode:"HTML" + HTML teg.
-• XABAR NODE: DOIM flow_add_edit_or_send (EditOrSendMessageNode) — xabarni joyida
-  edit qiladi, menyu chatda to'planmaydi. flow_add_send_text_message FAQAT reply
-  keyboard (request_contact/request_location) kerak bo'lganda.
+• XABAR NODE: DEFAULT `EditOrSendMessageNode` (xabarni joyida edit qiladi, menyu
+  chatda to'planmaydi; inline tugmalar shu node'da). `SendTextMessageNode` FAQAT
+  reply keyboard (request_contact/request_location) kerak bo'lganda.
 • KEYBOARD: keyboard_kind FAQAT "inline" yoki "reply" — "none" YO'Q. Tugmasiz
   oddiy xabarda keyboard_kind'ni UMUMAN yozma (default inline). Reply keyboard
   faqat kontakt/joylashuv so'rashda.

@@ -49,6 +49,12 @@ Google?), til/dizayn. Mavjud flow bo'lsa spec/plan QAYTA yozma — inkremental d
 
 ## Kritik patternlar (xato bo'lmasligi uchun)
 
+**XABAR NODE — DEFAULT `EditOrSendMessageNode`:** bot matn/menyu yuborsa DOIM
+`type="EditOrSendMessageNode"` ishlat — u xabarni JOYIDA edit qiladi, menyu chatda
+to'planmaydi (inline tugmalar shu node'da). `SendTextMessageNode`ni FAQAT reply
+keyboard kerak bo'lganda ishlat (request_contact/request_location). Oddiy xabarga
+`SendTextMessageNode` tanlab keyboard_kind:"none" YOZMA — noto'g'ri.
+
 **AI Agent (AIAgentNode):**
 - `data.userInputText` = foydalanuvchi matni (masalan `{{message.text}}`) — MAJBURIY.
 - Provider'ni alohida node qilib qo'sh (AIOllamaProviderNode / AIOpenAIProviderNode /
