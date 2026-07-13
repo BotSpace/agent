@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     # ── budgets ─────────────────────────────────────────────────────────
     max_input_tokens: int = Field(default=200_000, alias="AGENT_MAX_INPUT_TOKENS")
     max_output_tokens: int = Field(default=16_000, alias="AGENT_MAX_OUTPUT_TOKENS")
-    max_tool_calls: int = Field(default=80, alias="AGENT_MAX_TOOL_CALLS")
+    max_tool_calls: int = Field(default=500, alias="AGENT_MAX_TOOL_CALLS")
     # History token budget per turn — how much of the model's context window the
     # conversation may use before OLD turns get compacted into a summary. Default
     # is tuned for deepseek-v4 (1M-token context), a bit under it to leave room

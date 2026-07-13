@@ -92,9 +92,10 @@ class GraphConfig:
     max_history_tokens: int = 900_000
     # Max tool calls per run. Once reached, tool_exec stops executing new
     # tools and returns a budget-exhausted result so the model finalizes.
-    # Backstops the LangGraph recursion_limit (500) far earlier and caps
-    # runaway tool loops / cost. Mirrors config.max_tool_calls.
-    max_tool_calls: int = 80
+    # Caps runaway tool loops / cost. Mirrors config.max_tool_calls; the
+    # LangGraph recursion_limit is set high enough (worker.py) that this is the
+    # real binding limit.
+    max_tool_calls: int = 500
     # Hard per-run token backstop (cumulative in+out). Used as the cap when the
     # user's remaining budget is unknown so a runaway loop still stops.
     max_run_tokens: int = 2_000_000
