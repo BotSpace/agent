@@ -121,6 +121,11 @@ async def run_agent(
     async def emit(name: str, payload: dict[str, Any]) -> None:
         await store.emit(request_id, name, payload)
 
+    async def emit_ephemeral(name: str, payload: dict[str, Any]) -> None:
+        # Live-only streaming deltas (assistant_chunk / thinking_delta) — pushed
+        # to SSE subscribers but NOT persisted (see store.emit_ephemeral).
+        await store.emit_ephemeral(request_id, name, payload)
+
     # Resolve effective provider/model/region ONCE per run (fetch+cache).
     # Falls back to env settings if backend is unreachable.
     llm_client = await build_effective_client()
@@ -143,6 +148,7 @@ async def run_agent(
             max_tool_calls=s.max_tool_calls,
             max_run_tokens=s.max_run_tokens,
             emit=emit,
+            emit_ephemeral=emit_ephemeral,
             services={},
             approve_destructive=True,
             lazy_tools=True,

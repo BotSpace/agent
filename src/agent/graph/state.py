@@ -96,3 +96,9 @@ class AgentState(TypedDict, total=False):
     yetganda graph yangi tool bajarmaydi — modelga yakuniy javob berishni
     aytadi. recursion_limit (500) faqat oxirgi to'siq; bu byudjet xarajat va
     cheksiz sikllarni ancha oldin to'xtatadi."""
+
+    tool_budget_exhausted: bool
+    """Set True by tool_exec when tool_calls_used reaches cfg.max_tool_calls.
+    Forces exactly ONE more tools-DISABLED llm_call (model must produce a final
+    text answer) after which after_llm hard-routes to `final` — so a model that
+    ignores the "stop calling tools" hint can't spin in an infinite retry loop."""

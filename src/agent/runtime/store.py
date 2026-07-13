@@ -363,6 +363,28 @@ class RunStore:
                 log_subagent_started(request_id, name)
         return seq
 
+    async def emit_ephemeral(
+        self, request_id: str, event_type: str, payload: dict[str, Any]
+    ) -> None:
+        """Publish a LIVE-ONLY event to SSE subscribers WITHOUT persisting it.
+
+        Used for high-frequency streaming deltas (``assistant_chunk`` /
+        ``thinking_delta``) — writing every token to ``agent_events`` (a fresh
+        DB connection + INSERT each) would be ruinous, and the durable
+        ``assistant_message`` emitted at turn end already records the final text.
+        ``seq=0`` is a sentinel: the frontend only advances its replay cursor on
+        ``seq > last`` so ephemeral events never disturb reconnect/replay.
+        """
+        from .events import AgentEvent
+
+        ev = AgentEvent(
+            seq=0,
+            type=event_type,  # type: ignore[arg-type]
+            payload=payload,
+            at=dt.datetime.utcnow().isoformat(),
+        )
+        await self._publish(request_id, ev)
+
     async def list_events(self, request_id: str, *, since_seq: int = 0) -> list[dict[str, Any]]:
         await self.bootstrap()
         async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
@@ -663,6 +685,62 @@ class RunStore:
             return turns
         except Exception:
             return []
+
+    async def get_active_run(
+        self, *, project_id: str | None, user_id: str | None, thread_id: str
+    ) -> dict[str, Any] | None:
+        """Return the thread's still-in-flight run so a refreshed page can
+        re-attach to its live SSE instead of losing the stream.
+
+        "Active" = the most recent run whose status is not terminal
+        (``completed`` / ``failed``; a user cancel also lands on ``failed``).
+        ``last_seq`` is the highest seq among the events already materialised
+        into history turns (``assistant_message`` / ``tool_call`` /
+        ``tool_result``); the frontend reconnects with ``since_seq=last_seq`` so
+        only unseen events (a pending tool_result, a fresh approval prompt, the
+        final answer) replay — no duplicate turns. Scoped to the caller. Returns
+        ``None`` when the thread has no active run. Never raises.
+        """
+        try:
+            await self.bootstrap()
+            where = ["thread_id = %s", "status NOT IN ('completed', 'failed')"]
+            params: list[Any] = [thread_id]
+            if project_id:
+                where.append("project_id = %s")
+                params.append(project_id)
+            if user_id:
+                where.append("user_id = %s")
+                params.append(user_id)
+            clause = "WHERE " + " AND ".join(where)
+            async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        f"""SELECT request_id, status, pending_approval, pending_clarification
+                            FROM agent_runs {clause}
+                            ORDER BY created_at DESC, request_id DESC LIMIT 1""",
+                        params,
+                    )
+                    row = await cur.fetchone()
+                    if row is None:
+                        return None
+                    request_id = row[0]
+                    await cur.execute(
+                        """SELECT COALESCE(MAX(seq), 0) FROM agent_events
+                           WHERE request_id = %s
+                             AND type IN ('assistant_message', 'tool_call', 'tool_result')""",
+                        (request_id,),
+                    )
+                    seq_row = await cur.fetchone()
+            last_seq = int(seq_row[0]) if seq_row and seq_row[0] is not None else 0
+            return {
+                "request_id": request_id,
+                "status": row[1],
+                "last_seq": last_seq,
+                "pending_approval": row[2],
+                "pending_clarification": row[3],
+            }
+        except Exception:
+            return None
 
     # ── messages (history) ─────────────────────────────────────────────
     async def list_messages(

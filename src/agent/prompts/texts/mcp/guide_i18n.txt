@@ -61,7 +61,7 @@ Til tanlangach menyuга o'tkaz.
 
 ## 5. Custom code'da i18n
 
-CustomNode ichida global'lar bor:
+CustomCodeNode ichida global'lar bor:
   • lang           — aktiv til kodi (masalan "uz")
   • language_code  — Telegram profil tili
   • t({en:"..", uz:"..", ru:".."}) — aktiv tildagi stringni qaytaradi (helper)

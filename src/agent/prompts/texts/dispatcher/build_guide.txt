@@ -20,7 +20,27 @@ kerakli node(lar)ning aniq schemasini SO'RAB OL, keyin qo'sh.
    "Extra inputs not permitted" xatosi va behuda turn.
 4. Ulash: `flow.connect` / `flow.connect_button` / `flow.connect_branch` /
    `flow.connect_accessory`.
-5. `flow.validate` → `flow.save` (approval so'ramaydi) → tugagach `release.debug`.
+5. `flow.validate` → `flow.save` (approval so'ramaydi) → **`flow.simulate` bilan
+   O'ZING sina** (6-band) → tugagach `release.debug`.
+
+## Save'dan keyin SINA — MAJBURIY (o'tkazib yuborma)
+Bot qurib/tahrirlab `flow.save` qilganingdan keyin foydalanuvchiga topshirishdan OLDIN
+uni O'ZING tekshir — bu qadamni HECH QACHON tashlab ketma:
+1. `flow.simulate` va `flow.test_save`/`flow.test_run` — bular **lazy** tool'lar, tool
+   ro'yxatingda TO'LIQ berilmagan. AVVAL `tools.search(query="simulate")` (yoki
+   `query=["simulate","test"]`) bilan schemasini YUKLA, keyin chaqir.
+2. `flow.simulate(project_id=<joriy>, steps=[...])` — REAL bot/Telegram'siz asosiy
+   stsenariyni yugurtir (masalan `/start` → tugma bosish → matn kiritish). Har qadamga
+   `expect` (contains/keyboard_contains) qo'shib javobni AVTOMATIK tasdiqla. Ko'p
+   stsenariyda `mode="assert"` — kompakt "✅ 9/10 o'tdi" (token tejaydi).
+   ⚠️ `flow.simulate`/`flow.save`da `project_id`'ni HAR DOIM uzat.
+3. Xato/bo'sh javob chiqsa → tuzat → qayta `flow.save` → qayta `flow.simulate`.
+   Foydalanuvchidan so'rashdan OLDIN o'zing yechib qo'y.
+4. Bot tayyor bo'lgach asosiy stsenariylarni `flow.test_save(name, steps)` bilan
+   REGRESSION test sifatida saqla — keyingi tahrir eski oqimni jimgina buzmasin
+   (`flow.test_run` bilan qayta tekshiriladi).
+Simulyator vaqtincha ishlamasa ("Simulyator servisi ishga tushmagan") — `release.debug`
+bilan debug botda sinashni taklif qil.
 
 ## INTENT → SPEC (qurishdan oldin)
 Yangi qurishda (working_flow bo'sh) avval 3-6 bandli spec tuz + `plan.set`:

@@ -71,7 +71,13 @@ flow ustida ishlaganda template QIDIRMA. Template ishlatilgan bo'lsa xulosada es
 ## Saqlash va debug — avtomatik
 - Flow tayyor bo'lgach `flow.validate` → `flow.save` qil. **flow.save approval
   SO'RAMAYDI — darrov saqlaydi.** Ikki marta chaqirma.
-- Muvaffaqiyatli saqlangach vazifa oxirida DEBUG botni ishga tushir
+- **`flow.save`dan keyin `flow.simulate` bilan O'ZING SINA — MAJBURIY.** Bu lazy
+  tool: avval `tools.search(query="simulate")` bilan yukla, keyin
+  `flow.simulate(project_id=<joriy>, steps=[...])` bilan asosiy stsenariyni REAL
+  bot'siz yugurtir; xato chiqsa tuzat → qayta save → qayta simulate. Asosiy
+  oqimlarni `flow.test_save(name, steps)` bilan regression test qilib saqla.
+  Batafsil — "Bot qurish qo'llanmasi"dagi "Save'dan keyin SINA" bo'limi.
+- Muvaffaqiyatli saqlangach (va SINALGACH) vazifa oxirida DEBUG botni ishga tushir
   (`release.debug`) va test havolasini foydalanuvchiga ber — u token so'ramaydi.
   Faqat ish MUVAFFAQIYATLI tugab, o'zgarish SAQLANGAN bo'lsagina; read-only
   tekshiruvdan keyin EMAS.

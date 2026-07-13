@@ -718,7 +718,7 @@ _SIMPLE_VAR_RE = re.compile(r"\{\{\s*([A-Za-z_][\w]*)\b[^}]*\}\}")
 
 # #8 — CustomCodeNode jsCode writes vars via set_context('key', ...) /
 # set_state('key', ...) / vars.key = ... / private.key = ... . Capture every
-# literal key it sets so {{key}} / {{public_key}} / {{state_key}} don't warn.
+# literal key it sets so {{key}} / {{public_key}} don't warn.
 # Matches single- or double-quoted first args of set_context/set_state, and
 # object-access assignments vars.x = / private.x = .
 _SET_CONTEXT_RE = re.compile(
@@ -733,10 +733,11 @@ def _collect_state_keys(flow: FlowDocument) -> set[str]:
     """Best-effort set of variable keys a flow writes (so they're known to {{var}}).
 
     Each written key is registered under every prefix the engine can expose it as:
-    the bare key, plus `public_<key>` / `private_<key>` / legacy `state_<key>`. The
-    public/private/state prefixes all resolve to the same value families in the
-    engine, so accepting all of them avoids false `unknown_variable` warnings while
-    the bare `{{key}}` form (preferred) is also covered.
+    the bare key (preferred `{{key}}` form) plus `public_<key>` / `private_<key>`.
+    The underscore `state_<key>` form is intentionally NOT registered — the engine
+    never resolves it (saved state lives under `public_<key>`), so leaving it out
+    lets `{{state_key}}` surface as an `unknown_variable` warning instead of being
+    silently accepted.
     """
     keys: set[str] = set()
 
@@ -746,7 +747,6 @@ def _collect_state_keys(flow: FlowDocument) -> set[str]:
         keys.add(key)
         keys.add(f"public_{key}")
         keys.add(f"private_{key}")
-        keys.add(f"state_{key}")  # legacy alias still resolved by the engine
 
     for n in flow.nodes:
         data = n.data if isinstance(n.data, dict) else {}
@@ -776,7 +776,7 @@ def _collect_state_keys(flow: FlowDocument) -> set[str]:
                     _register(v)
         # #8 — CustomCodeNode jsCode sets vars via set_context/set_state or
         # vars.x = / private.x = . Each written key is valid downstream as
-        # {{key}} / {{public_key}} / {{private_key}} / {{state_key}}.
+        # {{key}} / {{public_key}} / {{private_key}}.
         if n.type == "CustomCodeNode":
             code = data.get("jsCode")
             if isinstance(code, str) and code:

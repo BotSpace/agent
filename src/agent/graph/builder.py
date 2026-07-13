@@ -61,6 +61,11 @@ class GraphConfig:
     temperature: float = 0.7
     thinking_budget: int | None = None
     emit: EventEmitter | None = None
+    # Live-only event sink for streaming deltas (assistant_chunk / thinking_delta).
+    # Set for the MAIN agent (worker wires it); left None for sub-agents so their
+    # per-token deltas don't leak onto the main chat as un-attributed chunks —
+    # sub-agents fall back to a single non-streamed generate().
+    emit_ephemeral: EventEmitter | None = None
     services: dict[str, Any] | None = None
     approve_destructive: bool = True
     # System prompt override. When set (sub-agents pass their spec prompt here),
@@ -147,6 +152,42 @@ async def _emit(emit: EventEmitter | None, name: str, payload: dict[str, Any]) -
         await res  # type: ignore[func-returns-value]
 
 
+async def _stream_turn(
+    cfg: "GraphConfig",
+    messages: list[Message],
+    options: GenerateOptions,
+):
+    """Run one LLM turn as a STREAM, pushing token deltas out on the ephemeral
+    channel, and return a GenerateResult (message/stop_reason/usage) identical to
+    what ``llm.generate`` would produce — so the rest of ``llm_call`` is unchanged.
+
+    `assistant_chunk` = live assistant text delta; `thinking_delta` = reasoning
+    delta. Both are ephemeral (not persisted). On any streaming error, or if the
+    provider never yields a terminal stop event, it falls back to a single
+    ``generate()`` so a turn is never lost.
+    """
+    from ..llm.base import GenerateResult
+
+    final: GenerateResult | None = None
+    try:
+        async for ev in cfg.llm.stream(messages, options):
+            kind = getattr(ev, "kind", None)
+            if kind == "text_delta":
+                await _emit(cfg.emit_ephemeral, "assistant_chunk", {"delta": ev.delta})
+            elif kind == "thinking_delta":
+                await _emit(cfg.emit_ephemeral, "thinking_delta", {"delta": ev.delta})
+            elif kind == "stop":
+                final = GenerateResult(
+                    message=ev.message, stop_reason=ev.stop_reason, usage=ev.usage
+                )
+    except Exception:
+        logger.warning("LLM stream failed; falling back to generate()", exc_info=True)
+        final = None
+    if final is None:
+        final = await cfg.llm.generate(messages, options)
+    return final
+
+
 def _pick_model(state: AgentState, models: ModelRoles) -> str:
     """State'ga qarab mos modelni tanlash.
 
@@ -178,9 +219,14 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
         # the conversation history and never invalidates the rolling cache.
         dynamic_ctx = build_dynamic_context_message(state)
         model = _pick_model(state, cfg.models)
+        # Tool-call budget exhausted: withhold ALL tools so the model can only
+        # respond with text — its forced final turn. Guarantees termination even
+        # if the model keeps trying to call tools.
+        if state.get("tool_budget_exhausted"):
+            tool_specs: list[Any] = []
         # Lazy tools (main agent): send CORE tools + any activated via tools.search;
         # else the full registry (sub-agents).
-        if cfg.lazy_tools:
+        elif cfg.lazy_tools:
             from ..tools.lazy import active_tool_specs
 
             tool_specs = active_tool_specs(
@@ -195,7 +241,16 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
             tools=tool_specs,
             thinking_budget=cfg.thinking_budget,
         )
-        result = await cfg.llm.generate([system, *history, dynamic_ctx], options)
+        # Main agent (emit_ephemeral wired) streams token-by-token so the UI
+        # renders the reply live; sub-agents fall back to a single generate().
+        msgs = [system, *history, dynamic_ctx]
+        if cfg.emit_ephemeral is not None:
+            result = await _stream_turn(cfg, msgs, options)
+        else:
+            result = await cfg.llm.generate(msgs, options)
+        # Durable final text — persisted to agent_events and used for history /
+        # reconnect. The ephemeral assistant_chunk deltas above only drive live
+        # rendering; the frontend reconciles them against this message.
         await _emit(
             cfg.emit,
             "assistant_message",
@@ -268,6 +323,11 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
             # contract), so we answer over-budget calls with an error result
             # that tells the model to stop calling tools and finalize.
             if calls_used >= cfg.max_tool_calls:
+                # Hard stop: flag the run so the NEXT llm_call runs with tools
+                # disabled and after_llm routes straight to `final`. A soft error
+                # result alone doesn't work — some models ignore it and keep
+                # calling tools, spinning forever.
+                updates["tool_budget_exhausted"] = True
                 msg = (
                     f"Tool-call budget exhausted ({calls_used}/{cfg.max_tool_calls}). "
                     "Stop calling tools and give your final answer to the user now "
@@ -501,6 +561,11 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
         # Token budget gate takes precedence: stop BEFORE any further tool calls.
         if state.get("limit_exceeded"):
             return "limit_exceeded"
+        # Tool-call budget exhausted: the model just had its forced tools-off
+        # final turn — end now. Never dispatch tool_exec or loop via
+        # plan_reminder, even if the model still emitted tool_calls.
+        if state.get("tool_budget_exhausted"):
+            return "final"
         msgs = state.get("messages") or []
         if msgs and isinstance(msgs[-1], Message) and msgs[-1].tool_calls:
             return "tool_exec"
