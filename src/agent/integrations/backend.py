@@ -1904,6 +1904,17 @@ async def load_project_module_nodes(
             or m.get("description")
             or node_type
         )
+        # Source handle ids for connecting FROM this node. Module nodes often use
+        # NAMED handles (e.g. youtube.Download → output-success / output-error),
+        # NOT the generic "source-handler"; an edge whose sourceHandle doesn't
+        # match a real handle id is INVISIBLE in the editor. Expose them so the
+        # agent connects with the right handle (via flow.connect_branch).
+        source_handles: list[dict[str, str]] = []
+        for h in m.get("handles") or []:
+            if isinstance(h, dict) and h.get("kind") == "source" and h.get("id"):
+                source_handles.append(
+                    {"id": str(h["id"]), "label": str(h.get("label") or h["id"])}
+                )
         out.append(
             {
                 "type": node_type,
@@ -1916,6 +1927,7 @@ async def load_project_module_nodes(
                 "required_fields": required,
                 "optional_fields": optional,
                 "credential_fields": credential_fields,
+                "source_handles": source_handles,
                 "produces_state": [
                     str(s) for s in (m.get("producesState") or []) if s
                 ],

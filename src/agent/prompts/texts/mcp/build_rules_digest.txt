@@ -49,4 +49,10 @@
   `moduleId.NodeName` (masalan openrouter.Chat) ko'rinsa — flow_add_node bilan
   qo'sh; credential maydoniga credentials.list_types/list dan mos type_key id'sini
   ber. Batafsil: docs_guide(topic="modules").
+• ⛔ MODUL node'dan ULASH — `source-handler` EMAS: modul node'lar O'Z nomli
+  OUTPUT handle'lariga ega (flow_list_node_types → `source_handles`, masalan
+  youtube.Download → `output-success`/`output-error`, "Topildi"/"Xato"). Ulaganда
+  `flow_connect(source_handle="output-success")` deb ANIQ handle'ni ber — noto'g'ri
+  handle bilan edge REACT FLOW'da UMUMAN KO'RINMAYDI (ulangan bo'lsa ham). Har
+  output uchun alohida edge (success→keyingi qadam, error→xatolik).
 • To'liq qoidalar: docs_guide(topic="flow"); node maydonlari: flow_list_node_types.
