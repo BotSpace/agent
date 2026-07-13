@@ -44,6 +44,10 @@ class NodeTypeSpec:
     optional_data: list[str] = field(default_factory=list)
     source_handles: list[str] = field(default_factory=lambda: ["source-handler"])
     target_handles: list[str] = field(default_factory=lambda: ["target-handler"])
+    # State/context variables this node writes (manifest `producesState`), e.g.
+    # a download node → [yt_file, yt_title]. Surfaced so the agent knows what
+    # {{...}} it can read downstream.
+    produces_state: list[str] = field(default_factory=list)
     is_trigger: bool = False
     is_accessory: bool = False
     accessory_target_handles: list[str] = field(default_factory=list)
@@ -73,6 +77,7 @@ def _spec_from_manifest(m: dict) -> NodeTypeSpec:
         optional_data=optional,
         source_handles=src if src is not None else ["source-handler"],
         target_handles=tgt if tgt is not None else ["target-handler"],
+        produces_state=[str(s) for s in (m.get("producesState") or []) if s],
         is_trigger=category == "trigger",
         is_accessory=bool(m.get("accessory")),
         accessory_target_handles=acc_ports,
