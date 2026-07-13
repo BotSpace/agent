@@ -176,6 +176,13 @@ async def _stream_turn(
                 await _emit(cfg.emit_ephemeral, "assistant_chunk", {"delta": ev.delta})
             elif kind == "thinking_delta":
                 await _emit(cfg.emit_ephemeral, "thinking_delta", {"delta": ev.delta})
+            elif kind == "tool_use_start":
+                # Model just STARTED composing a tool call (args not yet complete,
+                # execution is still turns away) — surface the name live so the UI
+                # can show "🔧 <name> yozilmoqda…" before the real tool_call fires.
+                await _emit(
+                    cfg.emit_ephemeral, "tool_call_pending", {"id": ev.id, "name": ev.name}
+                )
             elif kind == "stop":
                 final = GenerateResult(
                     message=ev.message, stop_reason=ev.stop_reason, usage=ev.usage
