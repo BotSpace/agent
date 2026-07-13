@@ -72,6 +72,17 @@ type_key="ollama"/"openai"/"ai_studio")`; yo'q bo'lsa `ask_user` bilan so'ra +
 `credentials.create`, va muqobilni (OpenAI/Google AI Studio) taklif qil. Google
 node'lari OAuth: `credentials.connect_oauth(type_key=...)`.
 
+**MODUL node'lar (`moduleId.NodeName`, masalan youtube.Download, files.DownloadURL):**
+- `modules.enable(slug)` → node darhol `flow.list_node_types(module=...)`da
+  ko'rinadi (kutish shart emas). `source_handles`ga QARA.
+- ⛔ ULASH: modul node'ining O'Z handle'lari bor (masalan `output-success`/
+  `output-error`). `flow.connect(source_handle="output-success")` deb ANIQ ber —
+  generic `source-handler` bilan edge KO'RINMAYDI. Node o'zi success/error bilan
+  shoxlanadi → keyin `IfConditionNode` QO'SHMA.
+- Modul FAYL bersa (`yt_file` va h.k. — `produces_state`ga qara): Send*Node'da
+  `…SourceType="file_id"` + `…FileId="{{yt_file}}"`. URL EMAS.
+- Batafsil: `docs_guide(topic="modules")`.
+
 **To'lov:** qurishdan OLDIN `ask_user(select, options=["Click","Paycue"])`;
 `PaymentNode.data.paymentType` faqat `"click"`/`"paycue"`; `amount` — musbat son
 yoki `{{var}}`. Source handle'lar: `paid` / `failed`. Real xarid uchun `payment_link`

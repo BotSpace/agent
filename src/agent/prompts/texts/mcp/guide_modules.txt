@@ -80,12 +80,29 @@ katalogida ko'rinsa) — qadam 1-3 ni tashlab, to'g'ridan-to'g'ri qadam 4 ga o't
      API orqali create QILMA.
 - Field type'lar (manifest): text/password/number/textarea/select/url/switch.
 
-## 4. Result.Error — xato surface
+## 4. Chiqish handle'lari va xato surface
 
-- Modul node `node.execute`'da `Result.Error` qaytarsa, engine uni debug error
-  list + alert'da ko'rsatadi (flow yiqilmaydi, lekin xato ko'rinadi). Shuning uchun
-  modul node'idan keyin xato holatini tekshirmoqchi bo'lsang, modul `producesState`
-  ichidagi xato kalitini (masalan `llm_error`) IfConditionNode bilan branch qil.
+- ⛔ ULASH — modul node'lar O'Z nomli OUTPUT handle'lariga ega
+  (`flow_list_node_types` → `source_handles`), masalan `youtube.Download` →
+  `output-success`/`output-error`. Ulaganда `flow_connect(source_handle=
+  "output-success")` deb ANIQ handle ber. `source-handler` (generic) ISHLATMA —
+  noto'g'ri handle bilan edge REACT FLOW'da UMUMAN KO'RINMAYDI.
+- ⛔ Node'da success/error handle bo'lsa — u O'ZI shoxlanadi. Keyin
+  `IfConditionNode` QO'SHMA. To'g'ridan-to'g'ri `output-success` → keyingi qadam,
+  `output-error` → xato xabari.
+- FAQAT modul handle'siz bo'lsa VA xatoni `producesState` kalitida bersa
+  (masalan `llm_error`) — o'shanда IfConditionNode bilan branch qil.
+
+## 4b. Modul ishlab chiqargan FAYLni yuborish
+
+- Modul fayl UUID ishlab chiqarsa (masalan `youtube.Download` → `yt_file`;
+  `produces_state`'ga qara) — uni Send*Node bilan yubor: `videoSourceType`/
+  `photoSourceType`/`documentSourceType`/... = `"file_id"` + mos maydon
+  (`videoFileId`/`photoFileId`/... ) = `"{{yt_file}}"`. URL EMAS — Telegram media
+  URL'ni bloklaydi; modul UUID beradi. Namuna:
+  `youtube.Download(url="{{message.text}}", format="360")` → `output-success` →
+  `SendVideoNode(videoSourceType="file_id", videoFileId="{{yt_file}}",
+  caption="{{yt_title}}")`; `output-error` → xato xabari (`{{yt_error}}`).
 
 ## 5. Self-hosted modullar
 
