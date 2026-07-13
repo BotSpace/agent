@@ -28,6 +28,7 @@ _CORE_NAMES: frozenset[str] = frozenset(
         # orchestration / project / user
         "ask_user", "task.run", "sleep", "search.semantic", "tools.search",
         "project.list", "project.get", "project.create", "project.update",
+        "project.snapshot",
         # common deploy + checks
         "credentials.list", "env.list",
         "release.deploy", "release.debug", "release.status",
