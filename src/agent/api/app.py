@@ -168,9 +168,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     pass
 
     app = FastAPI(title="Botmother agent API", version="0.1.0", lifespan=lifespan)
+    # Reflect ANY origin: browser MCP clients (e.g. the Inspector on
+    # localhost:6274) reach /mcp and the /.well-known/* OAuth discovery docs
+    # cross-origin from arbitrary origins, and the resource-server metadata is
+    # useless if the browser blocks it on CORS. Safe because the agent
+    # authenticates via the Authorization bearer header only (never cookies),
+    # which browsers don't attach cross-origin — so an attacker origin still
+    # can't make an authenticated call.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=s.cors_origins_list,
+        allow_origin_regex=".*",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -228,6 +236,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # (401'dagi WWW-Authenticate shu URL'ga ko'rsatadi).
         @app.get("/.well-known/oauth-protected-resource/mcp")
         async def oauth_protected_resource() -> dict:
+            return protected_resource_metadata()
+
+        # Some MCP clients probe the path-less form too (RFC 9728 allows both).
+        @app.get("/.well-known/oauth-protected-resource")
+        async def oauth_protected_resource_root() -> dict:
             return protected_resource_metadata()
 
     @app.get("/usage")
