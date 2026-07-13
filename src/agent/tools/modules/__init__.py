@@ -258,13 +258,45 @@ async def modules_enable(input: ModulesEnableInput, ctx: ToolContext) -> ToolRes
         else f"Enabled module '{slug}' for project {pid}"
         + (f" (status: {status})." if status else ".")
     )
+
+    # Refresh the module node manifests into state RIGHT NOW. The manifests are
+    # available as soon as the module is enabled (the backend returns them for
+    # every enabled=TRUE project module, pending or active — its runtime pod
+    # deploy is separate), so the agent can query/add moduleId.NodeName types
+    # immediately without a sleep + reload dance.
+    state_updates: dict | None = None
+    node_note = ""
+    try:
+        from ...integrations.backend import load_project_module_nodes
+
+        module_nodes = await load_project_module_nodes(
+            pid, auth_claims=_claims(ctx), client=_backend(ctx)
+        )
+        if module_nodes:
+            state_updates = {"module_nodes": module_nodes}
+            mine = [
+                n.get("type")
+                for n in module_nodes
+                if isinstance(n, dict) and str(n.get("module")) == slug
+            ]
+            node_note = (
+                f" Node types now available: {', '.join(str(t) for t in mine if t)}."
+                if mine
+                else ""
+            )
+    except Exception:
+        node_note = ""
+
     return ToolResult.ok(
         head
-        + " The module's service is deploying — its node types are NOT queryable "
-        "yet. Wait a few seconds, then re-run session_use_project (or "
-        "flow_list_node_types) to load the new moduleId.NodeName types before "
-        "using them in the flow.",
+        + (
+            node_note
+            or " The module's node types should now be queryable via "
+            "flow_list_node_types(module=...) — if they aren't, re-run "
+            "session_use_project."
+        ),
         data={"slug": slug, "project_id": str(pid), "already_enabled": already, "status": status},
+        state_updates=state_updates,
     )
 
 
