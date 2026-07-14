@@ -335,6 +335,17 @@ def _fmt_simulate_step(idx: int, step: dict) -> list[str]:
     if deletes:
         extra += f", 🗑️ {deletes} delete"
     lines = [f"{idx}. ➡️ {in_label or '—'} → 🤖 {n_msgs} xabar [{path}]{extra}"]
+    # A step that fired NO nodes at all is almost always a real problem the agent
+    # otherwise misreads as success: the trigger didn't MATCH this input (wrong
+    # command/button text), or the simulated flow is stale (use_saved=true against
+    # unsaved edits). Surface it explicitly so a bare "0 xabar" isn't taken as OK.
+    if not node_ids:
+        lines.append(
+            "     ⚠️ Hech qanday node ishlamadi — trigger bu inputga MOS KELMADI "
+            "(buyruq/tugma matni xato?) YOKI sinalayotgan flow eski. "
+            "Trigger'ni tekshir; edit qilgan bo'lsang avval flow.save qil yoki "
+            "use_saved=false ishlat."
+        )
     for m in msgs if isinstance(msgs, list) else []:
         if not isinstance(m, dict):
             continue
@@ -477,6 +488,14 @@ def _format_assert(resp: dict, n_steps: int) -> tuple[str, dict]:
     ok = (not failed) and (not top_errors) and bool(resp.get("ok", True))
     icon = "✅" if ok else "❌"
     lines = [f"{icon} {passed}/{total} o'tdi"]
+    # A "passed" step that fired NO nodes is a silent trap — the trigger didn't
+    # match (or the flow is stale). Surface the count so it isn't read as clean.
+    noop = sum(1 for st in sim_steps if isinstance(st, dict) and not (st.get("nodes") or []))
+    if noop:
+        lines.append(
+            f"  ⚠️ {noop} qadam hech qanday node ishlatmadi — trigger mos kelmagan "
+            "yoki flow eski (use_saved). Trigger/flow.save'ni tekshir."
+        )
     for f in failed:
         line = f"  ❌ step {f['step']} ({f['input']}) — {f['reason']}"
         if f["errors"]:
@@ -603,11 +622,22 @@ async def flow_simulate(input: FlowSimulateInput, ctx: ToolContext) -> ToolResul
 
     resp = resp if isinstance(resp, dict) else {"ok": False, "steps": []}
 
+    # Testing the SAVED flow while the workspace has unsaved edits is the #1 cause
+    # of "why didn't my fix take effect?" confusion — the simulation ignores the
+    # in-memory changes. Warn loudly instead of returning silently-stale results.
+    stale_warning = ""
+    if input.use_saved and ctx.state.get("flow_dirty"):
+        stale_warning = (
+            "⚠️ use_saved=true, LEKIN saqlanmagan o'zgarishlaringiz bor — bu "
+            "simulyatsiya SAQLANGAN (eski) flow'ni sinaydi, so'nggi tahrirlarni "
+            "EMAS. Avval flow.save qil yoki use_saved=false ishlat.\n\n"
+        )
+
     # mode=assert — compact pass/fail summary (token-saving).
     if mode == "assert":
         text, structured = _format_assert(resp, len(steps))
         return ToolResult(
-            content=text, is_error=not structured["ok"], data=structured
+            content=stale_warning + text, is_error=not structured["ok"], data=structured
         )
 
     # mode=full — per-step detail + expect verdict markers.
@@ -650,7 +680,7 @@ async def flow_simulate(input: FlowSimulateInput, ctx: ToolContext) -> ToolResul
             if k not in ("raw_update", "telegram_update", "message", "callback_query")
         }
         compact["final_state"] = {**fs, "context": ctx_clean}
-    return ToolResult(content="\n".join(lines), is_error=not ok, data=compact)
+    return ToolResult(content=stale_warning + "\n".join(lines), is_error=not ok, data=compact)
 
 
 # ── flow.export ───────────────────────────────────────────────────────────────
