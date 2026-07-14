@@ -18,9 +18,18 @@ PlanStatus = Literal["pending", "in_progress", "completed", "blocked"]
 
 class PlanItemModel(BaseModel):
     id: str = Field(description="Unique item id (auto-generated if omitted)", default_factory=lambda: uuid4().hex[:8])
-    title: str = Field(description="Short imperative task title (3-8 words)")
+    title: str = Field(description="Short imperative task title (3-8 words) — the step label")
+    detail: str | None = Field(
+        default=None,
+        description=(
+            "The ACTUAL plan for this step (1-3 sentences) — WHAT will be built and "
+            "HOW: the concrete nodes/tools/flow, files or collections involved, key "
+            "decisions. This is the substance a reader needs to understand the step "
+            "without you; not a restatement of the title. Always fill it."
+        ),
+    )
     status: PlanStatus = "pending"
-    notes: str | None = Field(default=None, description="Optional why/context")
+    notes: str | None = Field(default=None, description="Optional short status/context note added later")
 
 
 class PlanSetInput(BaseModel):
@@ -31,6 +40,7 @@ class PlanUpdateInput(BaseModel):
     id: str = Field(description="Item id to update")
     status: PlanStatus | None = None
     title: str | None = None
+    detail: str | None = None
     notes: str | None = None
 
 
@@ -74,10 +84,13 @@ async def _emit_plan(ctx: ToolContext, event: str, plan: list[dict[str, Any]]) -
 @tool(
     name="plan.set",
     description=(
-        "Set the current task plan. REPLACES the entire plan — any existing items are "
-        "discarded, so call this once at the start to break the goal into 3-8 concrete "
-        "tasks. After that, change items via plan.update (do NOT call plan.set again to "
-        "edit one item — it would wipe the rest)."
+        "Write the task plan up front — a REAL, detailed plan, not a bare checklist. "
+        "Break the goal into 3-8 steps; each step has a short `title` AND a `detail` "
+        "(1-3 sentences) spelling out exactly what will be built and how — the concrete "
+        "nodes/tools/flow, files or collections, and key decisions — so a reader "
+        "understands the whole approach from the plan alone. REPLACES the entire plan, "
+        "so call it once at the start; edit single items with plan.update afterwards "
+        "(calling plan.set again wipes the rest)."
     ),
     input_model=PlanSetInput,
 )
@@ -108,6 +121,8 @@ async def plan_update(input: PlanUpdateInput, ctx: ToolContext) -> ToolResult:
                 item["status"] = input.status
             if input.title is not None:
                 item["title"] = input.title
+            if input.detail is not None:
+                item["detail"] = input.detail
             if input.notes is not None:
                 item["notes"] = input.notes
             await _emit_plan(ctx, "plan_update", plan)
