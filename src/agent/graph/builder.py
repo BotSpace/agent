@@ -60,6 +60,8 @@ class GraphConfig:
     max_tokens: int = 4096
     temperature: float = 0.7
     thinking_budget: int | None = None
+    # DeepSeek thinking effort: "off" | "high" | "max" | None (provider default).
+    reasoning_effort: str | None = None
     emit: EventEmitter | None = None
     # Live-only event sink for streaming deltas (assistant_chunk / thinking_delta).
     # Set for the MAIN agent (worker wires it); left None for sub-agents so their
@@ -312,12 +314,14 @@ async def _stream_turn(
     from ..llm.base import GenerateResult
 
     final: GenerateResult | None = None
+    reasoning_acc: list[str] = []
     try:
         async for ev in cfg.llm.stream(messages, options):
             kind = getattr(ev, "kind", None)
             if kind == "text_delta":
                 await _emit(cfg.emit_ephemeral, "assistant_chunk", {"delta": ev.delta})
             elif kind == "thinking_delta":
+                reasoning_acc.append(ev.delta)
                 await _emit(cfg.emit_ephemeral, "thinking_delta", {"delta": ev.delta})
             elif kind == "tool_use_start":
                 # Model just STARTED composing a tool call (args not yet complete,
@@ -335,6 +339,8 @@ async def _stream_turn(
         final = None
     if final is None:
         final = await cfg.llm.generate(messages, options)
+    elif reasoning_acc:
+        final.reasoning = "".join(reasoning_acc)
     return final
 
 
@@ -401,6 +407,7 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
             temperature=cfg.temperature,
             tools=tool_specs,
             thinking_budget=cfg.thinking_budget,
+            reasoning_effort=cfg.reasoning_effort,
         )
         # Main agent (emit_ephemeral wired) streams token-by-token so the UI
         # renders the reply live; sub-agents fall back to a single generate().
@@ -420,6 +427,9 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
                 "model": model,
                 "provider": getattr(cfg.llm, "provider", None),
                 "usage": result.usage.__dict__,
+                # Chain-of-thought (if any) travels with the durable message so the
+                # UI can restore a collapsible "Fikrlash" section on reload.
+                "reasoning": getattr(result, "reasoning", None),
             },
         )
         cumulative_in = state.get("total_input_tokens", 0) + (result.usage.input_tokens or 0)

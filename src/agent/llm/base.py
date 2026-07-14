@@ -110,6 +110,9 @@ class GenerateOptions:
     tools: list[ToolSpec] = field(default_factory=list)
     tool_choice: Literal["auto", "any", "none"] | dict[str, Any] = "auto"
     thinking_budget: int | None = None
+    # DeepSeek thinking mode: "off" disables reasoning; "high"/"max" enable it at
+    # that effort. None → leave the provider default (DeepSeek defaults to high).
+    reasoning_effort: Literal["off", "high", "max"] | None = None
     stop_sequences: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -132,6 +135,10 @@ class GenerateResult:
     stop_reason: str
     usage: Usage
     raw: Any = None
+    # Accumulated reasoning/chain-of-thought text (DeepSeek reasoning_content /
+    # Claude thinking), when the turn was streamed. Persisted with the assistant
+    # message so the UI can show it collapsibly. None when not captured.
+    reasoning: str | None = None
 
 
 # ── Streaming events ───────────────────────────────────────────────────────

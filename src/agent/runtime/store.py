@@ -98,7 +98,16 @@ CREATE TABLE IF NOT EXISTS agent_messages (
     payload     JSONB,
     created_at  TIMESTAMPTZ DEFAULT NOW()
 );
+CREATE TABLE IF NOT EXISTS agent_project_settings (
+    project_id      TEXT PRIMARY KEY,
+    thinking_effort TEXT,
+    updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
 """
+
+# Allowed DeepSeek thinking-effort values ("off" disables reasoning). Anything
+# else is rejected so a bad UI value can't reach the LLM request.
+THINKING_EFFORTS = ("off", "high", "max")
 
 
 from ..config import normalize_pg_url as _normalize
@@ -241,6 +250,36 @@ class RunStore:
                 await cur.execute(
                     "UPDATE agent_runs SET status = %s, updated_at = NOW() WHERE request_id = %s",
                     (status, request_id),
+                )
+            await conn.commit()
+
+    async def get_project_thinking_effort(self, project_id: str | None) -> str | None:
+        """Per-project DeepSeek thinking effort ('off'|'high'|'max'), or None when
+        unset (→ provider default)."""
+        if not project_id:
+            return None
+        await self.bootstrap()
+        async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT thinking_effort FROM agent_project_settings WHERE project_id = %s",
+                    (str(project_id),),
+                )
+                row = await cur.fetchone()
+        effort = row[0] if row else None
+        return effort if effort in THINKING_EFFORTS else None
+
+    async def set_project_thinking_effort(self, project_id: str, effort: str) -> None:
+        """Upsert the per-project thinking effort. Caller validates `effort`."""
+        await self.bootstrap()
+        async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """INSERT INTO agent_project_settings (project_id, thinking_effort, updated_at)
+                       VALUES (%s, %s, NOW())
+                       ON CONFLICT (project_id)
+                       DO UPDATE SET thinking_effort = EXCLUDED.thinking_effort, updated_at = NOW()""",
+                    (str(project_id), effort),
                 )
             await conn.commit()
 
@@ -684,13 +723,15 @@ class RunStore:
                     if etype == "assistant_message":
                         text = (payload.get("text") or "").strip()
                         if text:
-                            turns.append(
-                                {
-                                    "kind": "assistant",
-                                    "id": f"{req}-a{seq}",
-                                    "text": text,
-                                }
-                            )
+                            turn: dict[str, Any] = {
+                                "kind": "assistant",
+                                "id": f"{req}-a{seq}",
+                                "text": text,
+                            }
+                            reasoning = payload.get("reasoning")
+                            if isinstance(reasoning, str) and reasoning.strip():
+                                turn["reasoning"] = reasoning
+                            turns.append(turn)
                     elif etype == "tool_call":
                         call_id = payload.get("id")
                         res = tool_results.get(str(call_id)) if call_id is not None else None

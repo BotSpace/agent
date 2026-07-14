@@ -207,7 +207,13 @@ class OpenAIClient(LLMClient):
             req["parallel_tool_calls"] = True
         if options.stop_sequences:
             req["stop"] = options.stop_sequences
+        self._apply_reasoning(req, options)
         return req
+
+    def _apply_reasoning(self, req: dict[str, Any], options: GenerateOptions) -> None:
+        """Provider hook: attach reasoning/thinking params. No-op for plain OpenAI;
+        DeepSeek overrides to toggle thinking mode + reasoning_effort."""
+        return None
 
     @staticmethod
     def _inject_cache_markers(oai_messages: list[dict[str, Any]]) -> None:

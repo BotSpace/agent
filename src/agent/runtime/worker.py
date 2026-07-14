@@ -140,6 +140,8 @@ async def run_agent(
     checkpointer = None
     try:
         registry = build_main_registry()
+        # Per-project DeepSeek thinking effort (off/high/max); None → provider default.
+        thinking_effort = await store.get_project_thinking_effort(rec.project_id)
         cfg = GraphConfig(
             llm=llm_client,
             registry=registry,
@@ -148,6 +150,7 @@ async def run_agent(
             max_tool_calls=s.max_tool_calls,
             max_run_tokens=s.max_run_tokens,
             max_history_tokens=s.max_history_tokens,
+            reasoning_effort=thinking_effort,
             emit=emit,
             emit_ephemeral=emit_ephemeral,
             services={},
