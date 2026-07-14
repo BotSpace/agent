@@ -401,13 +401,23 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
             )
         else:
             tool_specs = cfg.registry.specs()
+        # Turn-scoped thinking: reasoning models discard their chain-of-thought
+        # between turns (it's not replayable in history), so on every tool-loop
+        # continuation the model would re-derive its whole plan from scratch —
+        # huge, repeated, wasted thinking. Reason only on the PLANNING turn (right
+        # after the user prompt); once tool results start coming back (last message
+        # is a `role="tool"` result), force reasoning OFF so the model just acts on
+        # the tool output. A globally "off" setting stays off.
+        turn_effort = cfg.reasoning_effort
+        if history and getattr(history[-1], "role", None) == "tool" and turn_effort != "off":
+            turn_effort = "off"
         options = GenerateOptions(
             model=model,
             max_tokens=cfg.max_tokens,
             temperature=cfg.temperature,
             tools=tool_specs,
             thinking_budget=cfg.thinking_budget,
-            reasoning_effort=cfg.reasoning_effort,
+            reasoning_effort=turn_effort,
         )
         # Main agent (emit_ephemeral wired) streams token-by-token so the UI
         # renders the reply live; sub-agents fall back to a single generate().
