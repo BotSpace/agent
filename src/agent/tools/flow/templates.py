@@ -259,7 +259,11 @@ async def flow_apply_template(input: FlowApplyTemplateInput, ctx: ToolContext) -
     except Exception as e:
         return ToolResult.error(f"Backend lookup failed: {type(e).__name__}: {e}")
     if tpl is None:
-        return ToolResult.error(f"Template `{identifier}` not found.")
+        return ToolResult.error(
+            f"Template `{identifier}` not found. Template id/slug'ni TAXMIN QILMA — "
+            "avval `flow.search_template(query=...)` chaqirib, natijadagi aynan "
+            "`slug`ni ishlat (slug id'dan ishonchliroq)."
+        )
 
     flow: dict[str, Any] = tpl.get("flow") or {"nodes": [], "edges": []}
     nodes = flow.get("nodes") or []

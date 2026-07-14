@@ -13,6 +13,8 @@ kerakli node(lar)ning aniq schemasini SO'RAB OL, keyin qo'sh.
    `flow.list_node_types(types=["A","B",...])` bilan OL (kerakli hammasini bitta
    chaqiruvda). **Maydon nomini HECH QACHON TAXMIN QILMA** — masalan
    ReplyButtonTriggerNode'da `buttonText` YO'Q (to'g'risi `selectedButtons`).
+   **Klaviatura:** alohida `keyboard`/`replyMarkup` maydoni YO'Q — DOIM
+   `keyboard_kind` ('inline'|'reply') + `rows` (tugma qatorlari) ishlat.
    Butun toifa kerak bo'lsa `flow.list_node_types(category="payment"/"ai"/...)`.
 3. `flow.add_node(id, type, data, after?)` bilan qo'sh — `data` faqat 2-qadamda
    OLINGAN schemadagi maydonlar bilan, OBYEKT sifatida (JSON string EMAS). Har node
