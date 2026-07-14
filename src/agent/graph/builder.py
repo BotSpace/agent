@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Literal
 
 from langgraph.graph import END, START, StateGraph
@@ -52,6 +52,19 @@ _PLAN_MODE_DIRECTIVE = (
     "butun yondashuvni tushunsin. Reja YOZIB BO'LGACH TO'XTA — qurmaysan, "
     "foydalanuvchi rejani tasdiqlaydi, keyin oddiy rejimda quriladi."
 )
+
+
+def _is_empty_turn(result: Any) -> bool:
+    """True when the LLM turn produced NEITHER text NOR a tool call — the empty
+    reasoning-turn failure mode of DeepSeek-style models under max thinking."""
+    from ..llm.base import ToolUsePart
+
+    msg = getattr(result, "message", None)
+    if msg is None:
+        return False
+    if (msg.text or "").strip():
+        return False
+    return not any(isinstance(p, ToolUsePart) for p in (msg.content or []))
 
 
 def _approval_sig(name: str, arguments: Any) -> str:
@@ -447,6 +460,16 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
             result = await _stream_turn(cfg, msgs, options)
         else:
             result = await cfg.llm.generate(msgs, options)
+        # Reasoning models sometimes emit only chain-of-thought and stop with an
+        # EMPTY answer (no text, no tool call). Retry the turn ONCE with reasoning
+        # OFF so it always produces something actionable instead of a dead reply.
+        if turn_effort != "off" and _is_empty_turn(result):
+            logger.warning("empty reasoning-turn; retrying once with reasoning off")
+            retry_opts = replace(options, reasoning_effort="off")
+            if cfg.emit_ephemeral is not None:
+                result = await _stream_turn(cfg, msgs, retry_opts)
+            else:
+                result = await cfg.llm.generate(msgs, retry_opts)
         # Durable final text — persisted to agent_events and used for history /
         # reconnect. The ephemeral assistant_chunk deltas above only drive live
         # rendering; the frontend reconciles them against this message.
