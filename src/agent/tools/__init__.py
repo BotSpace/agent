@@ -12,7 +12,7 @@ from .env import build_env_tools
 from .file import build_file_tools
 from .flow import build_flow_tools
 from .modules import build_modules_tools
-from .plan import build_plan_tools, has_incomplete_plan
+from .plan import has_incomplete_plan
 from .project import build_project_tools
 from .registry import ToolRegistry
 from .release import build_release_tools
@@ -30,7 +30,9 @@ def build_default_registry() -> ToolRegistry:
     (`build_main_registry()` shu funksiyani qaytaradi).
     """
     reg = ToolRegistry()
-    reg.extend(build_plan_tools())
+    # NOTE: the old step-checklist plan tools (plan.set/advance/complete/update)
+    # are intentionally NOT registered — planning is now a read-only "plan mode"
+    # that produces a detailed plan document, not a tracked checklist.
     reg.extend(build_ask_user_tools())
     reg.extend(build_flow_tools())
     reg.extend(build_project_tools())
@@ -50,6 +52,36 @@ def build_default_registry() -> ToolRegistry:
     from .lazy import build_tools_search
 
     reg.register(build_tools_search(lambda: reg.all()))
+    return reg
+
+
+# Read-only toolset for PLAN MODE — research/inspect + clarify only. An ALLOWLIST
+# (not a denylist) so no mutating tool (build/save/create/deploy/broadcast) can
+# ever leak into plan mode.
+_PLAN_MODE_TOOLS = frozenset({
+    "ask_user",
+    "chat.list_users", "chat.user_history", "chat.user_stats",
+    "cms.find", "cms.get_collection", "cms.get_document",
+    "cms.list_collections", "cms.aggregate", "cms.audit_log",
+    "credentials.list", "credentials.list_types",
+    "env.list", "file.list",
+    "flow.get", "flow.diff", "flow.export", "flow.history",
+    "flow.list_node_types", "flow.list_recipes", "flow.search_template",
+    "flow.validate", "flow.test_list",
+    "modules.list_available", "modules.search",
+    "plans.list",
+    "project.list", "project.get", "project.errors", "project.snapshot",
+    "release.debug_logs", "release.list", "release.logs", "release.status",
+    "search.semantic", "sleep", "subscription.current", "tools.search",
+})
+
+
+def build_plan_mode_registry() -> ToolRegistry:
+    """Read-only registry used when a run is started in plan mode."""
+    reg = ToolRegistry()
+    for t in build_main_registry().all():
+        if t.name in _PLAN_MODE_TOOLS:
+            reg.register(t)
     return reg
 
 
@@ -80,6 +112,7 @@ __all__ = [
     "ToolResult",
     "build_default_registry",
     "build_main_registry",
+    "build_plan_mode_registry",
     "has_incomplete_plan",
     "tool",
 ]

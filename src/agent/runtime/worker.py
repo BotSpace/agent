@@ -27,7 +27,7 @@ from ..graph import GraphConfig, build_graph, initial_state
 from ..integrations.dynamic_config import build_effective_client, effective_model_roles
 from ..memory import close_async_checkpointer, create_async_checkpointer
 from ..observability.metrics import AGENT_RUN_DURATION, AGENT_RUNS
-from ..tools import build_main_registry
+from ..tools import build_main_registry, build_plan_mode_registry
 from .store import RunStore
 
 
@@ -112,6 +112,7 @@ async def run_agent(
     auth_claims: dict[str, Any] | None = None,
     collections: list[dict[str, Any]] | None = None,
     module_nodes: list[dict[str, Any]] | None = None,
+    plan_mode: bool = False,
 ) -> None:
     s = get_settings()
     rec = await store.get(request_id)
@@ -139,7 +140,9 @@ async def run_agent(
     run_outcome = "completed"
     checkpointer = None
     try:
-        registry = build_main_registry()
+        # Plan mode (Claude-Code style): a READ-ONLY toolset so the agent researches
+        # and writes a detailed plan without building anything; the UI approves it.
+        registry = build_plan_mode_registry() if plan_mode else build_main_registry()
         # Per-project DeepSeek thinking effort (off/high/max); None → provider default.
         thinking_effort = await store.get_project_thinking_effort(rec.project_id)
         cfg = GraphConfig(
@@ -151,6 +154,7 @@ async def run_agent(
             max_run_tokens=s.max_run_tokens,
             max_history_tokens=s.max_history_tokens,
             reasoning_effort=thinking_effort,
+            plan_mode=plan_mode,
             emit=emit,
             emit_ephemeral=emit_ephemeral,
             services={},
@@ -366,6 +370,7 @@ def start_run_task(
     auth_claims: dict[str, Any] | None = None,
     collections: list[dict[str, Any]] | None = None,
     module_nodes: list[dict[str, Any]] | None = None,
+    plan_mode: bool = False,
 ) -> asyncio.Task:
     task = asyncio.create_task(
         run_agent(
@@ -375,6 +380,7 @@ def start_run_task(
             auth_claims=auth_claims,
             collections=collections,
             module_nodes=module_nodes,
+            plan_mode=plan_mode,
         )
     )
     store.register_task(request_id, task)

@@ -37,6 +37,22 @@ from .state import AgentState
 
 EventEmitter = Callable[[str, dict[str, Any]], Awaitable[None] | None]
 
+# Appended to the system prompt when a run is started in PLAN MODE. The registry
+# is already read-only (build_plan_mode_registry), so this reinforces the intent
+# and dictates the deliverable: a detailed plan document, then STOP.
+_PLAN_MODE_DIRECTIVE = (
+    "\n\n## ⛔ PLAN MODE — REJA TUZISH (qurish YO'Q)\n"
+    "Sen PLAN rejimidasan. HECH NARSA qurma/o'zgartirma/saqlama — bu rejimda faqat "
+    "O'QISH tool'lari bor (qurish tool'lari umuman yo'q). Vazifa:\n"
+    "1. So'rovni tushun; kerak bo'lsa `flow.get`, `flow.list_node_types`, "
+    "`cms.list_collections`, `project.get` bilan joriy holatni O'RGAN.\n"
+    "2. Noaniqlik bo'lsa `ask_user` bilan BITTA muhim savol ber.\n"
+    "3. Yakunda BATAFSIL rejani markdown xabar sifatida yoz: nima quriladi, qaysi "
+    "node'lar/oqim, collection'lar, integratsiya, muhim qarorlar — o'qigan odam "
+    "butun yondashuvni tushunsin. Reja YOZIB BO'LGACH TO'XTA — qurmaysan, "
+    "foydalanuvchi rejani tasdiqlaydi, keyin oddiy rejimda quriladi."
+)
+
 
 def _approval_sig(name: str, arguments: Any) -> str:
     """Stable signature for an approvable tool call: name + sorted args.
@@ -62,6 +78,9 @@ class GraphConfig:
     thinking_budget: int | None = None
     # DeepSeek thinking effort: "off" | "high" | "max" | None (provider default).
     reasoning_effort: str | None = None
+    # Plan mode (Claude-Code style): read-only research + present a detailed plan,
+    # build nothing. Injects a plan directive into the system prompt.
+    plan_mode: bool = False
     emit: EventEmitter | None = None
     # Live-only event sink for streaming deltas (assistant_chunk / thinking_delta).
     # Set for the MAIN agent (worker wires it); left None for sub-agents so their
@@ -369,6 +388,8 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
             if cfg.system_block
             else build_system_message(state)
         )
+        if cfg.plan_mode:
+            system = Message.system_text((system.text or "") + _PLAN_MODE_DIRECTIVE)
         history = state.get("messages") or []
         model = _pick_model(state, cfg.models)
         # Compact old turns into a running summary when near the context limit
