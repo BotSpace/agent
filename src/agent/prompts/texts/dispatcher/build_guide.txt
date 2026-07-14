@@ -38,6 +38,11 @@ uni O'ZING tekshir — bu qadamni HECH QACHON tashlab ketma:
    ⚠️ `flow.simulate`/`flow.save`da `project_id`'ni HAR DOIM uzat.
 3. Xato/bo'sh javob chiqsa → tuzat → qayta `flow.save` → qayta `flow.simulate`.
    Foydalanuvchidan so'rashdan OLDIN o'zing yechib qo'y.
+   ⚠️ Qadam **"0 xabar [—]"** (hech qanday node ishlamadi) bo'lsa — trigger shu
+   input'ga MOS KELMADI (buyruq/tugma matni), YOKI `use_saved=true` bilan ESKI
+   saqlangan flow'ni sinayapsan. Bunday holda oxirgi qo'shgan node'ni AYBLAMA —
+   avval trigger'ni tekshir va tahrirdan keyin `flow.save` qilganingga ishonch
+   hosil qil (yoki `use_saved=false` bilan working flow'ni sina).
 4. Bot tayyor bo'lgach asosiy stsenariylarni `flow.test_save(name, steps)` bilan
    REGRESSION test sifatida saqla — keyingi tahrir eski oqimni jimgina buzmasin
    (`flow.test_run` bilan qayta tekshiriladi).
