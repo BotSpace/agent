@@ -25,6 +25,11 @@ class RunCreateRequest(BaseModel):
     baseline_flow: dict[str, Any] | None = Field(
         default=None, description="Initial flow JSON to seed working_flow"
     )
+    plan_mode: bool = Field(
+        default=False,
+        description="Plan mode (Claude-Code style): research read-only and produce "
+        "a detailed plan WITHOUT building. The UI then lets the user approve it.",
+    )
 
 
 class RunCreateResponse(BaseModel):
@@ -131,6 +136,7 @@ async def create_run(
         auth_claims=user.claims,
         collections=collections,
         module_nodes=module_nodes,
+        plan_mode=body.plan_mode,
     )
     return RunCreateResponse(request_id=rec.request_id, status="queued")
 

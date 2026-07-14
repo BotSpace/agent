@@ -48,7 +48,7 @@ SPEC:
 NODE TANLOV (decision tree): EditOrSendMessageNode (menyu/sahifalar),
 SendTextMessageNode+request_contact (telefon), MessageTrigger(state) (capture),
 flow.save_to_collection (leads). Trigger node faqat /start (+ "Ortga" global).
-→ plan.set([spec'ni 4-5 qadam qilib]) → keyin add_* / connect / validate / save.
+→ (ichki spec) → add_* / connect / validate / save.
 (To'liq tool zanjiri MISOL 1 + MISOL 2'ning lead-capture qismiga o'xshaydi.)
 
 
@@ -70,7 +70,7 @@ SPEC:
 NODE TANLOV: avval `cms.*` bilan `products` collection'ini O'ZING yarat. Keyin
 dinamik ro'yxat → CustomCode `db_find` + dinamik inline tugma (yoki
 `collectionData` keyboard) → CallbackQueryTrigger(global:false) → detal →
-ask_text/ask_contact → save-order CustomCode. → plan.set → qur.
+ask_text/ask_contact → save-order CustomCode → qur (ichki spec, plan-tool yo'q).
 → Bu AYNAN quyidagi MISOL 2'ning to'liq tool zanjiri. Pastga qara.
 
 
