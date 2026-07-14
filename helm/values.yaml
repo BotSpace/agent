@@ -46,7 +46,7 @@ configMaps:
     AWS_REGION: "us-west-2"
     AGENT_MAX_INPUT_TOKENS: "200000"
     AGENT_MAX_OUTPUT_TOKENS: "16384"
-    AGENT_MAX_TOOL_CALLS: "80"
+    AGENT_MAX_TOOL_CALLS: "500"
     AGENT_MAX_WALL_SECONDS: "900"
     # Points at the Go backend (Deployment/Service "backend-golang", port
     # 8080, serves /api/v1/* natively in-cluster).
