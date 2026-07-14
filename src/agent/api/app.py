@@ -20,6 +20,24 @@ from .deps import CurrentUser, get_current_user, get_store
 
 class ProjectSettingsUpdate(BaseModel):
     thinking_effort: str | None = None
+
+
+async def _max_thinking_allowed(user: "CurrentUser") -> bool:
+    """Max reasoning effort is a PAID-plan feature. Returns True for paid plans
+    (pro/max) and for internal callers; fail-open (True) on a backend hiccup so a
+    transient error never blocks a legitimately-paid user."""
+    if user.user_id == "__internal__":
+        return True
+    try:
+        from ..integrations.backend import get_backend_client
+
+        pu = await get_backend_client().subscription_usage(auth_claims=user.claims)
+        plan = (pu.get("ai_token_usage") or {}).get("plan") or {}
+        name = (plan.get("name") if isinstance(plan, dict) else str(plan)) or ""
+        return name.strip().lower() != "free"
+    except Exception:
+        logger.warning("plan check failed; allowing max (fail-open)")
+        return True
 from .routes.runs import router as runs_router
 from .routes.threads import router as threads_router
 
@@ -270,6 +288,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=422,
                 detail=f"thinking_effort must be one of {THINKING_EFFORTS} or null",
             )
+        if effort == "max" and not await _max_thinking_allowed(user):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "message": "Max fikrlash faqat pullik tarifda. Tarifni yangilang.",
+                    "code": "plan.upgrade_required",
+                },
+            )
         # null/None clears the override → provider default; store as-is via upsert.
         await store.set_project_thinking_effort(project_id, effort or "")
         return {"project_id": project_id, "thinking_effort": effort}
@@ -288,6 +314,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # Never 500 the usage widget on a backend hiccup — return unknown.
             logger.warning("usage fetch failed: %s", exc)
             usage = {}
+        plan = usage.get("plan") or {}
+        plan_name = (plan.get("name") if isinstance(plan, dict) else str(plan)) or ""
+        # Max reasoning effort is paid-only; free plan (or internal) → locked in UI.
+        max_thinking_allowed = user.user_id == "__internal__" or plan_name.strip().lower() != "free"
         return {
             "user_id": user.user_id,
             "limit": usage.get("limit", 0),
@@ -298,6 +328,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "plan": usage.get("plan"),
             "status": usage.get("status"),
             "token_reset_at": usage.get("token_reset_at"),
+            "max_thinking_allowed": max_thinking_allowed,
         }
 
     return app
