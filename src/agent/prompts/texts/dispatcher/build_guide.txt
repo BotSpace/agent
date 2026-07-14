@@ -102,8 +102,16 @@ node'lari OAuth: `credentials.connect_oauth(type_key=...)`.
   `output-error`). `flow.connect(source_handle="output-success")` deb ANIQ ber —
   generic `source-handler` bilan edge KO'RINMAYDI. Node o'zi success/error bilan
   shoxlanadi → keyin `IfConditionNode` QO'SHMA.
-- Modul FAYL bersa (`yt_file` va h.k. — `produces_state`ga qara): Send*Node'da
-  `…SourceType="file_id"` + `…FileId="{{yt_file}}"`. URL EMAS.
+- Modul FAYL bersa (`yt_file` va h.k. — `produces_state`ga qara): u **platforma
+  fayl UUID'i** (modul faylni yuklab platformaga saqlaydi). Yuborish: `SendVideoNode`
+  (yoki SendFileNode) `videoSourceType="file_id"` + `videoFileId="{{yt_file}}"`.
+  ⛔ URL EMAS (`videoSourceType="url"`/`videoUrl` ISHLATMA — u UUID, havola emas).
+- ⚠️ **Modulni simulyator SINAY OLMAYDI** (real youtube.Download bajarilmaydi) —
+  simulate'da fayl kelmasligi NORMAL, bu bot buzuq degani EMAS. `project.errors`
+  bo'sh bo'lsa (xato yo'q) — bu ISHLAYAPTI degani. Shuning uchun yuqoridagi to'g'ri
+  config'ni (file_id + `{{yt_file}}`) BIR MARTA qur, saqla va **foydalanuvchidan
+  debug botda sinashni SO'RA**. `SendVideoNode`↔`SendFileNode`, `file_id`↔`url`
+  orasida dalilsiz aylanma QILMA — config allaqachon to'g'ri.
 - Batafsil: `docs_guide(topic="modules")`.
 
 **TARMOQLASH — ko'p variant bo'lsa `SwitchNode` (IfCondition zanjiri EMAS):**
