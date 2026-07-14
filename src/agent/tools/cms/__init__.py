@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 from ...integrations.backend import BackendError, pagination_summary
 
@@ -69,10 +69,29 @@ FieldKindLiteral = Literal[
 
 IndexKindLiteral = Literal["none", "asc", "desc", "text", "hashed", "unique", "ttl"]
 
+# Common generic/JSON-Schema type names the model tends to invent for a field,
+# mapped to our backend FieldKind. Lets `type: "string"` (etc.) work instead of
+# silently dropping the whole schema. Unknown values pass through unchanged so a
+# real typo still surfaces as a validation error.
+_KIND_ALIASES = {
+    "string": "text", "str": "text", "char": "text", "varchar": "text", "uuid": "text",
+    "number": "float", "num": "float", "double": "float", "decimal": "float",
+    "integer": "int", "long": "int", "bigint": "int",
+    "boolean": "bool",
+    "timestamp": "datetime", "time": "datetime",
+    "object": "json", "dict": "json", "map": "json",
+    "list": "array",
+    "photo": "image", "picture": "image", "img": "image",
+    "location": "geo", "point": "geo",
+}
+
 
 class FieldSpec(BaseModel):
+    # Accept the model's natural aliases (`type` for `kind`) so a hallucinated key
+    # name doesn't wipe the field.
+    model_config = ConfigDict(populate_by_name=True)
     name: str = Field(description="snake_case field name")
-    kind: FieldKindLiteral
+    kind: FieldKindLiteral = Field(validation_alias=AliasChoices("kind", "type"))
     label: str = ""
     required: bool = False
     default: Any | None = None
@@ -82,6 +101,13 @@ class FieldSpec(BaseModel):
     )
     index: IndexKindLiteral = "none"
     order: int = 0
+
+    @field_validator("kind", mode="before")
+    @classmethod
+    def _normalize_kind(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return _KIND_ALIASES.get(v.strip().lower(), v.strip().lower())
+        return v
 
 
 # ── schema tools ─────────────────────────────────────────────────────────────
@@ -170,6 +196,9 @@ async def get_collection(input: GetCollectionInput, ctx: ToolContext) -> ToolRes
 
 
 class CreateCollectionInput(BaseModel):
+    # `initial_schema` is a very common alias the model invents for `fields`;
+    # accept it so the schema isn't silently dropped (→ fieldless collection).
+    model_config = ConfigDict(populate_by_name=True)
     name: str = Field(description="snake_case, e.g. 'orders', 'leads'")
     label: str = ""
     description: str = ""
@@ -181,7 +210,10 @@ class CreateCollectionInput(BaseModel):
             "field bilan bog'langanda shu field display qiymat bo'lib chiqadi."
         ),
     )
-    fields: list[FieldSpec] = Field(default_factory=list)
+    fields: list[FieldSpec] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("fields", "initial_schema"),
+    )
     project_id: str | int | None = None
 
 
@@ -219,14 +251,26 @@ async def create_collection(input: CreateCollectionInput, ctx: ToolContext) -> T
         create_body["description"] = input.description
     if input.primary_field is not None:
         create_body["primary_field"] = input.primary_field
+    def _is_conflict(e: BackendError, code: str) -> bool:
+        return e.status == 409 or code in (e.codes or [])
+
+    existed = False
+    c: dict[str, Any] | None = None
     try:
         c = await _backend(ctx).cms_create_collection(pid, create_body, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
-        return _error(e)
+        # Idempotent: if the collection already exists, reuse it and still add any
+        # missing fields (don't abort — otherwise a re-run leaves a collection with
+        # NO schema while documents keep flowing in schemalessly).
+        if _is_conflict(e, "cms.collection_exists"):
+            existed = True
+        else:
+            return _error(e)
     new_id = c.get("id") if isinstance(c, dict) else None
 
     # Add the initial schema fields (backend client remaps kind→type).
     added: list[str] = []
+    skipped: list[str] = []
     failed: list[str] = []
     for f in input.fields:
         try:
@@ -235,11 +279,18 @@ async def create_collection(input: CreateCollectionInput, ctx: ToolContext) -> T
             )
             added.append(f.name)
         except BackendError as e:
-            failed.append(f"{f.name}: {e.human_message()}")
+            if _is_conflict(e, "cms.field_exists"):
+                skipped.append(f.name)  # already present, not a failure
+            else:
+                failed.append(f"{f.name}: {e.human_message()}")
 
-    msg = f"Collection `{c.get('name')}` created (id={new_id}, slug={slug})."
+    name_disp = (c.get("name") if isinstance(c, dict) else None) or input.name
+    verb = "already existed — reused" if existed else "created"
+    msg = f"Collection `{name_disp}` {verb} (slug={slug})."
     if added:
         msg += f" Fields added: {', '.join(added)}."
+    if skipped:
+        msg += f" Already present: {', '.join(skipped)}."
     if failed:
         msg += f" ⚠️ Field FAILED: {'; '.join(failed)}."
     msg += " Use the id as `relation_collection` when linking from another collection."
