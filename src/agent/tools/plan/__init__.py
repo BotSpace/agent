@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import re
 from typing import Any, Literal
-from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
@@ -18,7 +17,11 @@ PlanStatus = Literal["pending", "in_progress", "completed", "blocked"]
 
 
 class PlanItemModel(BaseModel):
-    id: str = Field(description="Unique item id (auto-generated if omitted)", default_factory=lambda: uuid4().hex[:8])
+    id: str = Field(
+        default="",
+        description="Item id (auto-assigned plan_0, plan_1, … if omitted). If you set "
+        "your own ids, reference those SAME ids in plan.update/advance/complete.",
+    )
     title: str = Field(description="Short imperative task title (3-8 words) — the step label")
     detail: str | None = Field(
         default=None,
@@ -111,13 +114,13 @@ async def _emit_plan(ctx: ToolContext, event: str, plan: list[dict[str, Any]]) -
     input_model=PlanSetInput,
 )
 async def plan_set(input: PlanSetInput, ctx: ToolContext) -> ToolResult:
-    # Assign predictable positional ids (plan_0, plan_1, …) so later
-    # plan.update/advance/complete calls can reference a step by position — which
-    # the model does naturally — instead of guessing a random hex id.
+    # KEEP the model's own ids (it references them consistently later); only fill
+    # in predictable positional ids (plan_0, plan_1, …) for items left without one.
+    # Overriding provided ids broke plans where the model set its own "1".."6".
     items = []
     for i, item in enumerate(input.items):
         d = item.model_dump()
-        d["id"] = f"plan_{i}"
+        d["id"] = (str(d.get("id")).strip() if d.get("id") else "") or f"plan_{i}"
         items.append(d)
     await _emit_plan(ctx, "plan_set", items)
     return ToolResult.ok(
