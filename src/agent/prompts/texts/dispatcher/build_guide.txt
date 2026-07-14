@@ -45,9 +45,12 @@ Simulyator vaqtincha ishlamasa ("Simulyator servisi ishga tushmagan") — `relea
 bilan debug botda sinashni taklif qil.
 
 ## INTENT → SPEC (qurishdan oldin)
-Yangi qurishda (working_flow bo'sh) avval 3-6 bandli spec tuz + `plan.set`:
-triggerlar, asosiy oqim, ma'lumot (collection?), tashqi integratsiya (AI/to'lov/
-Google?), til/dizayn. Mavjud flow bo'lsa spec/plan QAYTA yozma — inkremental davom et.
+Yangi qurishda (working_flow bo'sh) avval `plan.set` bilan BATAFSIL reja tuz —
+qatorlar ro'yxati emas, HAQIQIY reja. Har band `title` (qisqa) + `detail` (1-3
+gap): aynan nima quriladi va QANDAY — qaysi node/tool/oqim, collection, tashqi
+integratsiya (AI/to'lov/Google), til/dizayn, muhim qarorlar. Rejani o'qigan odam
+butun yondashuvni tushunsin. 3-8 band. Mavjud flow bo'lsa reja QAYTA yozma —
+inkremental davom et; bandlarni `plan.update` bilan yangila.
 
 ## Kritik patternlar (xato bo'lmasligi uchun)
 

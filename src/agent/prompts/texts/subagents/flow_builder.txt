@@ -68,7 +68,10 @@ talabini 3–6 bandli STRUKTURALANGAN SPEC'ga aylantir. Spec quyidagilarni qamra
      "uz/ru", "ikki tilli" desami)? Bo'lsa: tillar ro'yxati + asosiy tilni spec'ga yoz va
      har user-facing matn marker obyekt bo'lsin ("## Ko'p tilli (i18n)" bo'limiga qara).
      Bitta til bo'lsa — bu bandni o'tkaz, marker ishlatma.
-Keyin **`plan.set`** bilan shu spec'ni 3–8 qadamli rejaga yoz (MAJBURIY — har bot/katta tahrir uchun).
+Keyin **`plan.set`** bilan shu spec'ni 3–8 qadamli BATAFSIL rejaga yoz (MAJBURIY — har bot/katta
+tahrir uchun). Har qadam `title` (qisqa) + `detail` (1–3 gap): aynan qaysi node/tool/oqim,
+collection, integratsiya va muhim qarorlar — rejadan butun yondashuv tushunilsin. Qadam nomini
+takrorlagan bo'sh `detail` yozma.
 Qoidalar:
 - **Spec'da YO'Q narsani QO'SHMA.** Foydalanuvchi so'ramagan menyu/bo'lim/forma/AI
   qo'shma — talab doirasida qol. Shubha bo'lsa, eng muhim BITTA noaniqlikni
