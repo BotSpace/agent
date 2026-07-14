@@ -31,7 +31,7 @@ Foydalanuvchiga ushbu xabarni qaytar (parent agent orqali):
 ```
 🤖 Deploy uchun avval Telegram bot token kerak.
 
-1. @BotFather ga o'ting: https://t.me/BotFather
+1. @BotFather ga o'ting: https://telegram.me/BotFather
 2. /newbot yozing
 3. Bot uchun nom + username (_bot bilan tugaydi)
 4. BotFather token beradi (1234567890:ABC-DEF...XYZ)

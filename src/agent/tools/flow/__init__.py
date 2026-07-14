@@ -1191,7 +1191,7 @@ async def flow_save(input: FlowSaveInput, ctx: ToolContext) -> ToolResult:
                 else None
             )
             if debug_uuid:
-                link = f"https://t.me/botmother_test_robot?start={debug_uuid}"
+                link = f"https://telegram.me/botmother_test_robot?start={debug_uuid}"
                 data["debug_link"] = link
                 msg += f" 🤖 Debug bot avtomatik ishga tushirildi — foydalanuvchiga shu havolani BER: {link}"
             else:

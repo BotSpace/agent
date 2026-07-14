@@ -233,7 +233,7 @@ async def release_debug(input: ReleaseDebugInput, ctx: ToolContext) -> ToolResul
         return ToolResult.error(
             "Debug container started, but the project has no debug_uuid to build the test link."
         )
-    link = f"https://t.me/{_DEBUG_BOT_USERNAME}?start={debug_uuid}"
+    link = f"https://telegram.me/{_DEBUG_BOT_USERNAME}?start={debug_uuid}"
     return ToolResult.ok(
         "Debug bot ishga tushdi (token shart emas, ~30 daqiqadan keyin avtomatik "
         f"o'chadi). Sinab ko'rish uchun: {link}",
