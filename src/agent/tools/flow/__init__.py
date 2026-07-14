@@ -10,6 +10,7 @@ Saqlash (`flow.save`) — backend'ga POST qiladi. Destructive.
 
 from __future__ import annotations
 
+import difflib
 from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
@@ -33,6 +34,49 @@ from .node_data_models import (
 )
 from .power import build_flow_power_tools
 from .templates import build_flow_template_tools
+
+# Field names the agent commonly INVENTS for keyboards (from generic Telegram /
+# LLM knowledge) but which no node model has — the real contract is
+# `keyboard_kind` ('inline'|'reply') + `rows` (button rows). Surfaced in the
+# error so the retry is correct on the first try instead of burning turns.
+_KEYBOARD_ALIAS_FIELDS = frozenset(
+    {"keyboard", "replyMarkup", "reply_markup", "inlineKeyboard",
+     "inline_keyboard", "buttons", "keyboardType", "inline_buttons"}
+)
+
+
+def _format_node_data_error(node_type: str, err: ValidationError, data_model) -> str:
+    """Turn a strict-model ValidationError into a SELF-CORRECTING message.
+
+    For each rejected field, suggest the closest valid field name (difflib) so
+    the agent fixes it in one retry rather than guessing again. Adds the keyboard
+    convention hint when a keyboard-ish field was invented.
+    """
+    valid = sorted(data_model.model_fields.keys())
+    errs = err.errors()
+    lines: list[str] = []
+    saw_keyboard_alias = False
+    for e in errs[:5]:
+        loc = ".".join(str(p) for p in e["loc"]) or "(root)"
+        root = str(e["loc"][0]) if e["loc"] else loc
+        if e.get("type") == "extra_forbidden":
+            if root in _KEYBOARD_ALIAS_FIELDS:
+                saw_keyboard_alias = True
+            near = difflib.get_close_matches(root, valid, n=1, cutoff=0.6)
+            hint = f" — noma'lum maydon; ehtimol `{near[0]}`?" if near else " — noma'lum maydon"
+            lines.append(f"  - `{loc}`{hint}")
+        else:
+            lines.append(f"  - `{loc}` — {e['msg']}")
+    extra = f"\n  ...va yana {len(errs) - 5} ta" if len(errs) > 5 else ""
+    out = f"Invalid data for `{node_type}`:\n" + "\n".join(lines) + extra
+    out += f"\nRuxsat etilgan maydonlar (FAQAT shular): {valid}."
+    if saw_keyboard_alias:
+        out += (
+            "\nKlaviatura: alohida `keyboard`/`replyMarkup` maydoni YO'Q — "
+            "`keyboard_kind` ('inline'|'reply') + `rows` (tugma qatorlari ro'yxati) ishlat."
+        )
+    return out
+
 
 # ── State helpers ────────────────────────────────────────────────────────────
 
@@ -323,16 +367,7 @@ async def flow_add_node(input: FlowAddNodeInput, ctx: ToolContext) -> ToolResult
         try:
             validated = data_model.model_validate(input.data)
         except ValidationError as e:
-            errs = e.errors()
-            lines: list[str] = []
-            for err in errs[:5]:
-                loc = ".".join(str(p) for p in err["loc"]) or "(root)"
-                lines.append(f"  - `{loc}` — {err['msg']}")
-            extra = f"\n  ...and {len(errs) - 5} more" if len(errs) > 5 else ""
-            return ToolResult.error(
-                f"Invalid data for `{input.type}`:\n" + "\n".join(lines) + extra
-                + f"\nSchema: {sorted(data_model.model_fields.keys())}."
-            )
+            return ToolResult.error(_format_node_data_error(input.type, e, data_model))
         # Convert back to dict for storage in the flow (drop None, use aliases).
         data_dict = validated.model_dump(by_alias=True, exclude_none=True)
     else:
