@@ -30,6 +30,11 @@ class RunCreateRequest(BaseModel):
         description="Plan mode (Claude-Code style): research read-only and produce "
         "a detailed plan WITHOUT building. The UI then lets the user approve it.",
     )
+    auto_approve: bool = Field(
+        default=False,
+        description="Full-permission mode: auto-approve destructive actions instead "
+        "of pausing for confirmation.",
+    )
 
 
 class RunCreateResponse(BaseModel):
@@ -137,6 +142,7 @@ async def create_run(
         collections=collections,
         module_nodes=module_nodes,
         plan_mode=body.plan_mode,
+        auto_approve=body.auto_approve,
     )
     return RunCreateResponse(request_id=rec.request_id, status="queued")
 

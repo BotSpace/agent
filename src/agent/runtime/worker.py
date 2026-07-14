@@ -113,6 +113,7 @@ async def run_agent(
     collections: list[dict[str, Any]] | None = None,
     module_nodes: list[dict[str, Any]] | None = None,
     plan_mode: bool = False,
+    auto_approve: bool = False,
 ) -> None:
     s = get_settings()
     rec = await store.get(request_id)
@@ -158,7 +159,8 @@ async def run_agent(
             emit=emit,
             emit_ephemeral=emit_ephemeral,
             services={},
-            approve_destructive=True,
+            # Full-permission mode auto-approves destructive actions (no pauses).
+            approve_destructive=not auto_approve,
             lazy_tools=True,
         )
         try:
@@ -371,6 +373,7 @@ def start_run_task(
     collections: list[dict[str, Any]] | None = None,
     module_nodes: list[dict[str, Any]] | None = None,
     plan_mode: bool = False,
+    auto_approve: bool = False,
 ) -> asyncio.Task:
     task = asyncio.create_task(
         run_agent(
@@ -381,6 +384,7 @@ def start_run_task(
             collections=collections,
             module_nodes=module_nodes,
             plan_mode=plan_mode,
+            auto_approve=auto_approve,
         )
     )
     store.register_task(request_id, task)
