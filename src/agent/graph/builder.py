@@ -41,16 +41,21 @@ EventEmitter = Callable[[str, dict[str, Any]], Awaitable[None] | None]
 # is already read-only (build_plan_mode_registry), so this reinforces the intent
 # and dictates the deliverable: a detailed plan document, then STOP.
 _PLAN_MODE_DIRECTIVE = (
-    "\n\n## ⛔ PLAN MODE — REJA TUZISH (qurish YO'Q)\n"
-    "Sen PLAN rejimidasan. HECH NARSA qurma/o'zgartirma/saqlama — bu rejimda faqat "
-    "O'QISH tool'lari bor (qurish tool'lari umuman yo'q). Vazifa:\n"
-    "1. So'rovni tushun; kerak bo'lsa `flow.get`, `flow.list_node_types`, "
-    "`cms.list_collections`, `project.get` bilan joriy holatni O'RGAN.\n"
-    "2. Noaniqlik bo'lsa `ask_user` bilan BITTA muhim savol ber.\n"
+    "\n\n## ⛔ PLAN MODE — FAQAT REJA TUZISH (qurish YO'Q)\n"
+    "Sen PLAN rejimidasan. Vazifang — faqat REJA yozish, HECH NARSA qurmaslik.\n"
+    "MUHIM: bu rejimda qurish/o'zgartirish tool'lari UMUMAN YO'Q — `project.create`, "
+    "`cms.insert`/`cms.create_collection`, `flow.add_*`/`flow.save`/`flow.connect` "
+    "MAVJUD EMAS. Ularni CHAQIRMA, `tools.search` bilan IZLAMA, yangi loyiha "
+    "YARATMA, mavjud loyihaga ma'lumot QO'SHMA. Faqat O'QISH tool'lari bor.\n"
+    "Qadamlar:\n"
+    "1. So'rovni tushun. Faol loyiha bo'lsa `flow.get`/`cms.list_collections` bilan "
+    "uni O'RGAN (loyiha tanlash/yaratish bilan ovora bo'lma — reja umumiy bo'lsa ham "
+    "bo'ladi).\n"
+    "2. Faqat HAL QILUVCHI noaniqlik bo'lsa `ask_user` bilan BITTA savol ber.\n"
     "3. Yakunda BATAFSIL rejani markdown xabar sifatida yoz: nima quriladi, qaysi "
-    "node'lar/oqim, collection'lar, integratsiya, muhim qarorlar — o'qigan odam "
-    "butun yondashuvni tushunsin. Reja YOZIB BO'LGACH TO'XTA — qurmaysan, "
-    "foydalanuvchi rejani tasdiqlaydi, keyin oddiy rejimda quriladi."
+    "node'lar/oqim, collection'lar (maydonlari bilan), integratsiya, muhim qarorlar "
+    "— o'qigan odam butun yondashuvni tushunsin. Reja YOZIB BO'LGACH TO'XTA. "
+    "Foydalanuvchi tasdiqlaydi, keyin oddiy rejimda quriladi."
 )
 
 

@@ -80,8 +80,14 @@ def build_plan_mode_registry() -> ToolRegistry:
     """Read-only registry used when a run is started in plan mode."""
     reg = ToolRegistry()
     for t in build_main_registry().all():
-        if t.name in _PLAN_MODE_TOOLS:
+        if t.name in _PLAN_MODE_TOOLS and t.name != "tools.search":
             reg.register(t)
+    # Rebuild tools.search scoped to THIS registry so a search can only ever
+    # surface plan-mode (read) tools — never project.create / cms.insert /
+    # flow.add_* which would let the agent try to build in plan mode.
+    from .lazy import build_tools_search
+
+    reg.register(build_tools_search(lambda: reg.all()))
     return reg
 
 
