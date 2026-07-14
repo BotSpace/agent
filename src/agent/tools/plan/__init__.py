@@ -6,6 +6,7 @@ Graph har turn-da incomplete plan bo'lsa, modelga reminder yuboradi.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Literal
 from uuid import uuid4
 
@@ -63,6 +64,21 @@ def _get_plan(ctx: ToolContext) -> list[dict[str, Any]]:
     return list(ctx.state.get("current_plan") or [])
 
 
+def _resolve_id(plan: list[dict[str, Any]], given: str) -> str | None:
+    """Map a referenced id to a real plan item id. Exact match first; otherwise
+    accept a POSITIONAL reference like `plan_0` / `plan-2` / `2` (0-based) — the
+    model routinely invents these instead of the stored ids."""
+    ids = [str(item.get("id")) for item in plan]
+    if given in ids:
+        return given
+    m = re.match(r"^(?:plan[_-]?)?(\d+)$", str(given).strip(), re.IGNORECASE)
+    if m:
+        idx = int(m.group(1))
+        if 0 <= idx < len(plan):
+            return ids[idx]
+    return None
+
+
 def _set_plan(items: list[dict[str, Any]]) -> dict[str, Any]:
     return {"current_plan": items}
 
@@ -95,7 +111,14 @@ async def _emit_plan(ctx: ToolContext, event: str, plan: list[dict[str, Any]]) -
     input_model=PlanSetInput,
 )
 async def plan_set(input: PlanSetInput, ctx: ToolContext) -> ToolResult:
-    items = [item.model_dump() for item in input.items]
+    # Assign predictable positional ids (plan_0, plan_1, …) so later
+    # plan.update/advance/complete calls can reference a step by position — which
+    # the model does naturally — instead of guessing a random hex id.
+    items = []
+    for i, item in enumerate(input.items):
+        d = item.model_dump()
+        d["id"] = f"plan_{i}"
+        items.append(d)
     await _emit_plan(ctx, "plan_set", items)
     return ToolResult.ok(
         f"Plan set with {len(items)} item(s).",
@@ -115,8 +138,9 @@ async def plan_set(input: PlanSetInput, ctx: ToolContext) -> ToolResult:
 )
 async def plan_update(input: PlanUpdateInput, ctx: ToolContext) -> ToolResult:
     plan = _get_plan(ctx)
+    target = _resolve_id(plan, input.id)
     for item in plan:
-        if item.get("id") == input.id:
+        if item.get("id") == target:
             if input.status is not None:
                 item["status"] = input.status
             if input.title is not None:
@@ -141,8 +165,9 @@ async def plan_update(input: PlanUpdateInput, ctx: ToolContext) -> ToolResult:
 )
 async def plan_complete(input: PlanCompleteInput, ctx: ToolContext) -> ToolResult:
     plan = _get_plan(ctx)
+    target = _resolve_id(plan, input.id)
     for item in plan:
-        if item.get("id") == input.id:
+        if item.get("id") == target:
             item["status"] = "completed"
             await _emit_plan(ctx, "plan_update", plan)
             return ToolResult.ok(
@@ -173,7 +198,7 @@ async def plan_advance(input: PlanAdvanceInput, ctx: ToolContext) -> ToolResult:
     started: list[str] = []
 
     for cid in input.complete:
-        item = by_id.get(cid)
+        item = by_id.get(_resolve_id(plan, cid))
         if item is None:
             not_found.append(cid)
             continue
@@ -181,7 +206,7 @@ async def plan_advance(input: PlanAdvanceInput, ctx: ToolContext) -> ToolResult:
         completed.append(cid)
 
     for sid in input.start:
-        item = by_id.get(sid)
+        item = by_id.get(_resolve_id(plan, sid))
         if item is None:
             not_found.append(sid)
             continue

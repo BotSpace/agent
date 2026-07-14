@@ -10,8 +10,13 @@ from ...integrations.backend import (
     pagination_summary,
 )
 from .._common import backend_from_ctx as _backend
-from .._common import resolve_project_id
+from .._common import resolve_concrete_project_id
 from ..base import Tool, ToolContext, ToolResult, tool
+
+_NO_PROJECT = (
+    "No concrete project selected — env vars are per-project. Create or choose a "
+    "project first (project.create / project.get), then retry."
+)
 
 
 class EnvListInput(BaseModel):
@@ -35,9 +40,9 @@ class EnvListInput(BaseModel):
     input_model=EnvListInput,
 )
 async def env_list(input: EnvListInput, ctx: ToolContext) -> ToolResult:
-    pid = resolve_project_id(ctx, input.project_id)
+    pid = resolve_concrete_project_id(ctx, input.project_id)
     if pid is None:
-        return ToolResult.error("No project_id in context or input.")
+        return ToolResult.error(_NO_PROJECT)
     try:
         items = await _backend(ctx).list_env(
             pid, page=input.page, page_size=input.page_size, auth_claims=ctx.state.get("auth_claims")
@@ -76,9 +81,9 @@ class EnvSetInput(BaseModel):
     input_model=EnvSetInput,
 )
 async def env_set(input: EnvSetInput, ctx: ToolContext) -> ToolResult:
-    pid = resolve_project_id(ctx, input.project_id)
+    pid = resolve_concrete_project_id(ctx, input.project_id)
     if pid is None:
-        return ToolResult.error("No project_id in context or input.")
+        return ToolResult.error(_NO_PROJECT)
     try:
         await _backend(ctx).create_env(
             {"project_id": pid, "key": input.key, "value": input.value},
@@ -106,9 +111,9 @@ class EnvUnsetInput(BaseModel):
     destructive=True,
 )
 async def env_unset(input: EnvUnsetInput, ctx: ToolContext) -> ToolResult:
-    pid = resolve_project_id(ctx, input.project_id)
+    pid = resolve_concrete_project_id(ctx, input.project_id)
     if pid is None:
-        return ToolResult.error("No project_id in context or input.")
+        return ToolResult.error(_NO_PROJECT)
     try:
         await _backend(ctx).delete_env(input.key, pid, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
