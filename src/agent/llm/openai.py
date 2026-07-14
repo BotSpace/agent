@@ -25,6 +25,7 @@ from .base import (
     StreamStop,
     TextDelta,
     TextPart,
+    ThinkingDelta,
     ToolResultPart,
     ToolUseDelta,
     ToolUsePart,
@@ -389,6 +390,17 @@ class OpenAIClient(LLMClient):
                 if choice.finish_reason:
                     stop_reason = choice.finish_reason
                 delta = choice.delta
+                # DeepSeek reasoner models (and other reasoning-capable OpenAI-
+                # compatible endpoints) stream their chain-of-thought in a separate
+                # `reasoning_content` field BEFORE the final answer. Surface it as a
+                # thinking delta so the UI shows live progress instead of a silent
+                # wait at the hard step. Not accumulated into the reply text or the
+                # returned message — DeepSeek discards reasoning on the next turn.
+                reasoning = getattr(delta, "reasoning_content", None)
+                if reasoning is None and getattr(delta, "model_extra", None):
+                    reasoning = delta.model_extra.get("reasoning_content")
+                if reasoning:
+                    yield ThinkingDelta(delta=reasoning)
                 if delta.content:
                     accumulated_text += delta.content
                     yield TextDelta(delta=delta.content)
