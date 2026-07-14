@@ -59,6 +59,34 @@ _PLAN_MODE_DIRECTIVE = (
 )
 
 
+def _tool_error_needs_thinking(msg: Any) -> bool:
+    """On a tool-loop continuation, decide whether the model should REASON about
+    the last result. Think only when a tool ERRORED in a non-obvious way. Errors
+    that already spell out the fix (did-you-mean field hints, 'allowed fields',
+    'available ids' lists) just need a mechanical retry — thinking would be waste."""
+    from ..llm.base import ToolResultPart
+
+    err: str | None = None
+    for p in getattr(msg, "content", None) or []:
+        if isinstance(p, ToolResultPart) and p.is_error:
+            err = p.content or ""
+            break
+    if err is None:
+        return False
+    # Self-correcting errors carry an explicit fix → skip thinking.
+    self_correcting = (
+        "ehtimol `",
+        "Ruxsat etilgan maydonlar",
+        "Mavjud node id",
+        "Mavjud `",
+        "did you mean",
+        "Allowed:",
+        "Schema:",
+        "e'tiborsiz qoldiril",
+    )
+    return not any(h in err for h in self_correcting)
+
+
 def _is_empty_turn(result: Any) -> bool:
     """True when the LLM turn produced NEITHER text NOR a tool call — the empty
     reasoning-turn failure mode of DeepSeek-style models under max thinking."""
@@ -449,7 +477,14 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
         # the tool output. A globally "off" setting stays off.
         turn_effort = cfg.reasoning_effort
         if history and getattr(history[-1], "role", None) == "tool" and turn_effort != "off":
-            turn_effort = "off"
+            # Continuation turn: default OFF (act on the tool result, don't re-derive
+            # the whole plan). BUT if the last tool ERRORED in a non-obvious way,
+            # turn reasoning back ON so the model diagnoses and recovers — that's
+            # exactly where thinking pays off. Trivial self-correcting errors
+            # (did-you-mean, allowed-fields) stay OFF (mechanical retry).
+            turn_effort = (
+                cfg.reasoning_effort if _tool_error_needs_thinking(history[-1]) else "off"
+            )
         options = GenerateOptions(
             model=model,
             max_tokens=cfg.max_tokens,
