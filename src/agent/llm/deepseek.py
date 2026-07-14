@@ -9,9 +9,11 @@ uses the standard `max_tokens` parameter (never `max_completion_tokens`).
 
 from __future__ import annotations
 
+from typing import Any
+
 from openai import AsyncOpenAI
 
-from .base import LLMError
+from .base import GenerateOptions, LLMError
 from .openai import OpenAIClient, _wrap_for_langsmith
 
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
@@ -32,3 +34,19 @@ class DeepSeekClient(OpenAIClient):
         # DeepSeek's OpenAI-compatible endpoint expects `max_tokens`; it does not
         # accept the `max_completion_tokens` alias OpenAI's own o-series/gpt-5 use.
         return False
+
+    def _apply_reasoning(self, req: dict[str, Any], options: GenerateOptions) -> None:
+        # DeepSeek V4 thinking mode. Contract (api-docs.deepseek.com/guides/thinking_mode):
+        #   ON : reasoning_effort="high"|"max" + extra_body={"thinking":{"type":"enabled"}}
+        #   OFF: extra_body={"thinking":{"type":"disabled"}} (reasoning_effort ignored)
+        # None → send nothing, leaving DeepSeek's default (enabled, high).
+        effort = options.reasoning_effort
+        if effort is None:
+            return None
+        if effort == "off":
+            req.setdefault("extra_body", {})["thinking"] = {"type": "disabled"}
+            return None
+        # high | max
+        req["reasoning_effort"] = effort
+        req.setdefault("extra_body", {})["thinking"] = {"type": "enabled"}
+        return None

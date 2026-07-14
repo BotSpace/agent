@@ -6,15 +6,20 @@ import asyncio
 import logging
 from contextlib import AsyncExitStack, asynccontextmanager
 
-from fastapi import Depends, FastAPI, Response
+from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from pydantic import BaseModel
 
 from ..config import Settings, get_settings, validate_security_config
 from ..logging import configure_logging
-from ..runtime.store import get_run_store
+from ..runtime.store import THINKING_EFFORTS, RunStore, get_run_store
 from ..tools import build_default_registry
-from .deps import CurrentUser, get_current_user
+from .deps import CurrentUser, get_current_user, get_store
+
+
+class ProjectSettingsUpdate(BaseModel):
+    thinking_effort: str | None = None
 from .routes.runs import router as runs_router
 from .routes.threads import router as threads_router
 
@@ -242,6 +247,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         @app.get("/.well-known/oauth-protected-resource")
         async def oauth_protected_resource_root() -> dict:
             return protected_resource_metadata()
+
+    @app.get("/projects/{project_id}/settings")
+    async def get_project_settings(
+        project_id: str,
+        user: CurrentUser = Depends(get_current_user),
+        store: RunStore = Depends(get_store),
+    ) -> dict:
+        effort = await store.get_project_thinking_effort(project_id)
+        return {"project_id": project_id, "thinking_effort": effort}
+
+    @app.put("/projects/{project_id}/settings")
+    async def set_project_settings(
+        project_id: str,
+        body: ProjectSettingsUpdate,
+        user: CurrentUser = Depends(get_current_user),
+        store: RunStore = Depends(get_store),
+    ) -> dict:
+        effort = body.thinking_effort
+        if effort is not None and effort not in THINKING_EFFORTS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"thinking_effort must be one of {THINKING_EFFORTS} or null",
+            )
+        # null/None clears the override → provider default; store as-is via upsert.
+        await store.set_project_thinking_effort(project_id, effort or "")
+        return {"project_id": project_id, "thinking_effort": effort}
 
     @app.get("/usage")
     async def usage(
