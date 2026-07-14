@@ -280,7 +280,7 @@ _SUBSCRIBE_GATE_FLOW: dict[str, Any] = {
                 "parseMode": "HTML",
                 "keyboard_kind": "inline",
                 "rows": [
-                    {"columns": [{"text": "📢 Kanalga obuna bo'lish", "type": "url", "value": "https://t.me/your_channel"}]},
+                    {"columns": [{"text": "📢 Kanalga obuna bo'lish", "type": "url", "value": "https://telegram.me/your_channel"}]},
                     {"columns": [{"text": "✅ Tekshirish", "type": "callback", "value": "check-sub"}]},
                 ],
             },
@@ -443,7 +443,7 @@ RECIPES: list[dict[str, Any]] = [
         "use_cases": "Botdan foydalanishdan oldin foydalanuvchini kanalga obuna bo'lishga majburlaydi (a'zolikni tekshiradi).",
         "difficulty": "intermediate",
         "needs_collections": [],
-        "adapt": "`@your_channel` va https://t.me/your_channel ni o'z kanalingizga almashtiring. Bot kanalda admin bo'lishi shart. is-member tarmog'iga asosiy kontentni ulang.",
+        "adapt": "`@your_channel` va https://telegram.me/your_channel ni o'z kanalingizga almashtiring. Bot kanalda admin bo'lishi shart. is-member tarmog'iga asosiy kontentni ulang.",
         "flow": _SUBSCRIBE_GATE_FLOW,
     },
     {
