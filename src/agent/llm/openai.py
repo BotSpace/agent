@@ -131,6 +131,12 @@ class OpenAIClient(LLMClient):
                 assistant_msg["content"] = joined
             if tool_calls:
                 assistant_msg["tool_calls"] = tool_calls
+            # DeepSeek (strict) rejects an assistant message with NEITHER content
+            # nor tool_calls — e.g. a max-thinking turn that emitted only
+            # reasoning_content (dropped from history) and no answer. Such a
+            # message carries nothing, so skip it instead of 400-ing the next turn.
+            if "content" not in assistant_msg and "tool_calls" not in assistant_msg:
+                continue
             out.append(assistant_msg)
         return out
 
