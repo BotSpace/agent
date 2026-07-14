@@ -143,6 +143,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Bootstrap database schema for runs + vector store
         store = get_run_store()
         await store.bootstrap()
+        # A redeploy/restart kills in-flight asyncio run tasks, but their DB status
+        # stays "running"/"queued" — the UI then shows them stuck forever. Fail
+        # those orphans on startup (paused waiting_* runs are left alone).
+        try:
+            n = await store.recover_orphaned_runs()
+            if n:
+                logger.info("recovered %d orphaned run(s) on startup", n)
+        except Exception as exc:
+            logger.warning("orphaned-run recovery failed: %s", exc)
         if s.rag_enabled:
             try:
                 from ..memory import get_vector_store

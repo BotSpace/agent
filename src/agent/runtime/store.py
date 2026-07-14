@@ -321,6 +321,34 @@ class RunStore:
         log_run_fail(request_id, error)
         await self._publish(request_id, None)
 
+    async def recover_orphaned_runs(self) -> int:
+        """On startup, fail runs left 'running'/'queued' by a killed pod (a redeploy
+        aborts their asyncio task but not the DB row → the UI shows them stuck).
+        Paused waiting_for_* runs are LEFT ALONE — the user can still resume them."""
+        await self.bootstrap()
+        msg = "Agent qayta ishga tushdi — run to'xtadi. Iltimos, qaytadan urinib ko'ring."
+        async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT request_id FROM agent_runs WHERE status IN ('running', 'queued')"
+                )
+                ids = [r[0] for r in await cur.fetchall()]
+                if ids:
+                    await cur.execute(
+                        "UPDATE agent_runs SET status = 'failed', error = %s, updated_at = NOW() "
+                        "WHERE status IN ('running', 'queued')",
+                        (msg,),
+                    )
+            await conn.commit()
+        # Persist a terminal event per orphan so a reconnecting SSE replay unblocks
+        # the UI (it stops waiting and renders the failure).
+        for rid in ids:
+            try:
+                await self.emit(rid, "run_failed", {"error": msg})
+            except Exception:
+                pass
+        return len(ids)
+
     async def set_pending_approval(self, request_id: str, payload: dict[str, Any] | None) -> None:
         await self.bootstrap()
         status = "waiting_for_approval" if payload else "running"
