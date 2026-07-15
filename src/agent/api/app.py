@@ -38,6 +38,7 @@ async def _max_thinking_allowed(user: "CurrentUser") -> bool:
     except Exception:
         logger.warning("plan check failed; allowing max (fail-open)")
         return True
+from .routes.admin import router as admin_router
 from .routes.runs import router as runs_router
 from .routes.threads import router as threads_router
 
@@ -252,6 +253,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(runs_router)
     app.include_router(threads_router)
+    app.include_router(admin_router)
 
     # MCP Streamable HTTP — auth o'z middleware'ida (Authorization header), shu
     # sabab FastAPI dependency'siz to'g'ridan-to'g'ri mount qilinadi.

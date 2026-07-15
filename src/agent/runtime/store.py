@@ -567,6 +567,58 @@ class RunStore:
         except Exception:
             return []
 
+    async def list_threads_for_user(
+        self, *, user_id: str, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        """Admin view: all of ONE user's threads across every project.
+
+        Like ``list_threads`` but scoped by ``user_id`` alone (not a project),
+        and each row also carries its ``project_id`` and the thread's total
+        token usage so the admin panel can show which bot a conversation
+        belonged to and how much it cost. Ordered by ``updated_at`` DESC. On any
+        error returns an empty list (never raises)."""
+        try:
+            await self.bootstrap()
+            async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        """
+                        SELECT
+                            thread_id,
+                            (ARRAY_AGG(project_id ORDER BY created_at ASC))[1] AS project_id,
+                            (ARRAY_AGG(prompt ORDER BY created_at ASC))[1] AS title,
+                            MAX(updated_at) AS updated_at,
+                            COUNT(*) AS run_count,
+                            COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                            COALESCE(SUM(output_tokens), 0) AS output_tokens
+                        FROM agent_runs
+                        WHERE thread_id IS NOT NULL AND user_id = %s
+                        GROUP BY thread_id
+                        ORDER BY updated_at DESC
+                        LIMIT %s
+                        """,
+                        (user_id, limit),
+                    )
+                    rows = await cur.fetchall()
+            threads: list[dict[str, Any]] = []
+            for r in rows:
+                title = (r[2] or "").strip()
+                if len(title) > 80:
+                    title = title[:80].rstrip() + "…"
+                threads.append(
+                    {
+                        "thread_id": r[0],
+                        "project_id": r[1] or "",
+                        "title": title,
+                        "updated_at": str(r[3]) if r[3] is not None else "",
+                        "run_count": int(r[4]),
+                        "tokens_used_total": int(r[5] or 0) + int(r[6] or 0),
+                    }
+                )
+            return threads
+        except Exception:
+            return []
+
     async def delete_thread(
         self, *, project_id: str | None, user_id: str | None, thread_id: str
     ) -> int:

@@ -115,5 +115,18 @@ async def get_current_user(
     )
 
 
+async def require_internal(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> None:
+    """Gate for server-to-server admin endpoints: requires the shared internal
+    token (``X-Internal-Token``). Unlike ``get_current_user`` it does NOT accept
+    a user JWT, so a logged-in end user can never reach admin-only reads — only
+    a trusted backend/admin service holding the token can."""
+    internal = request.headers.get("X-Internal-Token")
+    if not (internal and settings.internal_api_token and internal == settings.internal_api_token):
+        raise HTTPException(status_code=403, detail="internal token required")
+
+
 def get_store(_settings: Settings = Depends(get_settings)) -> RunStore:
     return get_run_store()
