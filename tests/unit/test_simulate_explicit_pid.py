@@ -31,3 +31,20 @@ def test_simulate_input_accepts_project_id():
 def test_placeholder_project_ignored():
     ctx = _Ctx()
     assert resolve_concrete_project_id(ctx, "global") is None
+
+
+def test_partial_simulation_accepts_pinned_context_without_steps():
+    inp = FlowSimulateInput.model_validate(
+        {"project_id": "1217", "start_node_id": "send-result", "initial_context": {"name": "Ali"}}
+    )
+    assert inp.steps == []
+    assert inp.start_node_id == "send-result"
+    assert inp.initial_context == {"name": "Ali"}
+
+
+def test_simulation_requires_steps_or_partial_node():
+    try:
+        FlowSimulateInput.model_validate({"project_id": "1217"})
+    except ValueError:
+        return
+    raise AssertionError("empty simulation request must be rejected")

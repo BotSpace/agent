@@ -114,9 +114,19 @@ _STEP_TYPE_ALIASES = {
 }
 
 _STEP_TYPES = (
-    "command", "text", "contact", "location",
-    "photo", "video", "document", "animation", "audio", "voice",
-    "click", "click_text", "advance_time",
+    "command",
+    "text",
+    "contact",
+    "location",
+    "photo",
+    "video",
+    "document",
+    "animation",
+    "audio",
+    "voice",
+    "click",
+    "click_text",
+    "advance_time",
 )
 
 # Maydon nomlarining tabiiy variantlari → kanonik. command:"/start" yozsa text'ga,
@@ -140,9 +150,19 @@ _STEP_FIELD_ALIASES = {
 
 class FlowSimulateStep(BaseModel):
     type: Literal[
-        "command", "text", "contact", "location",
-        "photo", "video", "document", "animation", "audio", "voice",
-        "click", "click_text", "advance_time",
+        "command",
+        "text",
+        "contact",
+        "location",
+        "photo",
+        "video",
+        "document",
+        "animation",
+        "audio",
+        "voice",
+        "click",
+        "click_text",
+        "advance_time",
     ] = Field(
         description=(
             "Qadam turi: 'command' (text=/start), 'text' (text='salom'), "
@@ -216,13 +236,31 @@ class FlowSimulateInput(BaseModel):
         "o'rnatilmagan bo'lsa SHU bilan bering — promptdagi project_id'ni uzating.",
     )
     steps: list[FlowSimulateStep] = Field(
-        min_length=1,
+        default_factory=list,
         description=(
             "Foydalanuvchi kiritmalari ketma-ketligi (kamida bitta). Har element "
             "{type, ...}. Har qadamga ixtiyoriy `chat` (boshqa user) va `expect` "
             "(javob tekshiruvi) qo'shsa bo'ladi."
         ),
     )
+    start_node_id: str | None = Field(
+        default=None,
+        description=(
+            "n8n-uslubidagi partial execution: shu node va undan keyingi subgraphni "
+            "trigger qadamisiz bajaradi. steps bo'sh bo'lishi mumkin."
+        ),
+    )
+    initial_context: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Partial execution uchun pinned conversation o'zgaruvchilari.",
+    )
+
+    @model_validator(mode="after")
+    def _require_steps_or_partial(self) -> FlowSimulateInput:
+        if not self.steps and not self.start_node_id:
+            raise ValueError("steps yoki start_node_id dan biri berilishi shart")
+        return self
+
     member_status: str | None = Field(
         default=None,
         description=(
@@ -273,15 +311,11 @@ async def _seed_collections(ctx: ToolContext, project_id: str | None = None) -> 
     # the agent loops "Hozircha kurslar mavjud emas".
     raw = ctx.state.get("collections")
     names = [
-        c.get("name")
-        for c in (raw if isinstance(raw, list) else [])
-        if isinstance(c, dict) and c.get("name")
+        c.get("name") for c in (raw if isinstance(raw, list) else []) if isinstance(c, dict) and c.get("name")
     ]
     try:
         live = await backend.cms_list_collections(project_id, auth_claims=claims)
-        live_names = [
-            c.get("name") for c in (live or []) if isinstance(c, dict) and c.get("name")
-        ]
+        live_names = [c.get("name") for c in (live or []) if isinstance(c, dict) and c.get("name")]
         # Union: live backend list is authoritative, keep any extra from state.
         names = list(dict.fromkeys([*live_names, *names]))
     except Exception:  # pragma: no cover — fall back to state names
@@ -290,9 +324,7 @@ async def _seed_collections(ctx: ToolContext, project_id: str | None = None) -> 
         return out
     for name in names:
         try:
-            res = await backend.cms_list_documents(
-                project_id, str(name), limit=50, auth_claims=claims
-            )
+            res = await backend.cms_list_documents(project_id, str(name), limit=50, auth_claims=claims)
             rows = res.get("results") if isinstance(res, dict) else None
             out[str(name)] = rows if isinstance(rows, list) else []
         except Exception:  # pragma: no cover — isolate one bad collection
@@ -310,11 +342,7 @@ def _fmt_simulate_step(idx: int, step: dict) -> list[str]:
             inp.get("text")
             or inp.get("data")
             or inp.get("phone")
-            or (
-                f"{inp.get('latitude')},{inp.get('longitude')}"
-                if inp.get("latitude") is not None
-                else ""
-            )
+            or (f"{inp.get('latitude')},{inp.get('longitude')}" if inp.get("latitude") is not None else "")
             or ""
         )
         in_label = f"{itype}:{val}".rstrip(":")
@@ -322,9 +350,7 @@ def _fmt_simulate_step(idx: int, step: dict) -> list[str]:
     n_msgs = len(msgs) if isinstance(msgs, list) else 0
     nodes = step.get("nodes") if isinstance(step, dict) else None
     node_ids = [
-        n.get("id")
-        for n in (nodes if isinstance(nodes, list) else [])
-        if isinstance(n, dict) and n.get("id")
+        n.get("id") for n in (nodes if isinstance(nodes, list) else []) if isinstance(n, dict) and n.get("id")
     ]
     path = " → ".join(node_ids) if node_ids else "—"
     edits = len(step.get("edits") or []) if isinstance(step, dict) else 0
@@ -528,7 +554,8 @@ async def _resolve_sim_flow(ctx: ToolContext, *, use_saved: bool) -> dict[str, A
         from ...integrations.backend import load_saved_flow
 
         flow = await load_saved_flow(
-            resolve_concrete_project_id(ctx), auth_claims=ctx.state.get("auth_claims"),
+            resolve_concrete_project_id(ctx),
+            auth_claims=ctx.state.get("auth_claims"),
             client=_backend(ctx),
         )
         return flow if isinstance(flow, dict) else {"nodes": [], "edges": []}
@@ -544,6 +571,8 @@ async def _run_simulation(
     mode: str,
     project_id: str | None = None,
     member_status: str | None = None,
+    start_node_id: str | None = None,
+    initial_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Thin wrapper around the simulator transport: seeds collections, fills the
     default chat, forwards `mode`. Raises SimulatorUnavailableError on outage."""
@@ -556,6 +585,12 @@ async def _run_simulation(
     chat = _default_chat(ctx)
     if member_status:
         chat["member_status"] = member_status
+    partial_kwargs: dict[str, Any] = {}
+    if start_node_id:
+        partial_kwargs = {
+            "start_node_id": start_node_id,
+            "initial_context": initial_context or {},
+        }
     return await simulate(
         simulator_url=get_settings().simulator_url,
         flow=flow,
@@ -563,6 +598,7 @@ async def _run_simulation(
         collections=collections,
         chat=chat,
         mode=mode,
+        **partial_kwargs,
     )
 
 
@@ -588,8 +624,7 @@ async def flow_simulate(input: FlowSimulateInput, ctx: ToolContext) -> ToolResul
     project_id = resolve_concrete_project_id(ctx, getattr(input, "project_id", None))
     if not project_id:
         return ToolResult.error(
-            "Aktiv loyiha yo'q — avval loyihani tanlang (session_use_project / "
-            "project.create)."
+            "Aktiv loyiha yo'q — avval loyihani tanlang (session_use_project / project.create)."
         )
 
     if input.use_saved:
@@ -612,6 +647,8 @@ async def flow_simulate(input: FlowSimulateInput, ctx: ToolContext) -> ToolResul
             mode=mode,
             project_id=project_id,
             member_status=input.member_status,
+            start_node_id=input.start_node_id,
+            initial_context=input.initial_context,
         )
     except SimulatorUnavailableError:
         return ToolResult.error(
@@ -636,17 +673,13 @@ async def flow_simulate(input: FlowSimulateInput, ctx: ToolContext) -> ToolResul
     # mode=assert — compact pass/fail summary (token-saving).
     if mode == "assert":
         text, structured = _format_assert(resp, len(steps))
-        return ToolResult(
-            content=stale_warning + text, is_error=not structured["ok"], data=structured
-        )
+        return ToolResult(content=stale_warning + text, is_error=not structured["ok"], data=structured)
 
     # mode=full — per-step detail + expect verdict markers.
     sim_steps = resp.get("steps")
     top_errors = resp.get("errors")
     flow_src = "saqlangan flow" if input.use_saved else "working draft (saqlanmagan)"
-    lines = [
-        f"Simulyatsiya — {flow_src}, {len(steps)} qadam:"
-    ]
+    lines = [f"Simulyatsiya — {flow_src}, {len(steps)} qadam:"]
     if isinstance(sim_steps, list):
         for i, st in enumerate(sim_steps, 1):
             lines.extend(_fmt_simulate_step(i, st if isinstance(st, dict) else {}))
@@ -658,25 +691,19 @@ async def flow_simulate(input: FlowSimulateInput, ctx: ToolContext) -> ToolResul
         lines.extend(f"  ❌ {e}" for e in top_errors)
     ok = bool(resp.get("ok"))
     lines.append("")
-    lines.append(
-        "✅ Simulyatsiya muvaffaqiyatli"
-        if ok
-        else "⚠️ Simulyatsiyada xatolar bor — yuqoriga qarang"
-    )
+    lines.append("✅ Simulyatsiya muvaffaqiyatli" if ok else "⚠️ Simulyatsiyada xatolar bor — yuqoriga qarang")
     # `data` (structuredContent) IXCHAM bo'lsin — matn (lines) allaqachon AI uchun
     # o'qishli, to'liq qadam transkriptini beradi. Katta maydonlar (steps,
     # collections_after) JSON shovqini → ularni tashlaymiz; faqat yakuniy holat +
     # xatolar qoladi (final_state.context AI o'zgaruvchilarni tekshirishi uchun foydali).
-    compact = {
-        k: v for k, v in resp.items()
-        if k not in ("steps", "collections_after")
-    }
+    compact = {k: v for k, v in resp.items() if k not in ("steps", "collections_after")}
     # final_state.context — Telegram update echo'si (raw_update/telegram_update/
     # message) JUDA katta va AI'ga kerak emas; faqat mazmunli o'zgaruvchilar qolsin.
     fs = compact.get("final_state")
     if isinstance(fs, dict) and isinstance(fs.get("context"), dict):
         ctx_clean = {
-            k: v for k, v in fs["context"].items()
+            k: v
+            for k, v in fs["context"].items()
             if k not in ("raw_update", "telegram_update", "message", "callback_query")
         }
         compact["final_state"] = {**fs, "context": ctx_clean}
@@ -716,9 +743,7 @@ async def flow_export(_: FlowExportInput, ctx: ToolContext) -> ToolResult:
 
 
 class FlowImportInput(BaseModel):
-    flow_json: dict[str, Any] = Field(
-        description="To'liq flow obyekti: {nodes:[...], edges:[...]}."
-    )
+    flow_json: dict[str, Any] = Field(description="To'liq flow obyekti: {nodes:[...], edges:[...]}.")
 
 
 @tool(
@@ -733,9 +758,7 @@ class FlowImportInput(BaseModel):
 )
 async def flow_import(input: FlowImportInput, ctx: ToolContext) -> ToolResult:
     if not isinstance(input.flow_json, dict):
-        return ToolResult.error(
-            "flow_json majburiy — to'liq flow obyekti {nodes, edges} bering."
-        )
+        return ToolResult.error("flow_json majburiy — to'liq flow obyekti {nodes, edges} bering.")
     ok, rendered, summary = _validate_flow_dict(input.flow_json)
     if not ok:
         return ToolResult.error(
@@ -747,9 +770,7 @@ async def flow_import(input: FlowImportInput, ctx: ToolContext) -> ToolResult:
     edges = len(normalized.get("edges") or [])
     warn = ""
     if summary.get("warnings"):
-        warn = "\nOgohlantirishlar:\n" + "\n".join(
-            f"  ⚠️ {w}" for w in summary["warnings"]
-        )
+        warn = "\nOgohlantirishlar:\n" + "\n".join(f"  ⚠️ {w}" for w in summary["warnings"])
     return ToolResult.ok(
         f"Flow import qilindi: {nodes} node, {edges} edge (flow_dirty=true). "
         "Persist EMAS — saqlash uchun flow.save chaqiring." + warn,
@@ -784,23 +805,17 @@ async def flow_history(input: FlowHistoryInput, ctx: ToolContext) -> ToolResult:
 
     project_id = resolve_concrete_project_id(ctx, getattr(input, "project_id", None))
     if not project_id:
-        return ToolResult.error(
-            "Aktiv loyiha yo'q — avval loyihani tanlang."
-        )
+        return ToolResult.error("Aktiv loyiha yo'q — avval loyihani tanlang.")
     versions = await get_flow_version_store().list(project_id=project_id)
     if not versions:
         return ToolResult.ok(
-            "Hali saqlangan versiyalar yo'q — flow.save qilingach versiyalar "
-            "paydo bo'ladi.",
+            "Hali saqlangan versiyalar yo'q — flow.save qilingach versiyalar paydo bo'ladi.",
             data={"versions": []},
         )
-    lines = [
-        f"Loyiha {project_id} — saqlangan flow versiyalari (oxirgi {len(versions)}):"
-    ]
+    lines = [f"Loyiha {project_id} — saqlangan flow versiyalari (oxirgi {len(versions)}):"]
     for v in versions:
         lines.append(
-            f"  v{v['version']} — {v.get('saved_at') or '?'} "
-            f"({v['node_count']} node, {v['edge_count']} edge)"
+            f"  v{v['version']} — {v.get('saved_at') or '?'} ({v['node_count']} node, {v['edge_count']} edge)"
         )
     lines.append("flow.rollback(version) bilan istalganiga qayting.")
     return ToolResult.ok("\n".join(lines), data={"versions": versions})
@@ -833,16 +848,11 @@ async def flow_rollback(input: FlowRollbackInput, ctx: ToolContext) -> ToolResul
 
     project_id = resolve_concrete_project_id(ctx, getattr(input, "project_id", None))
     if not project_id:
-        return ToolResult.error(
-            "Aktiv loyiha yo'q — avval loyihani tanlang."
-        )
-    record = await get_flow_version_store().get(
-        project_id=project_id, version=input.version
-    )
+        return ToolResult.error("Aktiv loyiha yo'q — avval loyihani tanlang.")
+    record = await get_flow_version_store().get(project_id=project_id, version=input.version)
     if record is None:
         return ToolResult.error(
-            f"v{input.version} topilmadi. flow.history bilan mavjud versiyalarni "
-            "ko'ring."
+            f"v{input.version} topilmadi. flow.history bilan mavjud versiyalarni ko'ring."
         )
     flow = record.get("flow") or {"nodes": [], "edges": []}
     normalized = FlowDocument.model_validate(flow).model_dump()
@@ -893,9 +903,7 @@ async def _run_saved_tests(
         steps = t.get("steps") if isinstance(t.get("steps"), list) else []
         normalized, err = _validate_test_steps(steps)
         if err or normalized is None:
-            results.append(
-                {"name": t.get("name"), "ok": False, "error": err or "bad steps"}
-            )
+            results.append({"name": t.get("name"), "ok": False, "error": err or "bad steps"})
             continue
         try:
             resp = await _run_simulation(
@@ -948,10 +956,7 @@ def _fmt_test_results(agg: dict[str, Any]) -> str:
             more = f" (+{len(failed) - 3} yana)" if len(failed) > 3 else ""
             parts.append(f"❌ '{r.get('name')}': " + "; ".join(details) + more)
         else:
-            parts.append(
-                f"❌ '{r.get('name')}': o'tmadi "
-                f"({r.get('passed', '?')}/{r.get('total', '?')} step)"
-            )
+            parts.append(f"❌ '{r.get('name')}': o'tmadi ({r.get('passed', '?')}/{r.get('total', '?')} step)")
     return "; ".join(parts)
 
 
@@ -1003,8 +1008,7 @@ async def flow_test_save(input: FlowTestSaveInput, ctx: ToolContext) -> ToolResu
     )
     if not ok:
         return ToolResult.error(
-            "Testni saqlab bo'lmadi (test ombori hozircha mavjud emas). Keyinroq "
-            "qayta urinib ko'ring."
+            "Testni saqlab bo'lmadi (test ombori hozircha mavjud emas). Keyinroq qayta urinib ko'ring."
         )
     return ToolResult.ok(
         f"Regression test `{name}` saqlandi ({len(steps)} qadam, "
@@ -1065,10 +1069,7 @@ class FlowTestDeleteInput(BaseModel):
 
 @tool(
     name="flow.test_delete",
-    description=(
-        "Saqlangan regression testni o'chiradi (qaytarib bo'lmaydi). "
-        "confirm=true talab qiladi."
-    ),
+    description=("Saqlangan regression testni o'chiradi (qaytarib bo'lmaydi). confirm=true talab qiladi."),
     input_model=FlowTestDeleteInput,
     destructive=True,
 )
@@ -1131,9 +1132,7 @@ async def flow_test_run(input: FlowTestRunInput, ctx: ToolContext) -> ToolResult
     if input.name:
         one = await store.get(project_id=project_id, name=input.name.strip())
         if one is None:
-            return ToolResult.error(
-                f"`{input.name}` topilmadi. flow.test_list bilan mavjudlarini ko'ring."
-            )
+            return ToolResult.error(f"`{input.name}` topilmadi. flow.test_list bilan mavjudlarini ko'ring.")
         tests = [one]
     else:
         tests = await store.list(project_id=project_id, only_enabled=True)

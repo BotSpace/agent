@@ -58,6 +58,8 @@ async def simulate(
     collections: dict[str, list[dict[str, Any]]] | None = None,
     chat: dict[str, Any] | None = None,
     mode: str = "full",
+    start_node_id: str | None = None,
+    initial_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """POST a simulation request and return the parsed JSON response.
 
@@ -77,6 +79,9 @@ async def simulate(
         "chat": chat or {"id": 1, "first_name": "Test", "username": "test_user"},
         "mode": mode or "full",
     }
+    if start_node_id:
+        payload["start_node_id"] = start_node_id
+        payload["initial_context"] = initial_context or {}
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as client:
             resp = await client.post(url, json=payload)
