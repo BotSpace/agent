@@ -815,6 +815,24 @@ def _unknown_variable_warnings(
                 inner = whole.strip("{} ").strip()
                 if root in allowed_roots:
                     continue
+                # Trigger/State values are stored as public_<key> and exposed to
+                # templates as {{key}}. The historical {{state_key}} spelling is
+                # silently rendered as an empty string by the engine. Treat this
+                # as a hard error when we can identify the real written key: it
+                # causes irreversible blank CMS fields and must never be dismissed
+                # as a harmless validator warning.
+                if root.startswith("state_") and root.removeprefix("state_") in state_keys:
+                    preferred = root.removeprefix("state_")
+                    out.append(
+                        ValidationIssue(
+                            "error",
+                            "legacy_state_reference",
+                            f"`{node.id}` uses dead variable `{{{{{root}}}}}`. "
+                            f"Use `{{{{{preferred}}}}}`; otherwise runtime writes an empty value.",
+                            node_id=node.id,
+                        )
+                    )
+                    continue
                 if any(inner.startswith(p) or root + "." == p for p in _ALLOWED_VAR_PREFIXES):
                     continue
                 if any(inner.startswith(p) for p in _ALLOWED_VAR_PREFIXES):

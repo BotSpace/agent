@@ -18,7 +18,9 @@ kerakli node(lar)ning aniq schemasini SO'RAB OL, keyin qo'sh.
      + `rows` (tugma qatorlari ro'yxati).
    - CallbackQueryTriggerNode: `withArgs` YO'Q → callback'ni filtrlash uchun
      `filter` ('starts_with'|'equals'|…) + `context: {value: "prefix_"}`; qiymatni
-     saqlash uchun `save_state:true` + `state_key` + `state_type`.
+     saqlash uchun `state_key` + `state_type` yetarli (alohida `save_state`
+     switch yo'q). Keyingi node'da `{{state_key}}` EMAS, aynan `{{key}}`
+     ishlat: masalan `state_key="phone"` → `{{phone}}`.
    - Dinamik ro'yxat/klaviatura (collection'dan): `rows`ga `{{#each}}` TEMPLATE
      ISHLAMAYDI — `rows` statik ro'yxat. Collection'dan dinamik tugmalar uchun
      `LoadCollectionListNode` → `CustomCodeNode` (JS'da `rows` yasab `send_message`).
@@ -29,7 +31,9 @@ kerakli node(lar)ning aniq schemasini SO'RAB OL, keyin qo'sh.
    "Extra inputs not permitted" xatosi va behuda turn.
 4. Ulash: `flow.connect` / `flow.connect_button` / `flow.connect_branch` /
    `flow.connect_accessory`.
-5. `flow.validate` → `flow.save` (approval so'ramaydi) → **`flow.simulate` bilan
+5. `flow.validate`dagi `unknown_variable`/`legacy_state_reference`ni harmless deb
+   o'tkazib yuborma — ular CMS'ga bo'sh qiymat yozadi. Tuzat → `flow.save`
+   (approval so'ramaydi) → **`flow.simulate` bilan
    O'ZING sina** (6-band) → tugagach `release.debug`.
 
 ## Save'dan keyin SINA — MAJBURIY (o'tkazib yuborma)
@@ -56,6 +60,9 @@ uni O'ZING tekshir — bu qadamni HECH QACHON tashlab ketma:
    saqlangan flow'ni sinayapsan. Bunday holda oxirgi qo'shgan node'ni AYBLAMA —
    avval trigger'ni tekshir va tahrirdan keyin `flow.save` qilganingga ishonch
    hosil qil (yoki `use_saved=false` bilan working flow'ni sina).
+   Bir xil `0/N` natija ikki marta takrorlansa taxmin bilan node qo'shib-o'chirishni
+   TO'XTAT: `mode="full"` + `use_saved=false` bilan bitta diagnostika qil; sabab
+   chiqmasa `flow.history`/`flow.rollback` orqali oxirgi ishlagan versiyaga qayt.
 4. Bot tayyor bo'lgach asosiy stsenariylarni `flow.test_save(name, steps)` bilan
    REGRESSION test sifatida saqla — keyingi tahrir eski oqimni jimgina buzmasin
    (`flow.test_run` bilan qayta tekshiriladi).
