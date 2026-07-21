@@ -518,6 +518,25 @@ def test_request_contact_button_requires_no_edge():
     assert not any(i.code == "missing_button_branch" for i in result.warnings), result.render()
 
 
+def test_constructor_contact_button_requires_no_edge():
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="t", type="CommandTriggerNode", data={"command": "/start"}),
+            FlowNode(
+                id="menu",
+                type="SendTextMessageNode",
+                data={
+                    "messageText": "Telefon",
+                    "rows": [{"columns": [{"text": "Kontakt", "type": "contact"}]}],
+                },
+            ),
+        ],
+        edges=[FlowEdge(id="e1", source="t", target="menu")],
+    )
+    result = validate(flow)
+    assert not any(i.code == "missing_button_branch" for i in result.warnings), result.render()
+
+
 # ── #12: collection cross-check ──────────────────────────────────────────────
 
 

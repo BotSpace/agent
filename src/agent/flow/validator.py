@@ -858,7 +858,17 @@ def _unknown_variable_warnings(
 # Telegram-native action and never need an outgoing edge.
 _EDGE_BUTTON_TYPES = frozenset({"callback", "reply", ""})
 _NO_EDGE_BUTTON_TYPES = frozenset(
-    {"url", "request_contact", "request_location", "switch_inline", "login", "web_app", "pay"}
+    {
+        "url",
+        "contact",
+        "location",
+        "request_contact",
+        "request_location",
+        "switch_inline",
+        "login",
+        "web_app",
+        "pay",
+    }
 )
 
 
