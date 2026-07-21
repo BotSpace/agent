@@ -472,6 +472,13 @@ def _format_assert(resp: dict, n_steps: int) -> tuple[str, dict]:
         ok = (not failed) and (not top_errors) and bool(resp.get("ok", True))
         icon = "✅" if ok else "❌"
         lines = [f"{icon} {passed}/{total} o'tdi"]
+        if total > 0 and passed == 0:
+            lines.append(
+                "  🛑 0/N — bu oxirgi tahrirlangan node aybdorligini isbotlamaydi. "
+                "Node qo'shib/o'chirishdan oldin mode='full', use_saved=false bilan "
+                "diagnostika qil. Shu natija yana takrorlansa flow.history/flow.rollback "
+                "bilan oxirgi ishlagan versiyaga qayt."
+            )
         for f in failed:
             line = f"  ❌ step {f['step']} ({f['input']}) — {f['reason']}"
             if f["errors"]:
@@ -521,6 +528,13 @@ def _format_assert(resp: dict, n_steps: int) -> tuple[str, dict]:
         lines.append(
             f"  ⚠️ {noop} qadam hech qanday node ishlatmadi — trigger mos kelmagan "
             "yoki flow eski (use_saved). Trigger/flow.save'ni tekshir."
+        )
+    if total > 0 and passed == 0:
+        lines.append(
+            "  🛑 0/N — bu oxirgi tahrirlangan node aybdorligini isbotlamaydi. "
+            "Node qo'shib/o'chirishdan oldin mode='full', use_saved=false bilan "
+            "diagnostika qil. Shu natija yana takrorlansa flow.history/flow.rollback "
+            "bilan oxirgi ishlagan versiyaga qayt."
         )
     for f in failed:
         line = f"  ❌ step {f['step']} ({f['input']}) — {f['reason']}"

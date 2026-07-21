@@ -56,3 +56,17 @@ def test_full_shape_still_works():
     _, structured = _format_assert(resp, 2)
     assert structured["passed"] == 1
     assert len(structured["failed"]) == 1
+
+
+def test_zero_passes_returns_diagnostic_stop_instruction():
+    resp = {
+        "ok": False,
+        "passed": 0,
+        "failed": [
+            {"step": 0, "input": {"type": "command", "text": "/start"}, "reason": "no output"}
+        ],
+    }
+    text, _ = _format_assert(resp, 1)
+    assert "0/N" in text
+    assert "mode='full'" in text
+    assert "flow.rollback" in text

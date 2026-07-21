@@ -572,8 +572,8 @@ def test_set_context_keys_are_known_variables():
 def test_underscore_state_form_is_flagged():
     """The dead `{{state_key}}` underscore form never resolves in the engine
     (saved state lives under `public_key`), so the validator must surface it as
-    an unknown_variable warning instead of silently accepting it — this is the
-    guardrail that catches the generator regressing to the broken form."""
+    a hard validation error instead of silently accepting it — this is the
+    guardrail that prevents blank values from being persisted."""
     flow = FlowDocument(
         nodes=[
             FlowNode(id="t", type="CommandTriggerNode", data={"command": "/start"}),
@@ -594,9 +594,9 @@ def test_underscore_state_form_is_flagged():
         ],
     )
     result = validate(flow)
-    unknown = [i for i in result.warnings if i.code == "unknown_variable"]
-    assert any("state_enroll_id" in i.message for i in unknown), [
-        i.message for i in unknown
+    legacy = [i for i in result.errors if i.code == "legacy_state_reference"]
+    assert any("{{enroll_id}}" in i.message for i in legacy), [
+        i.message for i in legacy
     ]
 
 
