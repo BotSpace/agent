@@ -815,7 +815,8 @@ async def flow_list_node_types(input: FlowListNodeTypesInput, ctx: ToolContext) 
     # doc'li node'lar deyarli hamma query'ga mos kelib shovqin qiladi). To'liq
     # doc baribir natijada `description` sifatida qaytadi.
     specs = [
-        s for s in all_node_types()
+        s for s in all_node_types(include_hidden=bool(want))
+        if not s.agent_hidden or s.type in want
         if _keep(s.type, s.summary, category=s.category)
     ]
 

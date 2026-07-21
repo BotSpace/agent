@@ -50,6 +50,7 @@ class NodeTypeSpec:
     produces_state: list[str] = field(default_factory=list)
     is_trigger: bool = False
     is_accessory: bool = False
+    agent_hidden: bool = False
     accessory_target_handles: list[str] = field(default_factory=list)
 
 
@@ -80,6 +81,7 @@ def _spec_from_manifest(m: dict) -> NodeTypeSpec:
         produces_state=[str(s) for s in (m.get("producesState") or []) if s],
         is_trigger=category == "trigger",
         is_accessory=bool(m.get("accessory")),
+        agent_hidden=bool(m.get("agentHidden")),
         accessory_target_handles=acc_ports,
     )
 
@@ -120,8 +122,9 @@ class _NodeTypesView:
 NODE_TYPES = _NodeTypesView()
 
 
-def all_node_types() -> list[NodeTypeSpec]:
-    return list(_node_types().values())
+def all_node_types(*, include_hidden: bool = False) -> list[NodeTypeSpec]:
+    specs = list(_node_types().values())
+    return specs if include_hidden else [spec for spec in specs if not spec.agent_hidden]
 
 
 # ── Manifestdan derive qilinadigan node-turi to'plamlari (avval qotirilgan edi) ──
@@ -170,7 +173,7 @@ def summary_for_llm() -> str:
     """System prompt uchun qisqa katalog dump."""
     lines: list[str] = []
     categories: dict[str, list[NodeTypeSpec]] = {}
-    for spec in _node_types().values():
+    for spec in all_node_types():
         categories.setdefault(spec.category, []).append(spec)
     for cat in _CATEGORY_ORDER:
         items = categories.get(cat, [])
@@ -191,7 +194,7 @@ def render_compact_catalog() -> str:
     `flow.list_node_types(type=...)` chaqiradi. Summary bo'lmasa aiDoc'ga tushadi.
     """
     buckets: dict[str, list[NodeTypeSpec]] = {cat: [] for cat in _CATEGORY_ORDER}
-    for spec in _node_types().values():
+    for spec in all_node_types():
         if spec.category in buckets:
             buckets[spec.category].append(spec)
     cat_docs = load_node_category_docs()
