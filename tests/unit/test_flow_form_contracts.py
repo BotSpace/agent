@@ -208,13 +208,15 @@ def test_static_keyboard_rejects_collection_row_templates() -> None:
                     "data": {
                         "messageText": "Kursni tanlang",
                         "rows": [
-                            [
-                                {
-                                    "text": "{{name}}",
-                                    "type": "callback",
-                                    "value": "course:{{_id}}",
-                                }
-                            ]
+                            {
+                                "columns": [
+                                    {
+                                        "text": "{{name}}",
+                                        "type": "callback",
+                                        "value": "course:{{_id}}",
+                                    }
+                                ]
+                            }
                         ],
                     },
                 }
@@ -225,3 +227,37 @@ def test_static_keyboard_rejects_collection_row_templates() -> None:
 
     result = validate(flow)
     assert any(issue.code == "dynamic_keyboard_template_unsupported" for issue in result.errors)
+
+
+def test_collection_data_keyboard_allows_row_templates() -> None:
+    flow = FlowDocument.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "courses",
+                    "type": "EditOrSendMessageNode",
+                    "data": {
+                        "messageText": "Kursni tanlang",
+                        "rows": [
+                            {
+                                "columns": [
+                                    {
+                                        "collectionData": {
+                                            "collection": "courses",
+                                            "field": "name",
+                                            "text": "{{name}} — {{price}}",
+                                            "callbackDataPattern": "collection:courses:{id}",
+                                        }
+                                    }
+                                ]
+                            }
+                        ],
+                    },
+                }
+            ],
+            "edges": [],
+        }
+    )
+
+    result = validate(flow)
+    assert not any(issue.code == "dynamic_keyboard_template_unsupported" for issue in result.errors)
