@@ -261,3 +261,37 @@ def test_collection_data_keyboard_allows_row_templates() -> None:
 
     result = validate(flow)
     assert not any(issue.code == "dynamic_keyboard_template_unsupported" for issue in result.errors)
+    assert not any(issue.code == "invalid_collection_data_text" for issue in result.errors)
+
+
+def test_collection_data_rejects_single_brace_field_placeholders() -> None:
+    flow = FlowDocument.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "courses",
+                    "type": "EditOrSendMessageNode",
+                    "data": {
+                        "messageText": "Kursni tanlang",
+                        "rows": [
+                            {
+                                "columns": [
+                                    {
+                                        "collectionData": {
+                                            "collection": "courses",
+                                            "text": "{emoji} {name}",
+                                            "callbackDataPattern": "collection:courses:{id}",
+                                        }
+                                    }
+                                ]
+                            }
+                        ],
+                    },
+                }
+            ],
+            "edges": [],
+        }
+    )
+
+    result = validate(flow)
+    assert any(issue.code == "invalid_collection_data_text" for issue in result.errors)
