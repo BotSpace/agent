@@ -409,8 +409,11 @@ ma'lumot avtomatik saqlanadi:
 - `MessageTriggerNode`: matn uchun `type:"text", state_key:"name",
   state_type:"text"`; kontakt uchun `type:"contact", state_key:"phone",
   state_type:"phone_number"`; media uchun mos `type` + `state_type:"file_id"`.
-- Inline collection tugmasi uchun `CallbackQueryTriggerNode`da
-  `state_type:"collection_id"` (ID) yoki `state_type:"full_data"` (obyekt).
+- Inline collection tanlashda `flow.ask_buttons(style="inline",
+  state_type="collection_id", collection_name="courses", options=[...])`
+  ishlat; har `option.value`ga CMS hujjat `_id`si beriladi. Tool callback'ni
+  `collection:courses:<id>` formatida o'zi yasaydi va state'ga sof ID yozadi.
+  To'liq hujjat kerak bo'lsa `state_type="full_data"` ishlat.
 - `CommandTriggerNode` `withArgs:true` + `state_key` + `state_type:"text"`
   bilan buyruq argumentini saqlaydi.
 
@@ -676,6 +679,12 @@ CustomCode dinamik klaviatura faqat juda murakkab shartli logikada kerak.
 - Statik matn yoki statik klaviatura (`SendTextMessageNode`)
 - Form ketma-ketligi: `flow.ask_text` → `flow.ask_contact` →
   `flow.ask_location` — berilgan kalitlarga avtomatik saqlanadi, kod kerak emas
+- Form natijasini `flow.save_to_collection` bilan yozganda capture qilingan state
+  kalitlari yalang'och (`full_name`, `phone`, `course_id`), Telegram runtime
+  qiymatlari esa template (`{{user_id}}`, `{{chat_id}}`, `{{first_name}}`).
+  Collection tanlovi boshqa CMS hujjatiga ishora qilsa, schema'da text emas
+  `relation` field yarat; `relation_collection`ga collection ID emas SLUG
+  (`courses`) ber va mappingga `collection_id` state'ini ber.
 
 **Anti-pattern'lar:**
 1. **Monolit** — 100+ qator bitta blokda (trigger, DB, 5 xabar, klaviatura aralash).

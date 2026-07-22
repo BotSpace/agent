@@ -60,12 +60,19 @@ _MESSAGE_STATE_TYPES_BY_KIND = {
     "text": {"text", "static"},
     "phone": {"text", "static"},
     "contact": {
-        "phone_number", "contact_phone_number", "contact_first_name",
-        "contact_last_name", "static",
+        "phone_number",
+        "contact_phone_number",
+        "contact_first_name",
+        "contact_last_name",
+        "static",
     },
     "location": {
-        "location", "latitude", "location_latitude", "longitude",
-        "location_longitude", "static",
+        "location",
+        "latitude",
+        "location_latitude",
+        "longitude",
+        "location_longitude",
+        "static",
     },
     "photo": {"file_id", "caption", "static"},
     "video": {"file_id", "caption", "static"},
@@ -134,9 +141,7 @@ def validate(
     # type → normalized manifest so we can also check the module node's required
     # fields (the engine routes the rest to node.execute).
     module_map: dict[str, dict] = {
-        str(m.get("type")): m
-        for m in (module_nodes or [])
-        if isinstance(m, dict) and m.get("type")
+        str(m.get("type")): m for m in (module_nodes or []) if isinstance(m, dict) and m.get("type")
     }
     builtin_manifests = load_node_manifests()
 
@@ -147,15 +152,14 @@ def validate(
             return True
         mod = module_map.get(node_type)
         return bool(mod and mod.get("is_trigger"))
+
     # #12 — known collection names (from the workspace's loaded CMS list). When
     # provided, a collection-select value must be one of these exact API values.
     # The constructor uses the same value as the Radix SelectItem value; allowing
     # a translated label or an invented name here makes the UI render the select
     # as empty and lets runtime target a collection that does not exist.
     known_set: set[str] | None = (
-        {c for c in known_collections if isinstance(c, str) and c}
-        if known_collections is not None
-        else None
+        {c for c in known_collections if isinstance(c, str) and c} if known_collections is not None else None
     )
     # #4 — {collection_name: {field: kind}} so filter values can be type-checked
     # against the loaded collection schema (warning only).
@@ -165,9 +169,7 @@ def validate(
     node_ids: set[str] = set()
     for node in flow.nodes:
         if not node.id:
-            issues.append(
-                ValidationIssue("error", "node_id_missing", "Node has empty id", node_id=node.id)
-            )
+            issues.append(ValidationIssue("error", "node_id_missing", "Node has empty id", node_id=node.id))
             continue
         if node.id in node_ids:
             issues.append(
@@ -234,7 +236,7 @@ def validate(
         # Pydantic model). Unknown option values render as an empty select in
         # the constructor and often change runtime semantics silently.
         option_sets: dict[str, set[object]] = {}
-        for manifest_field in (builtin_manifests.get(node.type, {}).get("content") or []):
+        for manifest_field in builtin_manifests.get(node.type, {}).get("content") or []:
             if not isinstance(manifest_field, dict):
                 continue
             key = manifest_field.get("key")
@@ -252,37 +254,52 @@ def validate(
             if manifest_field.get("type") == "collection-select" and isinstance(key, str):
                 selected = _nested_value(node.data, key)
                 if selected is not None and not isinstance(selected, str):
-                    issues.append(ValidationIssue(
-                        "error", "invalid_collection_select_value",
-                        f"`{key}` must be a collection slug/name string, not "
-                        f"{type(selected).__name__}. Use a value returned by collections.list.",
-                        node_id=node.id,
-                    ))
+                    issues.append(
+                        ValidationIssue(
+                            "error",
+                            "invalid_collection_select_value",
+                            f"`{key}` must be a collection slug/name string, not "
+                            f"{type(selected).__name__}. Use a value returned by collections.list.",
+                            node_id=node.id,
+                        )
+                    )
         for key, allowed in option_sets.items():
             selected = _nested_value(node.data, key)
             if selected is not None and selected not in allowed:
-                issues.append(ValidationIssue(
-                    "error", "invalid_select_value",
-                    f"`{node.type}.{key}` value `{selected}` is not a manifest option. "
-                    f"Use one of: {', '.join(sorted(map(str, allowed)))}.",
-                    node_id=node.id,
-                ))
+                issues.append(
+                    ValidationIssue(
+                        "error",
+                        "invalid_select_value",
+                        f"`{node.type}.{key}` value `{selected}` is not a manifest option. "
+                        f"Use one of: {', '.join(sorted(map(str, allowed)))}.",
+                        node_id=node.id,
+                    )
+                )
 
         # A trigger can only persist values that exist on its incoming Telegram
         # update.  The engine intentionally has separate callback and message
         # extraction branches; accepting `text` on a callback silently stores
         # nothing and lets the flow continue with an undefined variable.
         state_key = node.data.get("public_key") or node.data.get("state_key")
-        if isinstance(state_key, str) and state_key.strip() and node.type in {
-            "CallbackQueryTriggerNode", "MessageTriggerNode",
-        }:
+        if (
+            isinstance(state_key, str)
+            and state_key.strip()
+            and node.type
+            in {
+                "CallbackQueryTriggerNode",
+                "MessageTriggerNode",
+            }
+        ):
             state_type = node.data.get("public_type") or node.data.get("state_type")
             if not isinstance(state_type, str) or not state_type.strip():
-                issues.append(ValidationIssue(
-                    "error", "trigger_state_type_required",
-                    f"`{node.type}` saves `{state_key}` but has no state type.",
-                    node_id=node.id,
-                ))
+                issues.append(
+                    ValidationIssue(
+                        "error",
+                        "trigger_state_type_required",
+                        f"`{node.type}` saves `{state_key}` but has no state type.",
+                        node_id=node.id,
+                    )
+                )
             else:
                 if node.type == "CallbackQueryTriggerNode":
                     allowed = _CALLBACK_STATE_TYPES
@@ -290,16 +307,20 @@ def validate(
                 else:
                     message_kind = str(node.data.get("type") or "any")
                     allowed = _MESSAGE_STATE_TYPES_BY_KIND.get(
-                        message_kind, _ANY_MESSAGE_STATE_TYPES,
+                        message_kind,
+                        _ANY_MESSAGE_STATE_TYPES,
                     )
                     source = f"{message_kind} message"
                 if state_type not in allowed:
-                    issues.append(ValidationIssue(
-                        "error", "incompatible_trigger_state_type",
-                        f"`{state_type}` cannot be extracted from a {source}; "
-                        f"use one of: {', '.join(sorted(allowed))}.",
-                        node_id=node.id,
-                    ))
+                    issues.append(
+                        ValidationIssue(
+                            "error",
+                            "incompatible_trigger_state_type",
+                            f"`{state_type}` cannot be extracted from a {source}; "
+                            f"use one of: {', '.join(sorted(allowed))}.",
+                            node_id=node.id,
+                        )
+                    )
 
         # State-saving nodes MUST declare `data.type` (what kind of value is
         # captured — text/phone_number/file_id/Custom/…). Without it the engine
@@ -316,9 +337,9 @@ def validate(
                         f"`{node.type}` `{node.id}` must set `data.type` "
                         "(e.g. 'text', 'contact_phone_number', 'photo_file_id', "
                         "'user_id', 'Custom', …) so the engine knows WHAT value to "
-                            "save it. For data arriving via a trigger "
-                            "(MessageTrigger / callback), configure the trigger's "
-                            "`state_key` + `state_type` fields.",
+                        "save it. For data arriving via a trigger "
+                        "(MessageTrigger / callback), configure the trigger's "
+                        "`state_key` + `state_type` fields.",
                         node_id=node.id,
                     )
                 )
@@ -332,15 +353,15 @@ def validate(
         if node.type in acc_port_accepts()["acc:ai_model"]:
             cred_id = node.data.get("credential_id")
             has_credential = isinstance(cred_id, (int, str)) and str(cred_id).strip() not in (
-                "", "0", "none", "null", "None",
+                "",
+                "0",
+                "none",
+                "null",
+                "None",
             )
             api_key = str(node.data.get("apiKey") or "").strip()
             base_url = str(node.data.get("baseURL") or "").lower()
-            is_local = (
-                "localhost" in base_url
-                or "127.0.0.1" in base_url
-                or "://ollama:" in base_url
-            )
+            is_local = "localhost" in base_url or "127.0.0.1" in base_url or "://ollama:" in base_url
             # A `{{...}}` template (e.g. {{env.OPENAI_KEY}}) is NOT a real key —
             # the user wants to be ASKED for the key, not have env auto-used.
             # Treat any placeholder as missing so the agent must call ask_user.
@@ -399,6 +420,19 @@ def validate(
         # #9a — CustomCodeNode declares output handles (data.outputs) that no
         # edge uses. exit('NAME') without a wired edge is a dead branch.
         if node.type == "CustomCodeNode":
+            js_code = node.data.get("jsCode")
+            if isinstance(js_code, str) and (
+                re.search(r"\bawait\b", js_code) or re.search(r"\basync\s+(?:function|\()", js_code)
+            ):
+                issues.append(
+                    ValidationIssue(
+                        "error",
+                        "custom_code_async_unsupported",
+                        "CustomCode runs synchronously in Goja: do not use async/await. "
+                        "Call db_find/db_insert/send_message directly and use the returned value.",
+                        node_id=node.id,
+                    )
+                )
             issues.extend(_unused_output_warnings(node, flow))
 
     # ── 2. Edge-level checks ───────────────────────────────────────────
@@ -409,9 +443,7 @@ def validate(
 
     for edge in flow.edges:
         if not edge.id:
-            issues.append(
-                ValidationIssue("error", "edge_id_missing", "Edge has empty id", edge_id=edge.id)
-            )
+            issues.append(ValidationIssue("error", "edge_id_missing", "Edge has empty id", edge_id=edge.id))
         if edge.source not in node_ids:
             issues.append(
                 ValidationIssue(
@@ -472,9 +504,7 @@ def validate(
             # Only validate source handles for non-accessory edges.
             source_node = nodes_by_id.get(edge.source)
             if source_node is not None:
-                unsupported = _unsupported_source_handle(
-                    source_node, edge.sourceHandle, module_map
-                )
+                unsupported = _unsupported_source_handle(source_node, edge.sourceHandle, module_map)
                 if unsupported is not None:
                     issues.append(
                         ValidationIssue(
@@ -615,6 +645,7 @@ def validate(
             )
 
     # ── 6. Unknown {{var}} references (#9b, conservative) ──────────────
+    issues.extend(_collection_mapping_issues(flow))
     issues.extend(_unknown_variable_warnings(flow, module_map))
 
     # ── 7. Screen-specific button → global trigger over-use ────────────
@@ -678,6 +709,7 @@ def _screen_specific_global_callback_warnings(flow: FlowDocument) -> list[Valida
 
 
 # ── #4: filter value type vs collection field kind ───────────────────────────
+
 
 # Map FieldKind → a predicate that accepts a concrete (non-template) filter value.
 def _kind_accepts(kind: str, value) -> bool:
@@ -767,9 +799,7 @@ def _unused_output_warnings(node, flow: FlowDocument) -> list[ValidationIssue]:
     if not declared:
         return []
     terminal_outputs = {
-        str(name)
-        for name in data.get("terminalOutputs") or []
-        if isinstance(name, str) and name
+        str(name) for name in data.get("terminalOutputs") or [] if isinstance(name, str) and name
     }
 
     # #7 — terminal CustomCodeNode: a node that produces user-facing output
@@ -781,15 +811,20 @@ def _unused_output_warnings(node, flow: FlowDocument) -> list[ValidationIssue]:
     #   2. heuristic: jsCode both sends a message AND calls exit(...).
     if data.get("terminal") is True:
         return []
-    used = {
-        e.sourceHandle
-        for e in flow.edges
-        if e.source == node.id and isinstance(e.sourceHandle, str)
-    }
+    used = {e.sourceHandle for e in flow.edges if e.source == node.id and isinstance(e.sourceHandle, str)}
     declared_handles = {f"output-{name}" for name in declared}
     js = data.get("jsCode")
     if isinstance(js, str):
-        sends = any(tok in js for tok in ("send_message", "edit_or_send", "edit_message_text", "send_photo", "answer_callback_query"))
+        sends = any(
+            tok in js
+            for tok in (
+                "send_message",
+                "edit_or_send",
+                "edit_message_text",
+                "send_photo",
+                "answer_callback_query",
+            )
+        )
         exits = "exit(" in js
         if sends and exits and not (used & declared_handles):
             # Treat as a terminal leaf — surface at low severity as a tip, not a
@@ -831,10 +866,27 @@ def _unused_output_warnings(node, flow: FlowDocument) -> list[ValidationIssue]:
 # Standard runtime context keys always available to templates.
 _STANDARD_CONTEXT_VARS = frozenset(
     {
-        "first_name", "last_name", "username", "user_id", "language_code",
-        "chat_id", "message_id", "message_text", "text", "phone", "phone_number",
-        "latitude", "longitude", "inserted_id", "agent_output", "callback_data",
-        "now", "today", "bot_username", "user_first_name", "user_last_name",
+        "first_name",
+        "last_name",
+        "username",
+        "user_id",
+        "language_code",
+        "chat_id",
+        "message_id",
+        "message_text",
+        "text",
+        "phone",
+        "phone_number",
+        "latitude",
+        "longitude",
+        "inserted_id",
+        "agent_output",
+        "callback_data",
+        "now",
+        "today",
+        "bot_username",
+        "user_first_name",
+        "user_last_name",
         "user_username",
     }
 )
@@ -843,10 +895,22 @@ _STANDARD_CONTEXT_VARS = frozenset(
 # Variable model: `public.`/`vars.`/`state.` → public_<key> (legacy `state.` kept
 # for back-compat); `private.` → private_<key>; `callback_query.` → raw callback
 # query fields; `user.` → user_<key>.
-_ALLOWED_VAR_PREFIXES = ("state.", "public.", "private.", "vars.", "env.",
-                         "collection_", "item.", "doc.", "loop.",
-                         "response.", "http_", "context.", "callback_query.",
-                         "user.")
+_ALLOWED_VAR_PREFIXES = (
+    "state.",
+    "public.",
+    "private.",
+    "vars.",
+    "env.",
+    "collection_",
+    "item.",
+    "doc.",
+    "loop.",
+    "response.",
+    "http_",
+    "context.",
+    "callback_query.",
+    "user.",
+)
 
 # Only scan these node fields for {{var}} usage — text/code carrying templates.
 _TEMPLATE_TEXT_FIELDS = ("messageText", "text", "caption")
@@ -860,12 +924,8 @@ _EACH_BLOCK_RE = re.compile(r"\{\{#each\b[^}]*\}\}.*?\{\{/each\}\}", re.DOTALL)
 # literal key it sets so {{key}} / {{public_key}} don't warn.
 # Matches single- or double-quoted first args of set_context/set_state, and
 # object-access assignments vars.x = / private.x = .
-_SET_CONTEXT_RE = re.compile(
-    r"""(?:set_context|set_state)\(\s*['"]([A-Za-z_]\w*)['"]"""
-)
-_OBJ_ASSIGN_RE = re.compile(
-    r"""\b(?:vars|private|state)\.([A-Za-z_]\w*)\s*="""
-)
+_SET_CONTEXT_RE = re.compile(r"""(?:set_context|set_state)\(\s*['"]([A-Za-z_]\w*)['"]""")
+_OBJ_ASSIGN_RE = re.compile(r"""\b(?:vars|private|state)\.([A-Za-z_]\w*)\s*=""")
 
 
 def _collect_state_keys(flow: FlowDocument) -> set[str]:
@@ -921,12 +981,9 @@ def _collect_state_keys(flow: FlowDocument) -> set[str]:
         if n.type == "CreateInviteLinkNode":
             rv = data.get("resultVar")
             _register(rv if isinstance(rv, str) and rv else "invite_link")
-        # CollectionNode fieldMappings values are var keys; CollectionData too.
-        fm = data.get("fieldMappings")
-        if isinstance(fm, dict):
-            for v in fm.values():
-                if isinstance(v, str) and v:
-                    _register(v)
+        # CollectionNode.fieldMappings CONSUME state; they do not create it.
+        # Registering mapping values here used to make a missing source validate
+        # itself as "known", hiding literal values such as user_id in Mongo.
         # #8 — CustomCodeNode jsCode sets vars via set_context/set_state or
         # vars.x = / private.x = . Each written key is valid downstream as
         # {{key}} / {{public_key}} / {{private_key}}.
@@ -940,15 +997,70 @@ def _collect_state_keys(flow: FlowDocument) -> set[str]:
     return keys
 
 
-def _unknown_variable_warnings(
-    flow: FlowDocument, module_map: dict | None = None
-) -> list[ValidationIssue]:
+def _collection_mapping_issues(flow: FlowDocument) -> list[ValidationIssue]:
+    """Check CollectionNode mapping sources without pretending they produce state."""
+    state_keys = _collect_state_keys(flow)
+    allowed = state_keys | set(_STANDARD_CONTEXT_VARS)
+    out: list[ValidationIssue] = []
+    for node in flow.nodes:
+        if node.type != "CollectionNode":
+            continue
+        mappings = node.data.get("fieldMappings")
+        if not isinstance(mappings, dict):
+            continue
+        for field_name, source in mappings.items():
+            if not isinstance(source, str) or not source.strip():
+                out.append(
+                    ValidationIssue(
+                        "error",
+                        "invalid_collection_mapping",
+                        f"Collection field `{field_name}` has an empty/non-string mapping.",
+                        node_id=node.id,
+                    )
+                )
+                continue
+            template_vars = list(_SIMPLE_VAR_RE.finditer(source))
+            for match in template_vars:
+                root = match.group(1)
+                namespaced = any(
+                    (root == prefix[:-1] if prefix.endswith(".") else root.startswith(prefix))
+                    for prefix in _ALLOWED_VAR_PREFIXES
+                )
+                if root not in allowed and not namespaced:
+                    out.append(
+                        ValidationIssue(
+                            "error",
+                            "unknown_collection_mapping_variable",
+                            f"Collection field `{field_name}` maps from unknown variable "
+                            f"`{{{{{root}}}}}`. Capture it before this node or fix the name.",
+                            node_id=node.id,
+                        )
+                    )
+            # Per tool contract, an identifier-shaped bare value is normally a
+            # state key. Keep constants backward-compatible, but surface likely
+            # typos instead of silently certifying them as valid.
+            if not template_vars and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", source):
+                if source not in allowed:
+                    out.append(
+                        ValidationIssue(
+                            "warning",
+                            "unresolved_collection_mapping_source",
+                            f"Collection field `{field_name}` maps from `{source}`, but no "
+                            "preceding state/runtime variable with that name is known. The "
+                            "engine will store it as literal text.",
+                            node_id=node.id,
+                        )
+                    )
+    return out
+
+
+def _unknown_variable_warnings(flow: FlowDocument, module_map: dict | None = None) -> list[ValidationIssue]:
     state_keys = _collect_state_keys(flow)
     # Module nodes write their own state vars (manifest `produces_state`, e.g.
     # youtube.Download → yt_file/yt_title). Register those (and their public_
     # variants) so a downstream `{{yt_title}}` isn't flagged as unknown.
     for mod in (module_map or {}).values():
-        for key in (mod.get("produces_state") or []):
+        for key in mod.get("produces_state") or []:
             if isinstance(key, str) and key:
                 state_keys.add(key)
                 state_keys.add(f"public_{key}")
@@ -1063,9 +1175,7 @@ def _global_callback_matchers(flow: FlowDocument) -> list[tuple[str, str]]:
     return matchers
 
 
-def _callback_handled_globally(
-    button: dict | None, matchers: list[tuple[str, str]]
-) -> bool:
+def _callback_handled_globally(button: dict | None, matchers: list[tuple[str, str]]) -> bool:
     if not matchers or not isinstance(button, dict):
         return False
     btype = str(button.get("type") or "").strip().lower()
@@ -1088,9 +1198,7 @@ def _callback_handled_globally(
     return False
 
 
-def _unsupported_source_handle(
-    node, source_handle: str | None, module_map: dict | None = None
-) -> str | None:
+def _unsupported_source_handle(node, source_handle: str | None, module_map: dict | None = None) -> str | None:
     handle = source_handle or "source-handler"
     if handle == "source-handler":
         return None
@@ -1122,9 +1230,7 @@ def _allowed_source_handles(node, module_map: dict | None = None) -> set[str]:
     mod = (module_map or {}).get(node.type)
     if mod is not None:
         mod_handles = {
-            str(h.get("id"))
-            for h in (mod.get("source_handles") or [])
-            if isinstance(h, dict) and h.get("id")
+            str(h.get("id")) for h in (mod.get("source_handles") or []) if isinstance(h, dict) and h.get("id")
         }
         allowed = mod_handles or {"source-handler"}
         # module nodes may still declare dynamic outputs in data.outputs below

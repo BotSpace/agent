@@ -19,10 +19,12 @@ kerakli node(lar)ning aniq schemasini SO'RAB OL, keyin qo'sh.
    - CallbackQueryTriggerNode: `withArgs` YO'Q → callback'ni filtrlash uchun
      `filter` ('starts_with'|'equals'|…) + `context: {value: "prefix_"}`; qiymatni
      saqlash uchun `state_key` + `state_type` ishlat. Masalan
-     `state_key="phone", state_type="text"` qiymati keyingi node'da `{{phone}}`.
+     `state_key="course_id", state_type="data"` qiymati keyingi node'da
+     `{{course_id}}`. Callback'da `state_type="text"` ishlatma.
    - Dinamik ro'yxat/klaviatura (collection'dan): `rows`ga `{{#each}}` TEMPLATE
      ISHLAMAYDI — `rows` statik ro'yxat. Collection'dan dinamik tugmalar uchun
-     `LoadCollectionListNode` → `CustomCodeNode` (JS'da `rows` yasab `send_message`).
+     `CustomCodeNode`da sinxron `db_find(...)` → `rows` yasab `send_message(...)`.
+     Goja async runtime emas: `await db_find` / `await send_message` YOZMA.
    Butun toifa kerak bo'lsa `flow.list_node_types(category="payment"/"ai"/...)`.
 3. `flow.add_node(id, type, data, after?)` bilan qo'sh — `data` faqat 2-qadamda
    OLINGAN schemadagi maydonlar bilan, OBYEKT sifatida (JSON string EMAS). Har node
@@ -142,6 +144,14 @@ bu qoida doirasida emas: u alohida `kanban.*` domeni, CMS yoki bot flow emas.
 `state_key` + `state_type` maydonlari bilan saqla. Oqim ichida doimiy qiymat yozish
 kerak bo'lsa `StateNode`da `key`, `type:"static"`, `value` ishlat. Hisoblangan
 qiymat uchun `CustomCode` ichida `vars.key = ...` ishlat.
+CMS hujjatini tugmadan tanlash uchun `flow.ask_buttons(style="inline",
+state_type="collection_id", collection_name=<slug>)` ishlat va har option.value'ga
+hujjat `_id` sini ber — tool canonical callback'ni o'zi yasaydi. Tanlangan hujjatga
+ishora qiladigan schema field'i `text` emas `relation` bo'lsin va
+`relation_collection`ga ID emas collection SLUG (`courses`) ber. Formani
+`flow.save_to_collection` bilan yozganda capture state'lari yalang'och kalit
+(`full_name`, `phone`, `course_id`), Telegram runtime qiymatlari template
+(`{{user_id}}`, `{{chat_id}}`, `{{first_name}}`) bo'ladi.
 
 ## Mavjud flow — O'CHIRMA
 Saqlangan flow avtomatik yuklangan va har amaldan keyin yangilanadi — u ALLAQACHON

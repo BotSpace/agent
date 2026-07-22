@@ -22,6 +22,7 @@ from ..base import Tool, ToolContext, ToolResult, tool
 def _error(e: BackendError, action: str | None = None) -> ToolResult:
     """Backend xatosini batafsil tarzda LLM uchun ko'rsatish."""
     from ...integrations.backend import format_backend_error
+
     return ToolResult.error(format_backend_error(action, e))
 
 
@@ -62,9 +63,25 @@ def _fmt_rows(rows: list[Any], total: int | str, *, noun: str = "document") -> s
 
 
 FieldKindLiteral = Literal[
-    "text", "longtext", "int", "float", "bool", "datetime", "date", "email",
-    "url", "phone", "enum", "json", "array", "relation", "file", "image",
-    "audio", "video", "geo",
+    "text",
+    "longtext",
+    "int",
+    "float",
+    "bool",
+    "datetime",
+    "date",
+    "email",
+    "url",
+    "phone",
+    "enum",
+    "json",
+    "array",
+    "relation",
+    "file",
+    "image",
+    "audio",
+    "video",
+    "geo",
 ]
 
 IndexKindLiteral = Literal["none", "asc", "desc", "text", "hashed", "unique", "ttl"]
@@ -74,15 +91,30 @@ IndexKindLiteral = Literal["none", "asc", "desc", "text", "hashed", "unique", "t
 # silently dropping the whole schema. Unknown values pass through unchanged so a
 # real typo still surfaces as a validation error.
 _KIND_ALIASES = {
-    "string": "text", "str": "text", "char": "text", "varchar": "text", "uuid": "text",
-    "number": "float", "num": "float", "double": "float", "decimal": "float",
-    "integer": "int", "long": "int", "bigint": "int",
+    "string": "text",
+    "str": "text",
+    "char": "text",
+    "varchar": "text",
+    "uuid": "text",
+    "number": "float",
+    "num": "float",
+    "double": "float",
+    "decimal": "float",
+    "integer": "int",
+    "long": "int",
+    "bigint": "int",
     "boolean": "bool",
-    "timestamp": "datetime", "time": "datetime",
-    "object": "json", "dict": "json", "map": "json",
+    "timestamp": "datetime",
+    "time": "datetime",
+    "object": "json",
+    "dict": "json",
+    "map": "json",
     "list": "array",
-    "photo": "image", "picture": "image", "img": "image",
-    "location": "geo", "point": "geo",
+    "photo": "image",
+    "picture": "image",
+    "img": "image",
+    "location": "geo",
+    "point": "geo",
 }
 
 
@@ -96,8 +128,9 @@ class FieldSpec(BaseModel):
     required: bool = False
     default: Any | None = None
     validators: dict[str, Any] = Field(default_factory=dict)
-    relation_collection: int | None = Field(
-        default=None, description="ID of the referenced collection (RELATION kind)"
+    relation_collection: str | None = Field(
+        default=None,
+        description="Slug of the referenced collection (RELATION kind), e.g. courses",
     )
     index: IndexKindLiteral = "none"
     order: int = 0
@@ -185,10 +218,10 @@ async def get_collection(input: GetCollectionInput, ctx: ToolContext) -> ToolRes
     except BackendError as e:
         return _error(e)
     fields = c.get("fields", [])
-    field_summary = ", ".join(
-        f"{f.get('name')}({f.get('kind')}{'*' if f.get('required') else ''})"
-        for f in fields
-    ) or "(no fields)"
+    field_summary = (
+        ", ".join(f"{f.get('name')}({f.get('kind')}{'*' if f.get('required') else ''})" for f in fields)
+        or "(no fields)"
+    )
     return ToolResult.ok(
         f"Collection `{input.name}` — {len(fields)} field(s): {field_summary}",
         data={"collection": c},
@@ -231,11 +264,11 @@ def _slugify(name: str) -> str:
         "Create a new collection with an optional initial schema. Field `kind` "
         "must be one of: text, longtext, int, float, bool, datetime, date, "
         "email, url, phone, enum, json, array, relation, file, image, audio, "
-        "video, geo. RELATION kind requires `relation_collection` (collection id). "
+        "video, geo. RELATION kind requires `relation_collection` (collection slug). "
         "Set `primary_field` to the field used as the display/title when this "
         "collection is referenced from another via a relation (e.g. 'name'). "
-        "Returns the new collection's `id` (in content and structuredContent) — "
-        "use it as `relation_collection` when adding a RELATION field elsewhere."
+        "RELATION `relation_collection` is the target collection SLUG, not its id "
+        "(for example `courses`). Returns both the new collection's slug and id."
     ),
     input_model=CreateCollectionInput,
 )
@@ -251,19 +284,28 @@ async def create_collection(input: CreateCollectionInput, ctx: ToolContext) -> T
         create_body["description"] = input.description
     if input.primary_field is not None:
         create_body["primary_field"] = input.primary_field
+
     def _is_conflict(e: BackendError, code: str) -> bool:
         return e.status == 409 or code in (e.codes or [])
 
     existed = False
     c: dict[str, Any] | None = None
     try:
-        c = await _backend(ctx).cms_create_collection(pid, create_body, auth_claims=ctx.state.get("auth_claims"))
+        c = await _backend(ctx).cms_create_collection(
+            pid, create_body, auth_claims=ctx.state.get("auth_claims")
+        )
     except BackendError as e:
         # Idempotent: if the collection already exists, reuse it and still add any
         # missing fields (don't abort — otherwise a re-run leaves a collection with
         # NO schema while documents keep flowing in schemalessly).
         if _is_conflict(e, "cms.collection_exists"):
             existed = True
+            try:
+                c = await _backend(ctx).cms_get_collection(
+                    pid, slug, auth_claims=ctx.state.get("auth_claims")
+                )
+            except BackendError:
+                c = None
         else:
             return _error(e)
     new_id = c.get("id") if isinstance(c, dict) else None
@@ -293,7 +335,9 @@ async def create_collection(input: CreateCollectionInput, ctx: ToolContext) -> T
         msg += f" Already present: {', '.join(skipped)}."
     if failed:
         msg += f" ⚠️ Field FAILED: {'; '.join(failed)}."
-    msg += " Use the id as `relation_collection` when linking from another collection."
+    if new_id is not None:
+        msg += f" Collection id: `{new_id}`."
+    msg += f" Use slug `{slug}` as `relation_collection` when linking another schema."
     return ToolResult.ok(
         msg,
         data={"collection": c, "id": new_id, "fields_added": added, "fields_failed": failed},
@@ -513,9 +557,7 @@ async def insert(input: InsertInput, ctx: ToolContext) -> ToolResult:
         )
     except BackendError as e:
         return _error(e)
-    return ToolResult.ok(
-        f"Inserted, _id={d.get('_id')}", data={"document": d}
-    )
+    return ToolResult.ok(f"Inserted, _id={d.get('_id')}", data={"document": d})
 
 
 class BulkInsertInput(BaseModel):
@@ -539,9 +581,7 @@ async def bulk_insert(input: BulkInsertInput, ctx: ToolContext) -> ToolResult:
         )
     except BackendError as e:
         return _error(e)
-    return ToolResult.ok(
-        f"Inserted {d.get('count', len(input.documents))} document(s).", data=d
-    )
+    return ToolResult.ok(f"Inserted {d.get('count', len(input.documents))} document(s).", data=d)
 
 
 class UpdateInput(BaseModel):
@@ -641,7 +681,9 @@ class UpdateManyInput(BaseModel):
         description="Har bir mos hujjatga qo'llaniladigan qisman yangilanish (partial merge)."
     )
     limit: int = Field(
-        default=500, ge=1, le=1000,
+        default=500,
+        ge=1,
+        le=1000,
         description="Ko'pi bilan shuncha hujjat yangilanadi (xavfsizlik chegarasi).",
     )
     project_id: str | int | None = None
@@ -664,7 +706,7 @@ async def update_many(input: UpdateManyInput, ctx: ToolContext) -> ToolResult:
     if not input.filter:
         return ToolResult.error(
             "filter bo'sh bo'lishi mumkin emas — butun kolleksiyani yangilab "
-            "yubormaslik uchun aniq filter bering (masalan {\"code\":\"123\"})."
+            'yubormaslik uchun aniq filter bering (masalan {"code":"123"}).'
         )
     if not input.patch:
         return ToolResult.error("patch bo'sh — yangilanadigan maydon yo'q.")
@@ -690,7 +732,9 @@ async def update_many(input: UpdateManyInput, ctx: ToolContext) -> ToolResult:
         msg += f" ({total} matched; capped at limit={input.limit} — increase `limit` for the rest.)"
     if errors:
         msg += f" {len(errors)} failed; first: {errors[0]}"
-    return ToolResult.ok(msg, data={"matched": len(ids), "total": total, "updated": updated, "errors": errors[:10]})
+    return ToolResult.ok(
+        msg, data={"matched": len(ids), "total": total, "updated": updated, "errors": errors[:10]}
+    )
 
 
 class DeleteManyInput(BaseModel):
@@ -699,7 +743,9 @@ class DeleteManyInput(BaseModel):
         description="O'chiriladigan hujjatlarni tanlovchi MongoDB filter. Bo'sh {} RAD ETILADI."
     )
     limit: int = Field(
-        default=500, ge=1, le=1000,
+        default=500,
+        ge=1,
+        le=1000,
         description="Ko'pi bilan shuncha hujjat o'chiriladi (xavfsizlik chegarasi).",
     )
     project_id: str | int | None = None
@@ -746,7 +792,9 @@ async def delete_many(input: DeleteManyInput, ctx: ToolContext) -> ToolResult:
         msg += f" ({total} matched; capped at limit={input.limit}.)"
     if errors:
         msg += f" {len(errors)} failed; first: {errors[0]}"
-    return ToolResult.ok(msg, data={"matched": len(ids), "total": total, "deleted": deleted, "errors": errors[:10]})
+    return ToolResult.ok(
+        msg, data={"matched": len(ids), "total": total, "deleted": deleted, "errors": errors[:10]}
+    )
 
 
 class AggregateInput(BaseModel):
