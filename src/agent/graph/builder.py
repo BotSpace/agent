@@ -692,6 +692,22 @@ def build_graph(cfg: GraphConfig, checkpointer: Any | None = None):
             )
             result = await cfg.registry.execute(call.name, call.arguments, ctx)
             calls_used += 1
+            if (
+                result.is_error
+                and call.name.startswith("cms.")
+                and "route not found" in result.content.casefold()
+            ):
+                # This is a backend capability outage, not bad tool arguments.
+                # Re-trying list/create/insert variants cannot repair a route
+                # that was never mounted and previously caused long destructive
+                # retry loops followed by a falsely "successful" flow build.
+                result.content += (
+                    "\n\nCMS backend route mavjud emas. Shu run ichida boshqa CMS toolni "
+                    "qayta urinmang; collectionga bog'liq buildni to'xtating va "
+                    "infratuzilma xatosini aniq bildiring."
+                )
+                current_state["tool_budget_exhausted"] = True
+                updates["tool_budget_exhausted"] = True
             if isinstance(result.data, dict):
                 input_tokens = int(result.data.get("input_tokens") or 0)
                 output_tokens = int(result.data.get("output_tokens") or 0)

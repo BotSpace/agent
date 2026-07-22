@@ -228,6 +228,13 @@ async def blueprint_draft(input: DraftBlueprintInput, ctx: ToolContext) -> ToolR
     names, schemas = _collection_contract(ctx)
     collections_loaded = isinstance(ctx.state.get("collections"), list)
     requirements: list[str] = []
+    needs_cms = bool(blueprint.catalog_collection or (
+        blueprint.destination_collection and not blueprint.kanban_board_id
+    ))
+    if needs_cms and not collections_loaded:
+        requirements.append(
+            "CMS contract yuklanmadi — CMS backend holatini tiklang va collectionlarni qayta o'qing"
+        )
     destination = blueprint.destination_collection if not blueprint.kanban_board_id else None
     if destination:
         if collections_loaded and destination not in names:
@@ -400,6 +407,10 @@ async def blueprint_preview(input: BlueprintPreviewInput, ctx: ToolContext) -> T
     collections_loaded = isinstance(ctx.state.get("collections"), list)
     issues: list[str] = []
     destination = blueprint.destination_collection if not blueprint.kanban_board_id else None
+    if (blueprint.catalog_collection or destination) and not collections_loaded:
+        issues.append(
+            "CMS contract yuklanmadi — CMS backend holatini tiklang va collectionlarni qayta o'qing."
+        )
     for name in (blueprint.catalog_collection, destination):
         if name and collections_loaded and name not in names:
             issues.append(f"Collection `{name}` mavjud emas — avval yaratilishi kerak.")
@@ -484,7 +495,8 @@ async def _progress(ctx: ToolContext, step: str, status: str, detail: str) -> No
         "Compile any registered typed business blueprint into a complete deterministic flow. "
         "It validates collection contracts and graph semantics, generates a regression "
         "test, optionally simulates it, and only then applies the flow. Prefer this over "
-        "manually adding nodes for common bots."
+        "manually adding nodes for common bots. It NEVER creates CMS collections or seed "
+        "documents: create and re-read those contracts before calling this tool."
     ),
     input_model=BuildBlueprintInput,
     core=True,
@@ -543,6 +555,14 @@ async def build_blueprint(input: BuildBlueprintInput, ctx: ToolContext) -> ToolR
 
     destination = blueprint.destination_collection if not blueprint.kanban_board_id else None
     required = [name for name in (blueprint.catalog_collection, destination) if name]
+    if required and not collections_loaded:
+        await _progress(ctx, "collections", "failed", "CMS contract yuklanmadi")
+        return ToolResult.error(
+            "CMS contract yuklanmagan, shuning uchun blueprint qurilmadi. "
+            "flow.build_blueprint collection yoki seed data yaratmaydi. CMS backendni "
+            "tiklang, cms.list_collections bilan contractni qayta o'qing, kerakli typed "
+            "collectionlarni yarating va keyin buildni takrorlang."
+        )
     missing_collections = sorted({name for name in required if collections_loaded and name not in names})
     if missing_collections:
         await _progress(ctx, "collections", "failed", "Kerakli collection topilmadi")
