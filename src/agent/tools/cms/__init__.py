@@ -348,6 +348,52 @@ def _slugify(name: str) -> str:
     return s or "collection"
 
 
+def _collections_with_contract(
+    ctx: ToolContext,
+    slug: str,
+    fields: list[FieldSpec],
+) -> list[dict[str, Any]]:
+    """Merge a CMS mutation into the run-local collection contract.
+
+    The worker loads this contract only once when a run starts. Without an
+    explicit state update, a collection created earlier in the same run is
+    invisible to the blueprint validator and the model is pushed back toward
+    low-level/manual flow construction.
+    """
+    current = [dict(item) for item in (ctx.state.get("collections") or []) if isinstance(item, dict)]
+    existing = next((item for item in current if item.get("name") == slug), None)
+    if existing is None:
+        existing = {"name": slug, "fields": [], "field_kinds": {}, "field_contracts": []}
+        current.append(existing)
+    names = [str(name) for name in (existing.get("fields") or [])]
+    kinds = dict(existing.get("field_kinds") or {})
+    contracts = [
+        dict(item) for item in (existing.get("field_contracts") or []) if isinstance(item, dict)
+    ]
+    contracts_by_name = {str(item.get("name")): item for item in contracts if item.get("name")}
+    for field in fields:
+        if field.name not in names:
+            names.append(field.name)
+        kinds[field.name] = field.kind
+        contract: dict[str, Any] = {
+            "name": field.name,
+            "kind": field.kind,
+            "required": field.required,
+        }
+        if field.relation_collection:
+            contract["relation_collection"] = field.relation_collection
+        contracts_by_name[field.name] = contract
+    existing.update(
+        {
+            "name": slug,
+            "fields": names,
+            "field_kinds": kinds,
+            "field_contracts": list(contracts_by_name.values()),
+        }
+    )
+    return current
+
+
 @tool(
     name="cms.create_collection",
     description=(
@@ -431,6 +477,7 @@ async def create_collection(input: CreateCollectionInput, ctx: ToolContext) -> T
     return ToolResult.ok(
         msg,
         data={"collection": c, "id": new_id, "fields_added": added, "fields_failed": failed},
+        state_updates={"collections": _collections_with_contract(ctx, slug, input.fields)},
     )
 
 
@@ -494,7 +541,13 @@ async def add_field(input: AddFieldInput, ctx: ToolContext) -> ToolResult:
         )
     except BackendError as e:
         return _error(e)
-    return ToolResult.ok(f"Field `{f.get('name')}` added.", data={"field": f})
+    return ToolResult.ok(
+        f"Field `{f.get('name')}` added.",
+        data={"field": f},
+        state_updates={
+            "collections": _collections_with_contract(ctx, input.collection, [input.field])
+        },
+    )
 
 
 class UpdateFieldInput(BaseModel):

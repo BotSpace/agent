@@ -156,6 +156,12 @@ def test_core_and_lazy_partition():
     # With nothing activated, only CORE tools are sent.
     names = {s.name for s in active_tool_specs(tools, set())}
     assert "flow.add_node" in names and "broadcast.send" not in names
+    # Extension tools opt into the eager set through Tool.core; this must not
+    # require another hard-coded name in lazy.py.
+    assert "flow.suggest_blueprints" in names
+    assert "flow.blueprint_draft" in names
+    assert "flow.build_blueprint" in names
+    assert "cms.schema_assistant" in names
     # After activation, the lazy tool appears.
     names2 = {s.name for s in active_tool_specs(tools, {"broadcast.send"})}
     assert "broadcast.send" in names2

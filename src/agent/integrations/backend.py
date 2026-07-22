@@ -1887,7 +1887,12 @@ async def load_project_collections(
 
     out: list[dict[str, Any]] = []
     for c in cols or []:
-        name = c.get("name") if isinstance(c, dict) else None
+        # CMS list responses carry both a user-facing `name`/label and the API
+        # identifier `slug`. Every subsequent endpoint and flow node requires
+        # the slug. Using translated system labels ("Chat tarixi") caused three
+        # pointless 404 retries per simulator run and exposed invalid select
+        # values to the agent.
+        name = (c.get("slug") or c.get("name")) if isinstance(c, dict) else None
         if not name:
             continue
         fields: list[str] = []

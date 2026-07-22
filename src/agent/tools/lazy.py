@@ -74,15 +74,26 @@ def is_core(name: str) -> bool:
     return ns in _CORE_NAMESPACES
 
 
+def is_core_tool(tool: Tool) -> bool:
+    """Single source of truth for eager tool schemas.
+
+    `_CORE_NAMES` keeps backward-compatible defaults, while `Tool.core` lets a
+    self-contained extension (for example a new blueprint tool) opt in without
+    editing this central list. Previously the decorator flag was ignored, so
+    blueprint tools marked core were still invisible until `tools.search`.
+    """
+    return tool.core or is_core(tool.name)
+
+
 def active_tool_specs(tools: list[Tool], activated: set[str]):
     """Specs to send this turn: every CORE tool + any lazy tool the agent has
     already loaded via tools.search (tracked in `activated`)."""
-    return [t.to_spec() for t in tools if is_core(t.name) or t.name in activated]
+    return [t.to_spec() for t in tools if is_core_tool(t) or t.name in activated]
 
 
 def lazy_catalog(tools: list[Tool]) -> str:
     """Compact `name — summary` catalog of the LAZY tools for the system prompt."""
-    lazy = sorted((t for t in tools if not is_core(t.name)), key=lambda t: t.name)
+    lazy = sorted((t for t in tools if not is_core_tool(t)), key=lambda t: t.name)
     if not lazy:
         return ""
     lines = [
@@ -135,7 +146,7 @@ def build_tools_search(all_tools_getter) -> Tool:
         terms = [str(x).strip().lower() for x in terms if str(x).strip()]
         if not terms:
             return ToolResult.error("tools.search: query bo'sh.")
-        lazy = [t for t in all_tools_getter() if not is_core(t.name)]
+        lazy = [t for t in all_tools_getter() if not is_core_tool(t)]
         matched = [t for t in lazy if _matches(t, terms)]
         if not matched:
             return ToolResult.ok(f"Hech qanday lazy tool topilmadi: {terms}")

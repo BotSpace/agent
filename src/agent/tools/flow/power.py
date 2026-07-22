@@ -247,7 +247,9 @@ class FlowSimulateInput(BaseModel):
         default=None,
         description=(
             "n8n-uslubidagi partial execution: shu node va undan keyingi subgraphni "
-            "trigger qadamisiz bajaradi. steps bo'sh bo'lishi mumkin."
+            "trigger qadamisiz bajaradi. steps bo'sh bo'lishi mumkin. FAQAT node "
+            "diagnostikasi uchun; bu natija /start yoki boshqa entry point ishlashini "
+            "isbotlamaydi va end-to-end acceptance o'rnini bosa olmaydi."
         ),
     )
     initial_context: dict[str, Any] = Field(
@@ -311,11 +313,17 @@ async def _seed_collections(ctx: ToolContext, project_id: str | None = None) -> 
     # the agent loops "Hozircha kurslar mavjud emas".
     raw = ctx.state.get("collections")
     names = [
-        c.get("name") for c in (raw if isinstance(raw, list) else []) if isinstance(c, dict) and c.get("name")
+        (c.get("slug") or c.get("name"))
+        for c in (raw if isinstance(raw, list) else [])
+        if isinstance(c, dict) and (c.get("slug") or c.get("name"))
     ]
     try:
         live = await backend.cms_list_collections(project_id, auth_claims=claims)
-        live_names = [c.get("name") for c in (live or []) if isinstance(c, dict) and c.get("name")]
+        live_names = [
+            (c.get("slug") or c.get("name"))
+            for c in (live or [])
+            if isinstance(c, dict) and (c.get("slug") or c.get("name"))
+        ]
         # Union: live backend list is authoritative, keep any extra from state.
         names = list(dict.fromkeys([*live_names, *names]))
     except Exception:  # pragma: no cover — fall back to state names
@@ -672,6 +680,13 @@ async def flow_simulate(input: FlowSimulateInput, ctx: ToolContext) -> ToolResul
         )
 
     resp = resp if isinstance(resp, dict) else {"ok": False, "steps": []}
+    partial_notice = ""
+    if input.start_node_id:
+        partial_notice = (
+            "⚠️ PARTIAL DIAGNOSTIKA: start_node_id trigger/entry pointni chetlab o'tdi. "
+            "Bu natijani botning end-to-end testi deb qabul qilmang; yakuniy testni "
+            "haqiqiy command/message/click qadamidan boshlang.\n\n"
+        )
 
     # Testing the SAVED flow while the workspace has unsaved edits is the #1 cause
     # of "why didn't my fix take effect?" confusion — the simulation ignores the
@@ -687,7 +702,12 @@ async def flow_simulate(input: FlowSimulateInput, ctx: ToolContext) -> ToolResul
     # mode=assert — compact pass/fail summary (token-saving).
     if mode == "assert":
         text, structured = _format_assert(resp, len(steps))
-        return ToolResult(content=stale_warning + text, is_error=not structured["ok"], data=structured)
+        structured["partial"] = bool(input.start_node_id)
+        return ToolResult(
+            content=stale_warning + partial_notice + text,
+            is_error=not structured["ok"],
+            data=structured,
+        )
 
     # mode=full — per-step detail + expect verdict markers.
     sim_steps = resp.get("steps")
@@ -711,6 +731,7 @@ async def flow_simulate(input: FlowSimulateInput, ctx: ToolContext) -> ToolResul
     # collections_after) JSON shovqini → ularni tashlaymiz; faqat yakuniy holat +
     # xatolar qoladi (final_state.context AI o'zgaruvchilarni tekshirishi uchun foydali).
     compact = {k: v for k, v in resp.items() if k not in ("steps", "collections_after")}
+    compact["partial"] = bool(input.start_node_id)
     # final_state.context — Telegram update echo'si (raw_update/telegram_update/
     # message) JUDA katta va AI'ga kerak emas; faqat mazmunli o'zgaruvchilar qolsin.
     fs = compact.get("final_state")
@@ -721,7 +742,11 @@ async def flow_simulate(input: FlowSimulateInput, ctx: ToolContext) -> ToolResul
             if k not in ("raw_update", "telegram_update", "message", "callback_query")
         }
         compact["final_state"] = {**fs, "context": ctx_clean}
-    return ToolResult(content=stale_warning + "\n".join(lines), is_error=not ok, data=compact)
+    return ToolResult(
+        content=stale_warning + partial_notice + "\n".join(lines),
+        is_error=not ok,
+        data=compact,
+    )
 
 
 # ── flow.export ───────────────────────────────────────────────────────────────
@@ -991,6 +1016,13 @@ class FlowTestSaveInput(BaseModel):
         ),
     )
     enabled: bool = Field(default=True, description="False — testni o'chirmasdan vaqtincha o'chirib qo'yadi.")
+    verify: bool = Field(
+        default=True,
+        description=(
+            "Default true: testni saqlashdan oldin joriy working flowda ishga tushiradi. "
+            "Yiqilgan journey regression baseline sifatida saqlanmaydi."
+        ),
+    )
 
 
 @tool(
@@ -1004,6 +1036,7 @@ class FlowTestSaveInput(BaseModel):
     input_model=FlowTestSaveInput,
 )
 async def flow_test_save(input: FlowTestSaveInput, ctx: ToolContext) -> ToolResult:
+    from ...integrations.simulator import SimulatorUnavailableError
     from ...mcp.flow_tests import get_flow_test_store
 
     project_id = resolve_concrete_project_id(ctx, getattr(input, "project_id", None))
@@ -1013,6 +1046,32 @@ async def flow_test_save(input: FlowTestSaveInput, ctx: ToolContext) -> ToolResu
     if not name:
         return ToolResult.error("name bo'sh bo'lmasligi kerak.")
     steps = [s.model_dump(exclude_none=True, by_alias=True) for s in input.steps]
+    verification: dict[str, Any] = {"ran": False, "ok": True}
+    if input.verify:
+        try:
+            response = await _run_simulation(
+                ctx,
+                flow=_working_flow(ctx),
+                steps=steps,
+                seed_collections=True,
+                mode="assert",
+                project_id=project_id,
+            )
+        except SimulatorUnavailableError:
+            response = None
+        if isinstance(response, dict):
+            verification = {
+                "ran": True,
+                "ok": bool(response.get("ok")),
+                "failed": response.get("failed") or [],
+                "errors": response.get("errors") or [],
+            }
+            if not verification["ok"]:
+                return ToolResult.error(
+                    f"Regression test `{name}` joriy flowda yiqildi va SAQLANMADI. "
+                    "Avval asl entry pointdan boshlangan journey'ni tuzating.",
+                    data={"verification": verification},
+                )
     ok = await get_flow_test_store().save(
         project_id=project_id,
         user_id=str(ctx.user_id) if ctx.user_id is not None else None,
@@ -1026,8 +1085,14 @@ async def flow_test_save(input: FlowTestSaveInput, ctx: ToolContext) -> ToolResu
         )
     return ToolResult.ok(
         f"Regression test `{name}` saqlandi ({len(steps)} qadam, "
-        f"enabled={input.enabled}). flow.save endi uni avtomatik ishga tushiradi.",
-        data={"name": name, "steps": len(steps), "enabled": input.enabled},
+        f"enabled={input.enabled}, verified={verification['ran']}). "
+        "flow.save endi uni avtomatik ishga tushiradi.",
+        data={
+            "name": name,
+            "steps": len(steps),
+            "enabled": input.enabled,
+            "verification": verification,
+        },
     )
 
 

@@ -59,6 +59,16 @@ def test_load_collections_no_project_returns_empty():
     assert _run(load_project_collections("")) == []
 
 
+def test_load_collections_uses_slug_as_runtime_identifier():
+    backend = _FakeBackend(
+        cols=[{"name": "Chat tarixi", "slug": "chat_history"}],
+        detail={"chat_history": {"fields": [{"name": "message", "kind": "text"}]}},
+    )
+    out = _run(load_project_collections("123", client=backend))
+    assert out[0]["name"] == "chat_history"
+    assert out[0]["field_kinds"] == {"message": "text"}
+
+
 def test_load_collections_list_failure_returns_empty():
     class Boom:
         async def cms_list_collections(self, pid, *, auth_claims=None):

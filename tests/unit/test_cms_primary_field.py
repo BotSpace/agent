@@ -31,6 +31,9 @@ class _CaptureBackend(BackendClient):
         self.bodies.append(body)
         return {"id": 7, "name": body.get("name")}
 
+    async def cms_add_field(self, pid, collection, body, *, auth_claims=None):
+        return body
+
 
 def _ctx(backend):
     return ToolContext(
@@ -79,3 +82,34 @@ def test_relation_field_uses_collection_slug():
         }
     )
     assert field.relation_collection == "courses"
+
+
+def test_create_collection_updates_run_local_contract():
+    backend = _CaptureBackend()
+    ctx = _ctx(backend)
+    ctx.state["collections"] = [
+        {"name": "existing", "fields": ["name"], "field_kinds": {"name": "text"}}
+    ]
+
+    res = _run(
+        create_collection.run(
+            {
+                "name": "registrations",
+                "fields": [
+                    {"name": "phone", "kind": "phone", "required": True},
+                    {
+                        "name": "course",
+                        "kind": "relation",
+                        "relation_collection": "courses",
+                    },
+                ],
+            },
+            ctx,
+        )
+    )
+
+    contracts = res.state_updates["collections"]
+    assert [item["name"] for item in contracts] == ["existing", "registrations"]
+    registrations = contracts[1]
+    assert registrations["field_kinds"] == {"phone": "phone", "course": "relation"}
+    assert registrations["field_contracts"][1]["relation_collection"] == "courses"

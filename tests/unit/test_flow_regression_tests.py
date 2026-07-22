@@ -80,10 +80,11 @@ _STEPS = [{"type": "command", "text": "/start", "expect": {"contains": "Salom"}}
 # ── save / list / delete ──────────────────────────────────────────────────────
 
 
-async def test_test_save_and_list(store):
+async def test_test_save_and_list(store, sim_ok):
     res = await _tools()["flow.test_save"].run({"name": "happy", "steps": _STEPS}, _ctx())
     assert not res.is_error, res.content
     assert ("7", "happy") in store.rows
+    assert res.data["verification"]["ran"] is True
 
     res = await _tools()["flow.test_list"].run({}, _ctx())
     assert not res.is_error
@@ -101,6 +102,21 @@ async def test_test_save_store_unavailable(store):
     res = await _tools()["flow.test_save"].run({"name": "x", "steps": _STEPS}, _ctx())
     assert res.is_error
     assert "mavjud emas" in res.content
+
+
+async def test_test_save_rejects_failing_journey_without_persisting(store, monkeypatch):
+    async def failed(*, simulator_url, flow, steps, collections, chat, mode="full"):
+        return {
+            "ok": False,
+            "failed": [{"step": 1, "reason": "command did not match"}],
+            "errors": [],
+        }
+
+    monkeypatch.setattr("agent.integrations.simulator.simulate", failed)
+    res = await _tools()["flow.test_save"].run({"name": "broken", "steps": _STEPS}, _ctx())
+    assert res.is_error
+    assert "SAQLANMADI" in res.content
+    assert ("7", "broken") not in store.rows
 
 
 async def test_test_delete_requires_confirm(store):

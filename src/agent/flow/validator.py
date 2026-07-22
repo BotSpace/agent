@@ -234,6 +234,36 @@ def validate(
                     )
                 )
 
+        if node.type == "CommandTriggerNode":
+            command = node.data.get("command")
+            if isinstance(command, str) and command and not command.startswith("/"):
+                issues.append(
+                    ValidationIssue(
+                        "error",
+                        "command_slash_required",
+                        f"Command `{command}` must start with `/` (use `/{command}`).",
+                        node_id=node.id,
+                    )
+                )
+
+        if node.type in {"EditOrSendMessageNode", "SendTextMessageNode"}:
+            text = node.data.get("messageText")
+            parse_mode = str(node.data.get("parseMode") or "HTML").casefold()
+            if (
+                isinstance(text, str)
+                and parse_mode == "html"
+                and re.search(r"(^|\s)\*[^*\n]+\*(?=\s|[.,!?]|$)|\*\*[^*\n]+\*\*", text)
+            ):
+                issues.append(
+                    ValidationIssue(
+                        "error",
+                        "markdown_in_html",
+                        "Message uses Markdown `*...*` while parseMode is HTML. "
+                        "Use `<b>...</b>` or set an explicit compatible parseMode.",
+                        node_id=node.id,
+                    )
+                )
+
         # Validate every manifest-backed select, including nodes changed via
         # flow.patch/import (paths that do not pass through flow.add_node's
         # Pydantic model). Unknown option values render as an empty select in
@@ -628,6 +658,34 @@ def validate(
         present = edges_by_source.get(node.id, set())
         for _handle, button in _button_source_handles_with_buttons(node):
             button_type = str(button.get("type") or "").strip().lower()
+            if button.get("callback_data") is not None and button.get("value") is None:
+                issues.append(
+                    ValidationIssue(
+                        "error",
+                        "legacy_callback_button",
+                        f"`{node.id}` button uses `callback_data`; constructor buttons require "
+                        "`type: callback` + `value`.",
+                        node_id=node.id,
+                    )
+                )
+            if button.get("request_contact") is True and button_type != "request_contact":
+                issues.append(
+                    ValidationIssue(
+                        "error",
+                        "legacy_contact_button",
+                        f"`{node.id}` contact button must use `type: request_contact`.",
+                        node_id=node.id,
+                    )
+                )
+            if button.get("request_location") is True and button_type != "request_location":
+                issues.append(
+                    ValidationIssue(
+                        "error",
+                        "legacy_location_button",
+                        f"`{node.id}` location button must use `type: request_location`.",
+                        node_id=node.id,
+                    )
+                )
             if button_type in {"contact", "location"}:
                 canonical = "request_contact" if button_type == "contact" else "request_location"
                 issues.append(
