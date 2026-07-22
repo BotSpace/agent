@@ -1896,6 +1896,7 @@ async def load_project_collections(
         # cross-check) stay unchanged; the validator's filter-kind check (#4)
         # reads `field_kinds` when present.
         field_kinds: dict[str, str] = {}
+        field_contracts: list[dict[str, Any]] = []
         try:
             detail = await backend.cms_get_collection(pid, name, auth_claims=auth_claims)
             for f in (detail.get("fields") or []) if isinstance(detail, dict) else []:
@@ -1908,6 +1909,15 @@ async def load_project_collections(
                     kind = (f.get("kind") or f.get("type")) if isinstance(f, dict) else None
                     if kind:
                         field_kinds[str(fname)] = str(kind)
+                    contract: dict[str, Any] = {
+                        "name": str(fname),
+                        "kind": str(kind or "text"),
+                        "required": bool(f.get("required")),
+                    }
+                    relation = f.get("relation_collection") or f.get("relationCollection")
+                    if relation:
+                        contract["relation_collection"] = str(relation)
+                    field_contracts.append(contract)
         except Exception:
             logger.warning(
                 "Failed to load fields for collection=%s (project=%s); listing name only",
@@ -1915,7 +1925,14 @@ async def load_project_collections(
                 pid,
                 exc_info=True,
             )
-        out.append({"name": str(name), "fields": fields, "field_kinds": field_kinds})
+        out.append(
+            {
+                "name": str(name),
+                "fields": fields,
+                "field_kinds": field_kinds,
+                "field_contracts": field_contracts,
+            }
+        )
     return out
 
 

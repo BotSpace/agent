@@ -1127,7 +1127,13 @@ class FlowSaveInput(BaseModel):
         default=None,
         description="Optional project id override. Useful if the run started in global context.",
     )
-    apply_layout: bool = Field(default=True, description="Run auto-layout before saving.")
+    apply_layout: bool = Field(
+        default=False,
+        description=(
+            "Run auto-layout before saving. Default false preserves the user's/manual node "
+            "positions; set true only when the user explicitly asks to format the whole flow."
+        ),
+    )
     verbose: bool = Field(
         default=False,
         description="False (default) returns a compact summary {ok, project_id, nodes, "

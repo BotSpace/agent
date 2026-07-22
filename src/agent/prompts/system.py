@@ -189,7 +189,20 @@ def build_dynamic_block(state: dict[str, Any] | None = None) -> str:
                 continue
             fields = c.get("fields") or []
             if fields:
-                rendered.append(f"{name}({', '.join(str(f) for f in fields)})")
+                kinds = c.get("field_kinds") if isinstance(c.get("field_kinds"), dict) else {}
+                contracts = c.get("field_contracts") if isinstance(c.get("field_contracts"), list) else []
+                relations = {
+                    str(item.get("name")): str(item.get("relation_collection"))
+                    for item in contracts
+                    if isinstance(item, dict) and item.get("name") and item.get("relation_collection")
+                }
+                typed = []
+                for field in fields:
+                    key = str(field)
+                    kind = str(kinds.get(key) or "")
+                    relation = f"→{relations[key]}" if key in relations else ""
+                    typed.append(f"{key}:{kind}{relation}" if kind else key)
+                rendered.append(f"{name}({', '.join(typed)})")
             else:
                 rendered.append(str(name))
         if rendered:

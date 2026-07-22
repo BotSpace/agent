@@ -3,7 +3,7 @@ import pytest
 from agent.flow.manifest_compiler.node_catalog import NODE_TYPES
 from agent.integrations.backend import BackendClient
 from agent.tools.base import ToolContext
-from agent.tools.flow import build_flow_tools
+from agent.tools.flow import FlowSaveInput, build_flow_tools
 from agent.tools.project import build_project_tools
 
 
@@ -16,6 +16,10 @@ def _all_tools():
     for item in [*build_flow_tools(), *build_project_tools()]:
         tools[item.name] = item
     return tools
+
+
+def test_flow_save_preserves_manual_layout_by_default():
+    assert FlowSaveInput().apply_layout is False
 
 
 @pytest.mark.asyncio

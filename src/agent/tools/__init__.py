@@ -79,6 +79,7 @@ _PLAN_MODE_TOOLS = frozenset(
         "file.list",
         "flow.get",
         "flow.diff",
+        "flow.blueprint_draft",
         "flow.blueprint_preview",
         "flow.export",
         "flow.history",

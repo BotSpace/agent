@@ -1,10 +1,12 @@
 📖 BOT QURISH QOIDALARI (avtomatik eslatma — birinchi qurish chaqiruvingiz):
-• 🎨 CHIROYLI QIL (majburiy): har xabar va HAR tugmada mos EMOJI ishlat
-  (👋📚🛒💳✅⬅️🏠☎️👤). HTML formatlash: parseMode:"HTML" + <b>sarlavha</b>,
-  bo'sh qatorlar bilan ajrat. Iliq, tabiiy o'zbekcha matn; {{first_name}} bilan
-  shaxsiylashtir. Quruq "salom"/"OK"/"Xato" YOZMA — emoji'li jonli matn yoz.
-  Hatto oddiy "salom" bot ham emoji'li iliq salom bo'lsin. To'liq tuzilma:
-  chiroyli /start menyu + har submenuda "⬅️ Ortga"/"🏠 Bosh menyu".
+• ODDIY BUSINESS FLOW: avval flow_suggest_blueprints → flow_blueprint_draft →
+  CMS contract → flow_blueprint_preview → flow_build_blueprint → flow_save.
+  Mos typed blueprint bor ekan node'larni qo'lda yasama. Build faqat working draft;
+  flow_save(apply_layout=false)ni tashlab ketma.
+• 🎨 DIZAYN: foydalanuvchi so'ragan ekran va tugmalarnigina qur. Matn tabiiy,
+  o'qilishi oson bo'lsin; mos joyda emoji/HTML va `{{first_name}}` bilan
+  shaxsiylashtirish mumkin. Talabda yo'q menyu, "Ortga", bo'lim yoki formani
+  faqat chiroy uchun qo'shma.
 • ⚠️ FORMAT ↔ parseMode MOS: bezatilgan HAR xabarda parseMode'ni ANIQ qo'y
   (default'ga tashlama — default HTML). FAQAT HTML teg ishlat (<b> <i> <u>
   <code> <a>). MARKDOWN belgilarini ISHLATMA (**qalin**, __, #, markdown -
