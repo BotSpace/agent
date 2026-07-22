@@ -124,6 +124,21 @@ class BlueprintField(BaseModel):
             raise ValueError(f"key must be snake_case; use `{normalized}`")
         return value
 
+    @model_validator(mode="after")
+    def validate_semantic_kind(self) -> BlueprintField:
+        """Keep canonical contact fields semantically typed.
+
+        A plain text trigger can technically capture a phone number, but it
+        loses Telegram's contact button and produces a text CMS field.  The
+        model used to override the registered preset this way, so reject the
+        ambiguous blueprint at its typed boundary instead of repairing the
+        generated graph later.
+        """
+        canonical_phone_keys = {"phone", "phone_number", "telephone", "contact_phone"}
+        if self.key in canonical_phone_keys and self.kind != "contact":
+            raise ValueError(f"`{self.key}` field kind must be `contact`, not `{self.kind}`")
+        return self
+
 
 class BotBlueprint(BaseModel):
     pattern: BlueprintPattern = Field(

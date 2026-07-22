@@ -497,6 +497,38 @@ async def test_build_blueprint_treats_loaded_empty_collection_list_as_authoritat
     assert "`leads`" in result.content
 
 
+def test_blueprint_phone_field_requires_contact_kind():
+    with pytest.raises(ValidationError, match="must be `contact`"):
+        BlueprintField(key="phone", label="Telefon", prompt="Telefonni kiriting", kind="text")
+
+
+@pytest.mark.asyncio
+async def test_build_blueprint_rejects_unavailable_cms_contract_without_mutation():
+    ctx = ToolContext(
+        run_id="test",
+        project_id="project-1",
+        user_id="user-1",
+        state={"working_flow": {"nodes": [], "edges": []}},
+    )
+    blueprint = BotBlueprint(
+        pattern="lead",
+        title="Lead",
+        destination_collection="leads",
+        fields=[_field("full_name")],
+    )
+    result = await build_blueprint.run(
+        BuildBlueprintInput(
+            blueprint=blueprint,
+            verify=False,
+            save_regression_test=False,
+        ).model_dump(),
+        ctx,
+    )
+    assert result.is_error
+    assert result.state_updates == {}
+    assert "CMS contract yuklanmagan" in result.content
+
+
 @pytest.mark.asyncio
 async def test_build_blueprint_replaces_new_project_clean_scaffold_without_force_flag():
     scaffold = {
