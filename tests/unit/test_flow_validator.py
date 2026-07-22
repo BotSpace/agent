@@ -55,6 +55,60 @@ def test_missing_required_field_is_error():
     assert any(i.code == "missing_required_field" for i in result.errors)
 
 
+def test_command_trigger_requires_leading_slash():
+    flow = FlowDocument(
+        nodes=[FlowNode(id="start", type="CommandTriggerNode", data={"command": "start"})]
+    )
+    result = validate(flow)
+    assert not result.ok
+    assert any(i.code == "command_slash_required" for i in result.errors)
+
+
+def test_markdown_markup_is_rejected_when_message_defaults_to_html():
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="start", type="CommandTriggerNode", data={"command": "/start"}),
+            FlowNode(
+                id="message",
+                type="EditOrSendMessageNode",
+                data={"messageText": "Salom *do'stim*!"},
+            ),
+        ],
+        edges=[FlowEdge(id="e", source="start", target="message")],
+    )
+    result = validate(flow)
+    assert not result.ok
+    assert any(i.code == "markdown_in_html" for i in result.errors)
+
+
+def test_legacy_keyboard_button_shapes_are_rejected():
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="start", type="CommandTriggerNode", data={"command": "/start"}),
+            FlowNode(
+                id="message",
+                type="SendTextMessageNode",
+                data={
+                    "messageText": "Tanlang",
+                    "keyboard_kind": "inline",
+                    "rows": [
+                        {
+                            "columns": [
+                                {"text": "Qayta", "callback_data": "/start"},
+                                {"text": "Telefon", "request_contact": True},
+                            ]
+                        }
+                    ],
+                },
+            ),
+        ],
+        edges=[FlowEdge(id="e", source="start", target="message")],
+    )
+    result = validate(flow)
+    codes = {issue.code for issue in result.errors}
+    assert {"legacy_callback_button", "legacy_contact_button"} <= codes
+
+
 def test_unreachable_node_warning():
     flow = FlowDocument(
         nodes=[

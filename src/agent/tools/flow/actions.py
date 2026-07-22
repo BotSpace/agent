@@ -13,7 +13,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from ...flow import FlowDocument, FlowEdge, FlowNode, Position, auto_layout
+from ...flow import FlowDocument, FlowEdge, FlowNode, Position
 from ..base import Tool, ToolContext, ToolResult
 from .node_data_models import (
     get_data_model,
@@ -610,7 +610,6 @@ async def flow_finish(input: FinishInput, ctx: ToolContext) -> ToolResult:
     flow = _load_working_flow(ctx)
     _node(flow, input.id, "SendTextMessageNode", {"messageText": input.message})
     _connect(flow, source=input.after, target=input.id)
-    auto_layout(flow)
     return ToolResult.ok(
         f"Finish message `{input.id}` added.",
         state_updates=_set_working_flow(flow),
@@ -1056,7 +1055,10 @@ def build_flow_action_tools() -> list[Tool]:
         ),
         Tool(
             name="flow.finish",
-            description="Create the final SendTextMessageNode, optionally connected from previous node, and auto-layout the flow.",
+            description=(
+                "Add a final SendTextMessageNode and optionally connect it. Preserves all "
+                "existing node positions; this is not a validation/save/finalize command."
+            ),
             input_model=FinishInput,
             handler=flow_finish,
             tags=["flow", "safe-pattern"],

@@ -39,3 +39,16 @@ async def test_seed_uses_backend_when_state_empty():
     assert "courses" in out
     assert out["courses"] == [{"name": "Python", "price": 100}]
     assert "courses" in backend.calls
+
+
+@pytest.mark.asyncio
+async def test_seed_prefers_api_slug_over_translated_collection_name():
+    class SlugBackend(_Backend):
+        async def cms_list_collections(self, pid, *, auth_claims=None):
+            return [{"name": "Chat tarixi", "slug": "chat_history"}]
+
+    backend = SlugBackend()
+    ctx = _Ctx(backend, collections=[])
+    out = await _seed_collections(ctx, "1217")
+    assert backend.calls == ["chat_history"]
+    assert "Chat tarixi" not in out

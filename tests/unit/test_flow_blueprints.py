@@ -171,6 +171,12 @@ async def test_blueprint_draft_uses_registered_presets_and_reports_cms_requireme
     ]
     assert result.data["ready"] is False
     assert "`appointments` collection yarating" in result.data["requirements"]
+    fields = result.data["cms_schema_plan"]["destination"]["fields"]
+    assert {field["name"]: field["kind"] for field in fields} == {
+        "full_name": "text",
+        "phone": "phone",
+        "preferred_time": "text",
+    }
 
 
 @pytest.mark.asyncio
@@ -293,3 +299,55 @@ async def test_build_blueprint_treats_loaded_empty_collection_list_as_authoritat
     )
     assert result.is_error
     assert "`leads`" in result.content
+
+
+@pytest.mark.asyncio
+async def test_build_blueprint_replaces_new_project_clean_scaffold_without_force_flag():
+    scaffold = {
+        "nodes": [
+            {
+                "id": "start",
+                "type": "CommandTriggerNode",
+                "data": {"command": "/start", "global": True},
+                "position": {"x": 0, "y": 0},
+            },
+            {
+                "id": "welcome",
+                "type": "SendTextMessageNode",
+                "data": {"messageText": "Assalomu alaykum! 👋"},
+                "position": {"x": 320, "y": 0},
+            },
+        ],
+        "edges": [{"id": "e", "source": "start", "target": "welcome"}],
+    }
+    ctx = ToolContext(
+        run_id="test",
+        project_id="project-1",
+        user_id="user-1",
+        state={
+            "working_flow": scaffold,
+            "collections": [
+                {
+                    "name": "leads",
+                    "fields": ["full_name", "phone"],
+                    "field_kinds": {"full_name": "text", "phone": "phone"},
+                }
+            ],
+        },
+    )
+    blueprint = BotBlueprint(
+        pattern="lead",
+        title="Lead",
+        destination_collection="leads",
+        fields=[_field(), _field("phone", "contact")],
+    )
+    result = await build_blueprint.run(
+        BuildBlueprintInput(
+            blueprint=blueprint,
+            verify=False,
+            save_regression_test=False,
+        ).model_dump(),
+        ctx,
+    )
+    assert not result.is_error, result.content
+    assert result.state_updates["blueprint_previous_flow"] == scaffold

@@ -12,7 +12,9 @@ appointment kabi odatiy business journey bo'lsa node'larni bittalab yozma:
    kerak bo'lsa `flow.list_blueprints` bilan butun registry'ni ko'r va mos typed
    patternni tanla.
 2. `flow.blueprint_draft` bilan registrydagi tavsiya fieldlar/defaultlardan to'liq
-   typed draft ol; BotBlueprint JSONini qo'lda o'ylab topma.
+   typed draft va `cms_schema_plan` ol; BotBlueprint JSONini yoki field kindlarini
+   qo'lda o'ylab topma. `project.create` hozirgina clean /start→welcome placeholder
+   yaratgan bo'lsa ham shu yo'ldan chiqma — build uni xavfsiz almashtiradi.
 3. CMS ishlatilsa `cms.schema_assistant` bilan aniq slug/field/type/relation
    contractini ol; yetishmagan collection/fieldlarni typed `cms.*` bilan yarat.
 4. `flow.blueprint_preview` bilan biznes specni tekshir.
@@ -84,6 +86,9 @@ uni O'ZING tekshir — bu qadamni HECH QACHON tashlab ketma:
    1:1 mos bo'lsin. Collection'dan keladigan qiymat kutsang — seed'dagi HAQIQIY qiymatni
    ishlat (simulyator collection'ni real data bilan to'ldiradi). Mos kelmasa — expect'ni
    emas, matn/tugmani tekshir; qisqa `contains` + `no_errors` ko'pincha yetarli.
+   `start_node_id` FAQAT bitta node/subgraph diagnostikasi: u triggerni chetlab o'tadi.
+   `/start` testi yiqilsa partial execution bilan aylanib o'tib “bot ishladi” DEMA —
+   command/entry pointni tuzatib, to'liq journey'ni yana `/start`dan yugurtir.
    ⚠️ `flow.simulate`/`flow.save`da `project_id`'ni HAR DOIM uzat.
 3. Xato/bo'sh javob chiqsa → tuzat → qayta `flow.save` → qayta `flow.simulate`.
    Foydalanuvchidan so'rashdan OLDIN o'zing yechib qo'y.

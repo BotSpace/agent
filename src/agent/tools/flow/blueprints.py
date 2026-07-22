@@ -26,6 +26,27 @@ def _current(ctx: ToolContext) -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {"nodes": [], "edges": []}
 
 
+def _is_clean_project_scaffold(flow: dict[str, Any]) -> bool:
+    """Return True for project.create's disposable /start→welcome placeholder."""
+    nodes = flow.get("nodes") if isinstance(flow, dict) else None
+    edges = flow.get("edges") if isinstance(flow, dict) else None
+    if not isinstance(nodes, list) or not isinstance(edges, list) or len(nodes) != 2 or len(edges) != 1:
+        return False
+    by_id = {str(node.get("id")): node for node in nodes if isinstance(node, dict)}
+    start, welcome = by_id.get("start"), by_id.get("welcome")
+    if not start or not welcome:
+        return False
+    edge = edges[0]
+    return bool(
+        start.get("type") == "CommandTriggerNode"
+        and start.get("data", {}).get("command") == "/start"
+        and welcome.get("type") in {"SendTextMessageNode", "EditOrSendMessageNode"}
+        and isinstance(edge, dict)
+        and edge.get("source") == "start"
+        and edge.get("target") == "welcome"
+    )
+
+
 def _collection_contract(ctx: ToolContext) -> tuple[list[str], dict[str, dict[str, str]]]:
     names: list[str] = []
     schemas: dict[str, dict[str, str]] = {}
@@ -200,13 +221,55 @@ async def blueprint_draft(input: DraftBlueprintInput, ctx: ToolContext) -> ToolR
             if missing:
                 requirements.append(f"`{catalog}`ga display field qo'shing: " + ", ".join(missing))
 
+    capture_kinds = {"text": "text", "contact": "phone", "location": "geo"}
+    destination_fields = [
+        {
+            "name": field.collection_field or field.key,
+            "kind": capture_kinds[field.kind],
+            "required": True,
+        }
+        for field in blueprint.fields
+    ]
+    if blueprint.relation_field:
+        destination_fields.append(
+            {
+                "name": blueprint.relation_field,
+                "kind": "relation",
+                "required": True,
+                "relation_collection": blueprint.catalog_collection,
+            }
+        )
+    catalog_fields = []
+    if blueprint.catalog_collection:
+        catalog_fields.append(
+            {"name": blueprint.catalog_label_field, "kind": "text", "required": True}
+        )
+        if blueprint.catalog_secondary_field:
+            catalog_fields.append(
+                {"name": blueprint.catalog_secondary_field, "kind": "text", "required": False}
+            )
+
     return ToolResult.ok(
-        "Blueprint draft tayyor. "
+        "Blueprint draft va typed CMS schema rejasi tayyor. "
         + ("CMS talablari: " + "; ".join(requirements) if requirements else "CMS contract mos."),
         data={
             "blueprint": blueprint.model_dump(),
             "requirements": requirements,
             "ready": not requirements,
+            "cms_schema_plan": {
+                "destination": {
+                    "collection": blueprint.destination_collection,
+                    "fields": destination_fields,
+                }
+                if blueprint.destination_collection
+                else None,
+                "catalog": {
+                    "collection": blueprint.catalog_collection,
+                    "fields": catalog_fields,
+                }
+                if blueprint.catalog_collection
+                else None,
+            },
             "definition": {
                 "pattern": definition.pattern,
                 "version": definition.version,
@@ -364,7 +427,7 @@ async def _progress(ctx: ToolContext, step: str, status: str, detail: str) -> No
 )
 async def build_blueprint(input: BuildBlueprintInput, ctx: ToolContext) -> ToolResult:
     previous = _current(ctx)
-    if previous.get("nodes") and not input.replace_existing:
+    if previous.get("nodes") and not input.replace_existing and not _is_clean_project_scaffold(previous):
         return ToolResult.error(
             "Joriy flow bo'sh emas. Inkremental tahrir qiling yoki uni to'liq "
             "almashtirish aniq talab qilingan bo'lsa replace_existing=true bering."
