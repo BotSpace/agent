@@ -57,10 +57,10 @@ VARIABLE_RE = re.compile(r"\{\{\s*[\w\.\[\]]+\s*\}\}|\$[\w\.\[\]]+")
 # Accessory targetHandle prefix (contract §1.1)
 _ACC_PREFIX = "acc:"
 
-# Nodes whose sole job is to persist a value into state and therefore MUST carry
+# Nodes whose sole job is to persist a value and therefore MUST carry
 # `data.type` (the value kind: text / contact_phone_number / *_file_id / user_id /
-# Custom / …). Triggers that auto-save via an optional `data.state` object are
-# intentionally NOT here — there `type` lives inside `data.state`, not `data`.
+# Custom / …). Triggers that auto-save through `state_key` + `state_type` are
+# intentionally NOT here — their capture type lives in `data.state_type`.
 # State-saqlovchi node'lar (data.type majburiy) va accessory port qabul-ro'yxati
 # endi MANIFESTDAN derive qilinadi (node_catalog helper'lari) — qotirilgan emas.
 
@@ -207,10 +207,9 @@ def validate(
                         f"`{node.type}` `{node.id}` must set `data.type` "
                         "(e.g. 'text', 'contact_phone_number', 'photo_file_id', "
                         "'user_id', 'Custom', …) so the engine knows WHAT value to "
-                        "save into state. Note: for data arriving via a trigger "
-                        "(MessageTrigger / inline button), prefer the trigger's own "
-                        "`data.state = {key, type}` field instead of a separate "
-                        "StateNode.",
+                            "save it. For data arriving via a trigger "
+                            "(MessageTrigger / callback), configure the trigger's "
+                            "`state_key` + `state_type` fields.",
                         node_id=node.id,
                     )
                 )
@@ -465,6 +464,19 @@ def validate(
     global_callback_matchers = _global_callback_matchers(flow)
     for node in flow.nodes:
         present = edges_by_source.get(node.id, set())
+        for _handle, button in _button_source_handles_with_buttons(node):
+            button_type = str(button.get("type") or "").strip().lower()
+            if button_type in {"contact", "location"}:
+                canonical = "request_contact" if button_type == "contact" else "request_location"
+                issues.append(
+                    ValidationIssue(
+                        "error",
+                        "invalid_reply_button_type",
+                        f"`{node.id}` button type `{button_type}` must be `{canonical}` "
+                        "to request Telegram native data.",
+                        node_id=node.id,
+                    )
+                )
         if node.type in branching_handles:
             for handle in branching_handles[node.type]:
                 if handle not in present:
@@ -478,7 +490,7 @@ def validate(
                     )
         for handle, button in _missing_button_handles(node, present):
             # #8b — url/contact/location buttons never route via an edge.
-            if not _button_needs_edge(button):
+            if not _button_needs_edge(button, keyboard_kind=node.data.get("keyboard_kind")):
                 continue
             # #8a — a matching global CallbackQueryTriggerNode handles it.
             if _callback_handled_globally(button, global_callback_matchers):
@@ -523,8 +535,13 @@ def _screen_specific_global_callback_warnings(flow: FlowDocument) -> list[Valida
             value_text[val] = str(button.get("text") or val)
 
     out: list[ValidationIssue] = []
+    incoming = {edge.target for edge in flow.edges}
     for n in flow.nodes:
-        if n.type != "CallbackQueryTriggerNode" or not bool(n.data.get("global")):
+        if n.type != "CallbackQueryTriggerNode":
+            continue
+        # Engine checks root triggers for every update too. A root callback is
+        # therefore global in behaviour even if an older flow omitted `global`.
+        if not bool(n.data.get("global")) and n.id in incoming:
             continue
         if str(n.data.get("filter") or "").strip().lower() != "equals":
             continue  # faqat aniq-mos (bitta tugma); starts_with = dinamik, tegmaymiz
@@ -639,6 +656,11 @@ def _unused_output_warnings(node, flow: FlowDocument) -> list[ValidationIssue]:
     ]
     if not declared:
         return []
+    terminal_outputs = {
+        str(name)
+        for name in data.get("terminalOutputs") or []
+        if isinstance(name, str) and name
+    }
 
     # #7 — terminal CustomCodeNode: a node that produces user-facing output
     # itself (send_*/edit_* in its jsCode) and then exit()s is a legitimate
@@ -649,11 +671,17 @@ def _unused_output_warnings(node, flow: FlowDocument) -> list[ValidationIssue]:
     #   2. heuristic: jsCode both sends a message AND calls exit(...).
     if data.get("terminal") is True:
         return []
+    used = {
+        e.sourceHandle
+        for e in flow.edges
+        if e.source == node.id and isinstance(e.sourceHandle, str)
+    }
+    declared_handles = {f"output-{name}" for name in declared}
     js = data.get("jsCode")
     if isinstance(js, str):
         sends = any(tok in js for tok in ("send_message", "edit_or_send", "edit_message_text", "send_photo", "answer_callback_query"))
         exits = "exit(" in js
-        if sends and exits:
+        if sends and exits and not (used & declared_handles):
             # Treat as a terminal leaf — surface at low severity as a tip, not a
             # warning, so it doesn't look like a flow error.
             return [
@@ -668,13 +696,10 @@ def _unused_output_warnings(node, flow: FlowDocument) -> list[ValidationIssue]:
                 )
             ]
 
-    used = {
-        e.sourceHandle
-        for e in flow.edges
-        if e.source == node.id and isinstance(e.sourceHandle, str)
-    }
     out: list[ValidationIssue] = []
     for name in declared:
+        if name in terminal_outputs:
+            continue
         handle = f"output-{name}"
         if handle not in used:
             out.append(
@@ -699,7 +724,8 @@ _STANDARD_CONTEXT_VARS = frozenset(
         "first_name", "last_name", "username", "user_id", "language_code",
         "chat_id", "message_id", "message_text", "text", "phone", "phone_number",
         "latitude", "longitude", "inserted_id", "agent_output", "callback_data",
-        "now", "today", "bot_username",
+        "now", "today", "bot_username", "user_first_name", "user_last_name",
+        "user_username",
     }
 )
 
@@ -717,6 +743,7 @@ _TEMPLATE_TEXT_FIELDS = ("messageText", "text", "caption")
 
 # `{{ var }}` with a simple root token (letters/digits/_), optional .path / [i].
 _SIMPLE_VAR_RE = re.compile(r"\{\{\s*([A-Za-z_][\w]*)\b[^}]*\}\}")
+_EACH_BLOCK_RE = re.compile(r"\{\{#each\b[^}]*\}\}.*?\{\{/each\}\}", re.DOTALL)
 
 # #8 — CustomCodeNode jsCode writes vars via set_context('key', ...) /
 # set_state('key', ...) / vars.key = ... / private.key = ... . Capture every
@@ -756,7 +783,12 @@ def _collect_state_keys(flow: FlowDocument) -> set[str]:
         k = data.get("key")
         if isinstance(k, str) and k:
             _register(k)
-        # Triggers auto-saving via data.state = {key, type}
+        # Canonical flat trigger capture fields.
+        for field_name in ("public_key", "state_key"):
+            flat_key = data.get(field_name)
+            if isinstance(flat_key, str) and flat_key:
+                _register(flat_key)
+        # Backward-compatible nested trigger capture shape.
         st = data.get("state")
         if isinstance(st, dict) and isinstance(st.get("key"), str):
             _register(st["key"])
@@ -765,6 +797,15 @@ def _collect_state_keys(flow: FlowDocument) -> set[str]:
             v = data.get(f)
             if isinstance(v, str) and v:
                 _register(v)
+                if n.type == "LoadCollectionListNode" and f == "contextKey":
+                    _register(f"{v}_found")
+                    _register(f"{v}_count")
+        if n.type == "LoadCollectionListNode":
+            result_key = data.get("resultKey")
+            if isinstance(result_key, str) and result_key:
+                _register(result_key)
+                _register(f"{result_key}_found")
+                _register(f"{result_key}_count")
         # CreateInviteLinkNode writes the generated link to data.resultVar
         # (default `invite_link`) — so {{invite_link}} downstream is valid.
         if n.type == "CreateInviteLinkNode":
@@ -809,6 +850,9 @@ def _unknown_variable_warnings(
             text = data.get(fld)
             if not isinstance(text, str) or "{{" not in text:
                 continue
+            # Bare names inside an each block are document fields of the
+            # current row, not flow variables (e.g. {{title}}, {{price}}).
+            text = _EACH_BLOCK_RE.sub("", text)
             for m in _SIMPLE_VAR_RE.finditer(text):
                 root = m.group(1)
                 whole = m.group(0)
@@ -860,8 +904,6 @@ _EDGE_BUTTON_TYPES = frozenset({"callback", "reply", ""})
 _NO_EDGE_BUTTON_TYPES = frozenset(
     {
         "url",
-        "contact",
-        "location",
         "request_contact",
         "request_location",
         "switch_inline",
@@ -872,10 +914,15 @@ _NO_EDGE_BUTTON_TYPES = frozenset(
 )
 
 
-def _button_needs_edge(button: dict | None) -> bool:
+def _button_needs_edge(button: dict | None, *, keyboard_kind: object = None) -> bool:
     if not isinstance(button, dict):
         return True
     btype = str(button.get("type") or "").strip().lower()
+    # Plain buttons in a reply keyboard send their text as the next message;
+    # the base edge to a MessageTriggerNode captures it. They are not callback
+    # branches and must not each have a button edge.
+    if str(keyboard_kind or "").strip().lower() == "reply" and btype in ("", "reply"):
+        return False
     if btype in _NO_EDGE_BUTTON_TYPES:
         return False
     return True
@@ -889,10 +936,13 @@ def _global_callback_matchers(flow: FlowDocument) -> list[tuple[str, str]]:
     it matches do not each need their own edge.
     """
     matchers: list[tuple[str, str]] = []
+    incoming = {edge.target for edge in flow.edges}
     for n in flow.nodes:
         if n.type != "CallbackQueryTriggerNode":
             continue
-        if not bool(n.data.get("global")):
+        # The engine evaluates root callback triggers globally even when the
+        # serialized node does not explicitly contain `global: true`.
+        if not bool(n.data.get("global")) and n.id in incoming:
             continue
         flt = str(n.data.get("filter") or "any").strip().lower()
         ctx = n.data.get("context")

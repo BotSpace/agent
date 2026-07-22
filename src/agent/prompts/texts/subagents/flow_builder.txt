@@ -145,7 +145,7 @@ Spec'ni ICHINGDA tut, so'ng bevosita qurishga o't. Qoidalar:
    yo'naltiradi. Batafsil — Pattern 7'ga qara.
 7. **Root node'ni kamaytirishga harakat qil (majburiy emas).**
    Root node = hech qaysi edge'ning target'i bo'lmagan kirish nuqtasi.
-   Tabiiy root'lar: command trigger (/start, /admin), CronNode, message trigger.
+   Tabiiy root'lar: command trigger (/start, /admin), CronTriggerNode, message trigger.
    Inline tugma uchun ikki yo'l bor, lekin DEFAULT bitta:
    - **Approach A (DEFAULT)** — tugmani button-edge bilan to'g'ridan-to'g'ri
      keyingi node'ga ula (`flow.connect_button` yoki `target-handler-...` edge),
@@ -216,7 +216,7 @@ talab qilinmagan node'ni QO'SHMA.
     bo'lsa (erkin matn shart emas) → faqat `CommandTriggerNode`, catch-all QO'SHMA.
 - **Foydalanuvchidan ma'lumot ol** → `flow.ask_text/ask_contact/ask_buttons/ask_location`
   (alohida StateNode QO'SHMA — trigger o'zida saqlaydi).
-- **State'ga oraliq qiymat yoz** → trigger `data.state` (afzal) yoki `StateNode` (type SHART).
+- **Oraliq qiymat yoz** → trigger `state_key` + `state_type` yoki `StateNode` (type SHART).
   Sonni oshir/kamaytir → `VariableNode` (StateNode EMAS).
 - **Shartli tarmoq (1-2 oddiy shart)** → `IfConditionNode`. 3+ shart yoki DB+validatsiya
   aralash → bitta `CustomCodeNode` (exit('a')/exit('b')).
@@ -395,31 +395,28 @@ Oldingi xabarni aniq tahrirlash kerak bo'lsa: `targetMessageNodeId="<menu-node-i
 `flow.ask_text`, `flow.ask_contact`, `flow.ask_buttons`, `flow.ask_location` ishlat.
 
 **QAT'IY: kelgan ma'lumotni saqlash uchun ALOHIDA `StateNode` QO'SHMA.**
-Trigger node'ning O'ZIDA `state` field bor — shu bilan ma'lumot AVTOMATIK
-saqlanadi, qo'shimcha node KERAK EMAS:
+Trigger node'ning O'ZIDA `state_key` + `state_type` maydonlari bor — shu bilan
+ma'lumot avtomatik saqlanadi:
 - **Telefon/kontakt → `flow.ask_contact` ishlat** (request_contact tugmasi bilan
   to'g'ri ushlaydi). MessageTriggerNode bilan QO'LDA telefon ushlama.
-- `MessageTriggerNode` FLAT maydonlar bilan saqlaydi: `save_state:true`,
-  `state_key:"..."`, `state_type:"..."`. **`state_type` FAQAT
-  {text, number, photo, video, document, any}** — `contact_phone_number`/`file_id`
-  bu yerда ISHLAMAYDI (validator xato beradi). Matn kiritish uchun
-  `state_type:"text"`; media uchun `type:"photo"/"video"/"document"` +
-  `state_type:"any"` (yoki `flow.ask_*` tool'lari — afzal).
-- Inline tugma bosilganda saqlash kerak bo'lsa — trigger'ning `data.state`
-  field'idan foydalan (alohida StateNode emas).
-- `CommandTriggerNode` `withArgs:true` + `data.state` — buyruq argumentini
-  avtomatik saqlaydi.
+- `MessageTriggerNode`: matn uchun `type:"text", state_key:"name",
+  state_type:"text"`; kontakt uchun `type:"contact", state_key:"phone",
+  state_type:"phone_number"`; media uchun mos `type` + `state_type:"file_id"`.
+- Inline collection tugmasi uchun `CallbackQueryTriggerNode`da
+  `state_type:"collection_id"` (ID) yoki `state_type:"full_data"` (obyekt).
+- `CommandTriggerNode` `withArgs:true` + `state_key` + `state_type:"text"`
+  bilan buyruq argumentini saqlaydi.
 
-**`StateNode`ni FAQAT** trigger oqimidan TASHQARIDA, oraliq hisoblangan
-qiymatni saqlash kerak bo'lganda ishlat (masalan CustomCode natijasini, yoki
-shartdan keyingi qiymatni). Bunday hollarda ham CustomCodeNode ichida
-`set_context(key, value)` ko'pincha qulayroq.
+**`StateNode`** oqim ichidagi qiymatni saqlaydi. Doimiy qiymat uchun
+`{key:"plan", type:"static", value:"premium"}` ishlat; hisoblangan murakkab
+qiymat uchun CustomCode ichida `vars.key = ...` ishlat.
 
 **`StateNode` ISHLATGANDA `data.type` BERISH SHART.** `type` — qanday qiymat
 saqlanishini bildiradi: `text` / `caption` / `callback` / `contact_phone_number`
 / `photo_file_id` / `video_file_id` / `audio_file_id` / `document_file_id` /
 `file_id` / `user_id` / `first_name` / `last_name` / `username` /
-`language_code` / `location_latitude` / `location_longitude` / `Custom`.
+`language_code` / `location_latitude` / `location_longitude` / `static` / `Custom`.
+Doimiy qiymat uchun `type:"static"` va `value` beriladi.
 `Custom` bo'lsa `customType`'da expression yoz (masalan `{{inserted_id}}`).
 `type`siz StateNode `flow.validate`'da **xato** (`state_type_required`) beradi —
 saqlay olmaysan.
@@ -510,8 +507,8 @@ XOM `sheets_response`ni `{{#each}}` bilan ISHLATMA (array emas).
 filterlash mumkin — STATIK (AI-slot YO'Q, builder o'zi yozadi). `data.filterConditions=[{field, op, value}]`
 + `data.filterMatch` (`"and"`|`"or"`, default `"and"`). op ∈ eq|ne|gt|gte|lt|lte|in|nin|contains|exists;
 `value`da `{{chat_id}}`/`{{key}}` (yalang'och nom — ASOSIY usul) ishlaydi.
-⚠️ `{{state_key}}` (pastki chiziq) HECH QACHON resolve BO'LMAYDI — saqlangan qiymatni
-oddiy `{{key}}` bilan o'qi. Masalan `price>100000`, yoki tanlangan kategoriya: `category=={{category}}`.
+Saqlangan qiymat `{{key}}` shaklida o'qiladi. Masalan `price>100000`, yoki
+tanlangan kategoriya: `category=={{category}}`.
 Filterlangan natija HAM `rowsVariable`'ga yoziladi → `{{#each}}` bilan o'qiladi.
 ```
 GoogleSheetsNode data:
@@ -572,12 +569,8 @@ Engine ikki turdagi saqlangan o'zgaruvchini ajratadi: **ochiq (public)** va
 **maxfiy (private)**. Substitution `{{...}}` node maydonlarida (matn, tugma
 matni/qiymati/callback, filter qiymati — INLINE/REPLY, nested rows ham) ishlaydi.
 
-**O'qish — `{{...}}` ko'rinishlari (hammasi engine'da map qilinadi):**
-- `{{key}}` (yalang'och) — avval shu nom qidiriladi, topilmasa `public_key`.
-  **Yangi flowlarda AFZAL** — eng qisqa, toza.
-- `{{public.key}}` ≡ `{{vars.key}}` ≡ `{{state.key}}` → `public_key`. Uchchovi
-  BIR XIL. `state.` orqaga-moslik uchun HALI ishlaydi (buzilmaydi), lekin yangi
-  flowda `{{key}}` yoki `{{public.key}}` yoz.
+**O'qish — `{{...}}` ko'rinishlari:**
+- Ochiq qiymat: `{{key}}`; obyekt ichidagi field: `{{key.field}}`.
 - `{{private.key}}` → `private_key` (maxfiy qiymat — token, parol, sirli kod).
 - `{{collection.key}}` → `collection_key`; `{{user.key}}` → `user_key`.
 - `{{callback_data}}` → bosilgan tugmaning callback string'i. ENDI HAR DOIM
@@ -587,18 +580,16 @@ matni/qiymati/callback, filter qiymati — INLINE/REPLY, nested rows ham) ishlay
   `{{chat_id}}`, `{{message.text}}`, `{{inserted_id}}`, `{{agent_output}}`.
 
 **Saqlash — ochiq vs maxfiy:**
-- StateNode / trigger `data.state` "save" → ochiq `public_<key>` ga yoziladi
-  (`{{key}}` / `{{public.key}}` bilan o'qiladi). Bu ODATIY holat.
+- StateNode yoki trigger `state_key` + `state_type` → ochiq qiymat yozadi va
+  `{{key}}` bilan o'qiladi.
 - Maxfiy ma'lumot (token, parol, sirli kod, bir martalik kod) → `private_<key>`,
   `{{private.key}}` bilan o'qiladi. Bunday qiymatni `{{key}}` yalang'och nom
   bilan xabar matnida AKS ETTIRMA (maxfiy joyda sof qolsin).
 
 **Custom code (Goja VM) ichida:**
-- `vars.x` — ochiq qiymat O'QISH/YOZISH (`public_x` ga map qiladi). **AFZAL.**
-- `state.x` — `vars.x` ning legacy aliasi, HALI ishlaydi (`public_x` ga). Yangi
-  kodda `vars.x` yoz.
+- `vars.x` — ochiq qiymat o'qish/yozish (`public_x` ga map qiladi).
 - `private.x` — maxfiy qiymat o'qish/yozish (`private_x`). Token/parol shu yerda.
-- `set_state("x", v)` / `get_state("x")` ham `public_x` bilan ishlaydi (legacy).
+- `set_context("x", v)` / `get_context("x")` ochiq qiymat bilan ishlaydi.
 - Batafsil: `docs_guide(topic="custom_code")`.
 
 **Tugmalarda `{{}}`:** tugma matni, `value` (callback) va collection tugmasi
@@ -618,9 +609,8 @@ yozishdan oldin O'QI. Asosiy nuqtalar:
 har statement alohida qatorda (`;` bilan tiqma), izchil 2-probel otступ, operator
 atrofida bo'shliq (`x === y`, NE `x===y`), mazmunli o'zgaruvchi nomlari. Hech qachon
 minified/bir-qatorli yozma. Toza-format namunasi `docs_guide(topic="custom_code")`da.
-- **O'qish — obyekt-access AFZAL:** `state.<key>` (state qiymati, `state_` prefiks
-  avtomatik) va `context.<key>` (xom kalit). Masalan `state:{key:"movie_code"}` →
-  `state.movie_code`; `const phone = state.user_phone; const rows = context.sheets_response_rows;`.
+- **O'qish — obyekt-access:** `vars.<key>` (ochiq saqlangan qiymat) va
+  `context.<key>` (xom kalit). Masalan `const phone = vars.user_phone; const rows = context.sheets_response_rows;`.
   `get_state`/`get_context` funksiyalari ham bor, lekin obyekt-access qisqa/toza.
 - **Edit-in-place (pagination/menyu yangilash):** callback bosilganda YANGI xabar
   emas, o'sha xabarni tahrirla — `edit_or_send({text, parse_mode, inline_keyboard})`
@@ -675,10 +665,10 @@ CustomCode dinamik klaviatura faqat juda murakkab shartli logikada kerak.
 
 **Visual node'lar mosroq:**
 - Triggerlar (`CommandTriggerNode`, `MessageTriggerNode`,
-  `CallbackQueryTriggerNode`, `CronNode`) — flow giriş nuqtalari
+  `CallbackQueryTriggerNode`, `CronTriggerNode`) — flow giriş nuqtalari
 - Statik matn yoki statik klaviatura (`SendTextMessageNode`)
 - Form ketma-ketligi: `flow.ask_text` → `flow.ask_contact` →
-  `flow.ask_location` — state.* avtomatik saqlanadi, kod yozish kerak emas
+  `flow.ask_location` — berilgan kalitlarga avtomatik saqlanadi, kod kerak emas
 
 **Anti-pattern'lar:**
 1. **Monolit** — 100+ qator bitta blokda (trigger, DB, 5 xabar, klaviatura aralash).
@@ -709,8 +699,9 @@ ortiqcha murakkablik.
 
 **JavaScript runtime (Goja VM) imkoniyatlari:**
 - Flow control: `exit('name')`, `wait_for_input()`, `sleep(s)`
-- Context/State o'qish — **obyekt-access AFZAL**: `context.<key>`, `state.<key>`
-  (`state_` prefiks avto). Yozish: `set_context`/`set_state`. Boshqa:
+- Context/saqlangan qiymat o'qish: `context.<key>`, `vars.<key>`
+  (`vars` ochiq qiymatni `public_` kalitiga map qiladi). Yozish:
+  `set_context`/`set_state`. Boshqa:
   `delete_context`, `has_context`, `clear_context`, `get_all_context`,
   `get_context`/`get_state` (funksiya-muqobil)
 - Telegram: `send_message`, `send_photo`, `send_video`, `send_audio`,
@@ -751,8 +742,8 @@ ortiqcha murakkablik.
 `message.video.file_id`, `message.document.file_id`, `message.animation.file_id`,
 `message.media.kind`, `message.media.file_id`, `message.media.message_id`,
 `telegram_update.message`, `raw_update.message`, `callback_query.data`, `user_id`,
-`user_first_name`, `user_username`, `public_*` (StateNode/trigger save'dan;
-oddiy `{{key}}` bilan o'qiladi — `{{state_key}}` EMAS),
+`user_first_name`, `user_username`, `public_*` (StateNode/triggerdan;
+template'da oddiy `{{key}}` bilan o'qiladi),
 `collection_*`, `message_id_<nodeID>`.
 
 **Misol — ro'yxatdan o'tkazish:** `/start` → `ask_contact` → CustomCode "phone-validate" (`outputs:[ok,invalid]`, ~10q) → CustomCode "user-upsert" (`outputs:[new,existing]`, ~15q) → `EditOrSendMessageNode` (har branch uchun).
@@ -894,7 +885,7 @@ static EMAS); sen faqat credential_id + ixtiyoriy default spreadsheetId/sheet tu
 **FIXED vs AI** — har field uchun:
 - `source='fixed'` → SEN `value` belgilaysan: constant yoki flow placeholder —
   `{{chat_id}}`, `{{user_id}}`, `{{first_name}}`, `{{username}}`, `{{<key>}}`
-  (oldin so'ralgan/saqlangan qiymat — yalang'och nom; `{{state_<key>}}` EMAS),
+  (oldin so'ralgan/saqlangan qiymat),
   `{{collection_<key>}}`. Engine runtime'da resolve
   qiladi; BUTUN-placeholder XOM tipni saqlaydi (`value="{{chat_id}}"` int qoladi).
   FIXED slot'ni runtime AI O'ZGARTIROLMAYDI — shuning uchun `user_id="{{chat_id}}"`

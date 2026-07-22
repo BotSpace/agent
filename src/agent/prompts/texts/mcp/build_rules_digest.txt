@@ -19,10 +19,8 @@
   faqat kontakt/joylashuv so'rashda.
 • MA'LUMOT SO'RASH (ism/telefon/matn): flow_ask_text / flow_ask_contact ishlat —
   ular ask+capture'ni to'g'ri quradi. Telefon/kontakt → flow_ask_contact
-  (request_contact). MessageTriggerNode bilan qo'lda ushlasang, state_type FAQAT
-  {text,number,photo,video,document,any} — "contact_phone_number" MessageTrigger'da
-  ISHLAMAYDI (u trigger data.state/reply-capture uchun). Telefonni MessageTrigger
-  bilan ushlama — flow_ask_contact ishlat.
+  (request_contact). Qo'lda qursang MessageTriggerNode uchun `type:"contact"`,
+  `state_key:"phone"`, `state_type:"phone_number"` ishlat.
 • ⛔ TUGMA ULASH — INLINE tugma uchun ROOT/GLOBAL trigger YARATMA (eng ko'p xato!):
   ekranga xos tugma (menyu→bo'lim, "Kurslar", "Sotib olish") → `flow_connect_button(
   source="<tugma turgan node>", target="<keyingi node>", button_text="...")` —

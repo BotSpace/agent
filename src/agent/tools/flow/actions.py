@@ -322,7 +322,8 @@ async def flow_ask_text(input: AskTextInput, ctx: ToolContext) -> ToolResult:
             "type": input.message_type,
             "filter": "any",
             "global": False,
-            "state": {"key": input.state_key, "type": input.state_type},
+            "state_key": input.state_key,
+            "state_type": input.state_type,
         },
     )
     _connect(flow, source=input.after, target=ask_id)
@@ -366,12 +367,13 @@ async def flow_ask_contact(input: AskContactInput, ctx: ToolContext) -> ToolResu
             "type": "contact",
             "filter": "any",
             "global": False,
-            "state": {"key": input.state_key, "type": "phone_number"},
+            "state_key": input.state_key,
+            "state_type": "phone_number",
         },
     )
     _connect(flow, source=input.after, target=ask_id)
-    # Kontakt tugmasi (request_contact) O'Z button-edge'i orqali capture'ga ulanadi —
-    # engine kontaktni shu edge bo'yicha yo'naltiradi (base/source-handler emas).
+    # Engine contact update'ni text bilan emas, reply tugma TYPE'i bilan shu
+    # button-edge'ga route qiladi va capture trigger state'ni saqlaydi.
     _connect(flow, source=ask_id, target=capture_id,
              source_handle=f"target-handler-{ask_id}-{input.button_text}")
     return ToolResult.ok(
@@ -407,10 +409,10 @@ async def flow_ask_location(input: AskLocationInput, ctx: ToolContext) -> ToolRe
             },
         },
     )
-    _node(flow, lat_id, "MessageTriggerNode", {"type": "location", "filter": "any", "global": False, "state": {"key": input.latitude_key, "type": "latitude"}})
+    _node(flow, lat_id, "MessageTriggerNode", {"type": "location", "filter": "any", "global": False, "state_key": input.latitude_key, "state_type": "latitude"})
     _node(flow, lon_id, "StateNode", {"key": input.longitude_key, "type": "longitude"})
     _connect(flow, source=input.after, target=ask_id)
-    # Lokatsiya tugmasi (request_location) O'Z button-edge'i orqali capture'ga ulanadi.
+    # Engine location update'ni reply tugma TYPE'i bilan shu edge'ga route qiladi.
     _connect(flow, source=ask_id, target=lat_id,
              source_handle=f"target-handler-{ask_id}-{input.button_text}")
     _connect(flow, source=lat_id, target=lon_id)
@@ -661,7 +663,7 @@ def build_flow_action_tools() -> list[Tool]:
                 "operation='update' → ALSO changeFields (the fields to SET; filterConditions "
                 "selects which docs). "
                 "source='fixed' → YOU pin `value` (constant or {{chat_id}}/{{user_id}}/"
-                "{{<key>}} placeholder (saved public var; legacy {{state_<key>}} also works), "
+                "{{<key>}} placeholder (saved public variable), "
                 "engine resolves at runtime, whole-placeholder "
                 "keeps RAW type so {{chat_id}} stays an int). The runtime AI CANNOT change a "
                 "fixed slot — use user_id=\"{{chat_id}}\" to lock the tool to the current user. "

@@ -80,8 +80,6 @@ exit('new');
   ichida `public_` prefiks AVTOMATIK qo'shiladi (toza nom yoz). `vars.user_phone` ≡
   `context.public_user_phone`. Node maydonidagi `{{user_phone}}` (yoki
   `{{public.user_phone}}`) bilan bir xil. O'qish HAM yozish: `vars.x = v`.
-- `state` (object) — `vars` ning LEGACY aliasi, HALI ishlaydi (`public_` ga map
-  qiladi). Yangi kodda `vars.<key>` yoz; `state.<key>` faqat orqaga moslik uchun.
 - `private` (object) — MAXFIY (private) qiymatlar (token, parol, sirli kod).
   `private.api_token` ≡ `context.private_api_token`, node'da `{{private.api_token}}`.
   Maxfiy ma'lumotni shu yerda saqla, ochiq `vars`ga emas.
@@ -123,7 +121,7 @@ Node `data.outputs` e'lon qilsa (multi-output), u **exit-driven** bo'ladi:
 
 ## Ochiq o'zgaruvchilar (vars — TAVSIYA, prefiks avtomatik)
 StateNode/trigger saqlagan OCHIQ qiymatlar node maydonlarida `{{name}}` (yoki
-`{{public.name}}` / legacy `{{state.name}}`) ko'rinishida o'qiladi (ichida
+`{{name}}`) ko'rinishida o'qiladi (ichida
 `public_` prefiks bilan saqlanadi).
 **O'QISH/YOZISH — `vars.<key>` obyekt-access afzal** (qisqa, toza):
 ```javascript
@@ -137,8 +135,7 @@ vars.movie_code = code;              // yozish — node'da {{movie_code}}
 - `has_state(key)`, `delete_state(key)`
 - Prefiksni QO'LDA yozma — `vars.x` / `set_state("x", ...)` ikkalasi ham
   `public_` ni avtomatik qo'shadi (toza nom ber).
-- `state.x` — `vars.x` ning LEGACY aliasi, HALI ishlaydi (ikkalasi `public_` ga;
-  legacy `state_` prefiks ham hanuz o'qiladi). Yangi kodda `vars.x` afzal.
+- `vars.x` — ochiq saqlangan qiymatni o'qiydi/yozadi (`public_x`).
 
 ## Maxfiy o'zgaruvchilar (private)
 Token, parol, sirli/bir martalik kod — `vars` (ochiq) emas, `private` ga saqla:
@@ -158,7 +155,7 @@ const rows = context.sheets_response_rows;
 - YOZISH: `set_context(key, value)` → bool (kalitni o'zgartirmaydi; node'da `{{key}}`)
 - O'QISH (muqobil funksiya): `get_context("first_name")` — obyekt-access bilan bir xil
 - `has_context(key)`, `delete_context(key)`, `get_all_context()`
-- Eslatma: `vars.x` ≡ `context.public_x` (legacy `state.x` ham `public_x` ga);
+- Eslatma: `vars.x` ≡ `context.public_x`;
   `private.x` ≡ `context.private_x`; `set_state("x", v)` ≡ `set_context("public_x", v)`
 
 ## Xabar yuborish / tahrirlash

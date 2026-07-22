@@ -18,9 +18,8 @@ kerakli node(lar)ning aniq schemasini SO'RAB OL, keyin qo'sh.
      + `rows` (tugma qatorlari ro'yxati).
    - CallbackQueryTriggerNode: `withArgs` YO'Q → callback'ni filtrlash uchun
      `filter` ('starts_with'|'equals'|…) + `context: {value: "prefix_"}`; qiymatni
-     saqlash uchun `state_key` + `state_type` yetarli (alohida `save_state`
-     switch yo'q). Keyingi node'da `{{state_key}}` EMAS, aynan `{{key}}`
-     ishlat: masalan `state_key="phone"` → `{{phone}}`.
+     saqlash uchun `state_key` + `state_type` ishlat. Masalan
+     `state_key="phone", state_type="text"` qiymati keyingi node'da `{{phone}}`.
    - Dinamik ro'yxat/klaviatura (collection'dan): `rows`ga `{{#each}}` TEMPLATE
      ISHLAMAYDI — `rows` statik ro'yxat. Collection'dan dinamik tugmalar uchun
      `LoadCollectionListNode` → `CustomCodeNode` (JS'da `rows` yasab `send_message`).
@@ -31,9 +30,8 @@ kerakli node(lar)ning aniq schemasini SO'RAB OL, keyin qo'sh.
    "Extra inputs not permitted" xatosi va behuda turn.
 4. Ulash: `flow.connect` / `flow.connect_button` / `flow.connect_branch` /
    `flow.connect_accessory`.
-5. `flow.validate`dagi `unknown_variable`/`legacy_state_reference`ni harmless deb
-   o'tkazib yuborma — ular CMS'ga bo'sh qiymat yozadi. Tuzat → `flow.save`
-   (approval so'ramaydi) → **`flow.simulate` bilan
+5. `flow.validate` → xatolarni tuzat → `flow.save` (approval so'ramaydi) →
+   **`flow.simulate` bilan
    O'ZING sina** (6-band) → tugagach `release.debug`.
 
 ## Save'dan keyin SINA — MAJBURIY (o'tkazib yuborma)
@@ -139,12 +137,10 @@ tool'ni ISHLATMA (tasdiqsiz).
 collection yarat + 3-5 demo yozuv, flow undan o'qisin (`LoadCollectionListNode` /
 CustomCode `db_find`).
 
-**STATE saqlash — `StateNode`da `value` YO'Q:** `StateNode` foydalanuvchi KIRITGAN
-qiymatni (oldingi trigger/xabar) ushlab `key`ga yozadi — maydonlari faqat `key` +
-`type`. Literal (o'zgarmas) qiymat yozmoqchi bo'lsang StateNode ISHLATMA — `CustomCode`
-(`context.key = "..."`) yoki trigger'ning `save_state`/`state_key`ini ishlat. Ko'p
-trigger (Command/Message/CallbackQuery)ning O'ZIDA `save_state:true` + `state_key` +
-`state_type` bor — inputni ushlash uchun alohida StateNode SHART EMAS.
+**Qiymat saqlash:** foydalanuvchi inputini Command/Message/CallbackQuery trigger'ning
+`state_key` + `state_type` maydonlari bilan saqla. Oqim ichida doimiy qiymat yozish
+kerak bo'lsa `StateNode`da `key`, `type:"static"`, `value` ishlat. Hisoblangan
+qiymat uchun `CustomCode` ichida `vars.key = ...` ishlat.
 
 ## Mavjud flow — O'CHIRMA
 Saqlangan flow avtomatik yuklangan va har amaldan keyin yangilanadi — u ALLAQACHON
