@@ -1537,10 +1537,8 @@ class BackendClient:
         (not Django's ``kind``) — ``tools/cms`` builds ``body`` from
         ``FieldSpec.model_dump()`` which still emits ``kind`` (kept as-is so
         the tool's public field-spec vocabulary doesn't change); remap here.
-        NOTE: Go's ``relation_collection`` is a STRING id, but
-        ``FieldSpec.relation_collection`` is typed ``int | None`` — relation
-        fields will fail Go's validator until that tool-side type is widened;
-        see migration report.
+        ``relation_collection`` is forwarded as the target collection slug,
+        which is what the Go backend resolves inside the same project.
         """
         body = dict(body)
         if "kind" in body and "type" not in body:

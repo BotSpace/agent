@@ -9,7 +9,7 @@ import asyncio
 
 from agent.integrations.backend import BackendClient
 from agent.tools.base import ToolContext
-from agent.tools.cms import CreateCollectionInput, create_collection
+from agent.tools.cms import CreateCollectionInput, FieldSpec, create_collection
 
 
 def _run(coro):
@@ -68,3 +68,14 @@ def test_primary_field_omitted_when_none():
     body = backend.bodies[0]
     # absent -> key removed so backend default stays intact
     assert "primary_field" not in body
+
+
+def test_relation_field_uses_collection_slug():
+    field = FieldSpec.model_validate(
+        {
+            "name": "course",
+            "kind": "relation",
+            "relation_collection": "courses",
+        }
+    )
+    assert field.relation_collection == "courses"

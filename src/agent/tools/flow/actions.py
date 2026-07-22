@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from ...flow import FlowDocument, FlowEdge, FlowNode, Position, auto_layout
 from ..base import Tool, ToolContext, ToolResult
@@ -154,7 +154,13 @@ def remap_button_edge_handles(
     return remapped
 
 
-def _node(flow: FlowDocument, node_id: str, type_name: str, data: dict[str, Any], position: dict[str, float] | None = None) -> None:
+def _node(
+    flow: FlowDocument,
+    node_id: str,
+    type_name: str,
+    data: dict[str, Any],
+    position: dict[str, float] | None = None,
+) -> None:
     flow.upsert_node(
         FlowNode(
             id=node_id,
@@ -248,7 +254,9 @@ from ...flow.manifest_compiler.node_catalog import acc_port_accepts, button_edge
 
 
 class ConnectButtonInput(BaseModel):
-    source: str = Field(description="Id of a keyboard-bearing node (SendTextMessageNode, EditOrSendMessageNode, EditMessageNode, MessageNode) that owns the button.")
+    source: str = Field(
+        description="Id of a keyboard-bearing node (SendTextMessageNode, EditOrSendMessageNode, EditMessageNode, MessageNode) that owns the button."
+    )
     target: str = Field(description="Target node id.")
     button_text: str = Field(description="Exact button text from the source node keyboard.")
     target_handle: str | None = "target-handler"
@@ -270,7 +278,14 @@ async def flow_connect_button(input: ConnectButtonInput, ctx: ToolContext) -> To
     if flow.get_node(input.target) is None:
         return _node_missing(input.target, flow, role="Target node")
     handle = _button_handle(input.source, input.button_text)
-    _connect(flow, source=input.source, target=input.target, source_handle=handle, target_handle=input.target_handle, edge_id=input.edge_id)
+    _connect(
+        flow,
+        source=input.source,
+        target=input.target,
+        source_handle=handle,
+        target_handle=input.target_handle,
+        edge_id=input.edge_id,
+    )
     return ToolResult.ok(
         f"Button `{input.button_text}` connected `{input.source}` -> `{input.target}`.",
         state_updates=_set_working_flow(flow),
@@ -281,7 +296,9 @@ async def flow_connect_button(input: ConnectButtonInput, ctx: ToolContext) -> To
 class ConnectBranchInput(BaseModel):
     source: str
     target: str
-    handle: str = Field(description="Exact engine source handle, e.g. true, false, found, not_found, is-member, option_0.")
+    handle: str = Field(
+        description="Exact engine source handle, e.g. true, false, found, not_found, is-member, option_0."
+    )
     target_handle: str | None = "target-handler"
     edge_id: str | None = None
 
@@ -292,7 +309,14 @@ async def flow_connect_branch(input: ConnectBranchInput, ctx: ToolContext) -> To
         return _node_missing(input.source, flow, role="Source node")
     if flow.get_node(input.target) is None:
         return _node_missing(input.target, flow, role="Target node")
-    _connect(flow, source=input.source, target=input.target, source_handle=input.handle, target_handle=input.target_handle, edge_id=input.edge_id)
+    _connect(
+        flow,
+        source=input.source,
+        target=input.target,
+        source_handle=input.handle,
+        target_handle=input.target_handle,
+        edge_id=input.edge_id,
+    )
     return ToolResult.ok(
         f"Branch `{input.handle}` connected `{input.source}` -> `{input.target}`.",
         state_updates=_set_working_flow(flow),
@@ -355,7 +379,15 @@ async def flow_ask_contact(input: AskContactInput, ctx: ToolContext) -> ToolResu
             "messageText": input.question,
             "keyboard": {
                 "active": "reply",
-                "reply": [[{"id": f"{input.id_prefix}-contact", "text": input.button_text, "type": "request_contact"}]],
+                "reply": [
+                    [
+                        {
+                            "id": f"{input.id_prefix}-contact",
+                            "text": input.button_text,
+                            "type": "request_contact",
+                        }
+                    ]
+                ],
             },
         },
     )
@@ -374,8 +406,9 @@ async def flow_ask_contact(input: AskContactInput, ctx: ToolContext) -> ToolResu
     _connect(flow, source=input.after, target=ask_id)
     # Engine contact update'ni text bilan emas, reply tugma TYPE'i bilan shu
     # button-edge'ga route qiladi va capture trigger state'ni saqlaydi.
-    _connect(flow, source=ask_id, target=capture_id,
-             source_handle=f"target-handler-{ask_id}-{input.button_text}")
+    _connect(
+        flow, source=ask_id, target=capture_id, source_handle=f"target-handler-{ask_id}-{input.button_text}"
+    )
     return ToolResult.ok(
         f"Contact question `{input.state_key}` added.",
         state_updates=_set_working_flow(flow),
@@ -405,16 +438,34 @@ async def flow_ask_location(input: AskLocationInput, ctx: ToolContext) -> ToolRe
             "messageText": input.question,
             "keyboard": {
                 "active": "reply",
-                "reply": [[{"id": f"{input.id_prefix}-location", "text": input.button_text, "type": "request_location"}]],
+                "reply": [
+                    [
+                        {
+                            "id": f"{input.id_prefix}-location",
+                            "text": input.button_text,
+                            "type": "request_location",
+                        }
+                    ]
+                ],
             },
         },
     )
-    _node(flow, lat_id, "MessageTriggerNode", {"type": "location", "filter": "any", "global": False, "state_key": input.latitude_key, "state_type": "latitude"})
+    _node(
+        flow,
+        lat_id,
+        "MessageTriggerNode",
+        {
+            "type": "location",
+            "filter": "any",
+            "global": False,
+            "state_key": input.latitude_key,
+            "state_type": "latitude",
+        },
+    )
     _node(flow, lon_id, "StateNode", {"key": input.longitude_key, "type": "longitude"})
     _connect(flow, source=input.after, target=ask_id)
     # Engine location update'ni reply tugma TYPE'i bilan shu edge'ga route qiladi.
-    _connect(flow, source=ask_id, target=lat_id,
-             source_handle=f"target-handler-{ask_id}-{input.button_text}")
+    _connect(flow, source=ask_id, target=lat_id, source_handle=f"target-handler-{ask_id}-{input.button_text}")
     _connect(flow, source=lat_id, target=lon_id)
     return ToolResult.ok(
         "Location question added.",
@@ -436,6 +487,31 @@ class AskButtonsInput(BaseModel):
     after: str | None = None
     style: Literal["reply", "inline"] = "reply"
     columns: int = Field(default=2, ge=1, le=4)
+    state_type: Literal["data", "collection_id", "full_data"] = Field(
+        default="data",
+        description=(
+            "Inline tugma qiymatini saqlash turi. Oddiy qiymat uchun data; CMS "
+            "hujjat tanlashda collection_id yoki full_data ishlating."
+        ),
+    )
+    collection_name: str | None = Field(
+        default=None,
+        description=(
+            "state_type=collection_id/full_data bo'lsa majburiy CMS collection slug. "
+            "Har option.value hujjat _id'si bo'ladi."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def validate_capture(self) -> AskButtonsInput:
+        if self.style == "reply" and self.state_type != "data":
+            raise ValueError("collection_id/full_data faqat inline tugmalarda ishlaydi")
+        if self.state_type in {"collection_id", "full_data"}:
+            if not (self.collection_name or "").strip():
+                raise ValueError("collection_name collection tanlashda majburiy")
+            if any(not (option.value or "").strip() for option in self.options):
+                raise ValueError("collection tanlashda har option.value hujjat _id'si bo'lishi shart")
+        return self
 
 
 async def flow_ask_buttons(input: AskButtonsInput, ctx: ToolContext) -> ToolResult:
@@ -447,9 +523,16 @@ async def flow_ask_buttons(input: AskButtonsInput, ctx: ToolContext) -> ToolResu
         row: list[dict[str, Any]] = []
         for option in input.options[idx : idx + input.columns]:
             if input.style == "inline":
-                row.append({"text": option.text, "type": "callback", "value": option.value or option.text})
+                value = option.value or option.text
+                if input.state_type in {"collection_id", "full_data"}:
+                    prefix = f"collection:{input.collection_name}:"
+                    if not value.startswith(prefix):
+                        value = f"{prefix}{value}"
+                row.append({"text": option.text, "type": "callback", "value": value})
             else:
-                row.append({"id": f"{input.id_prefix}-{_slug(option.text)}", "text": option.text, "type": "reply"})
+                row.append(
+                    {"id": f"{input.id_prefix}-{_slug(option.text)}", "text": option.text, "type": "reply"}
+                )
         rows.append(row)
 
     keyboard = {"active": input.style, input.style: rows}
@@ -458,7 +541,10 @@ async def flow_ask_buttons(input: AskButtonsInput, ctx: ToolContext) -> ToolResu
         flow,
         capture_id,
         "StateNode",
-        {"key": input.state_key, "type": "data" if input.style == "inline" else "text"},
+        {
+            "key": input.state_key,
+            "type": input.state_type if input.style == "inline" else "text",
+        },
     )
     _connect(flow, source=input.after, target=ask_id)
     for option in input.options:
@@ -473,18 +559,44 @@ async def flow_ask_buttons(input: AskButtonsInput, ctx: ToolContext) -> ToolResu
 class SaveToCollectionInput(BaseModel):
     id: str = "save"
     collection_name: str
-    field_mappings: dict[str, str] = Field(description="Database field -> state key or template string.")
+    field_mappings: dict[str, str] = Field(
+        description=(
+            "Database field -> captured state key or template. State keys are bare "
+            "(full_name, phone); runtime values use templates ({{user_id}}, {{chat_id}}, "
+            "{{first_name}})."
+        ),
+    )
     after: str | None = None
 
 
 async def flow_save_to_collection(input: SaveToCollectionInput, ctx: ToolContext) -> ToolResult:
     flow = _load_working_flow(ctx)
-    _node(flow, input.id, "CollectionNode", {"collection_name": input.collection_name, "fieldMappings": input.field_mappings})
+    runtime_keys = {
+        "user_id",
+        "chat_id",
+        "first_name",
+        "last_name",
+        "username",
+        "language_code",
+        "message_id",
+        "message_text",
+        "callback_data",
+    }
+    mappings = {
+        field: f"{{{{{source}}}}}" if source in runtime_keys else source
+        for field, source in input.field_mappings.items()
+    }
+    _node(
+        flow,
+        input.id,
+        "CollectionNode",
+        {"collection_name": input.collection_name, "fieldMappings": mappings},
+    )
     _connect(flow, source=input.after, target=input.id)
     return ToolResult.ok(
         f"Save-to-collection node `{input.id}` added.",
         state_updates=_set_working_flow(flow),
-        data={"node_id": input.id, "collection_name": input.collection_name},
+        data={"node_id": input.id, "collection_name": input.collection_name, "field_mappings": mappings},
     )
 
 
@@ -666,7 +778,7 @@ def build_flow_action_tools() -> list[Tool]:
                 "{{<key>}} placeholder (saved public variable), "
                 "engine resolves at runtime, whole-placeholder "
                 "keeps RAW type so {{chat_id}} stays an int). The runtime AI CANNOT change a "
-                "fixed slot — use user_id=\"{{chat_id}}\" to lock the tool to the current user. "
+                'fixed slot — use user_id="{{chat_id}}" to lock the tool to the current user. '
                 "source='ai' → leave `value` empty and write `aiDescription`; the runtime AI "
                 "fills it per turn. "
                 "READ example: operation='read', filterMatch='and', filterConditions=["
@@ -853,92 +965,101 @@ def build_flow_action_tools() -> list[Tool]:
     ]
     tools: list[Tool] = list(popular_tools)
     tools += [
-            Tool(
-                name="flow.connect_accessory",
-                description=(
-                    "Wire a provider/tool sub-node to an AIAgentNode's accessory port. "
-                    "port='acc:ai_model' (one provider, e.g. AIOpenAIProviderNode) or "
-                    "'acc:ai_tool' (any number of tool nodes). "
-                    "This creates an edge: sourceHandle='source-default' → targetHandle=port."
-                ),
-                input_model=ConnectAccessoryInput,
-                handler=flow_connect_accessory,
-                tags=["flow", "ai", "safe-edge"],
+        Tool(
+            name="flow.connect_accessory",
+            description=(
+                "Wire a provider/tool sub-node to an AIAgentNode's accessory port. "
+                "port='acc:ai_model' (one provider, e.g. AIOpenAIProviderNode) or "
+                "'acc:ai_tool' (any number of tool nodes). "
+                "This creates an edge: sourceHandle='source-default' → targetHandle=port."
             ),
-            Tool(
-                name="flow.connect_button",
-                description="PREFERRED way to wire a screen-local forward-navigation button (menu→section, 'Buy', course pick): connect the exact reply/inline keyboard button straight to the next node via a button-edge (target-handler-{nodeId}-{buttonText}). The engine pauses on the keyboard-bearing node and routes the button press through this edge — do NOT create a CallbackQueryTriggerNode for such buttons. Works for any keyboard-bearing node: SendTextMessageNode, EditOrSendMessageNode, EditMessageNode, MessageNode. (Reserve a global CallbackQueryTriggerNode only for buttons that repeat across screens / must work anywhere, e.g. Back/Home.)",
-                input_model=ConnectButtonInput,
-                handler=flow_connect_button,
-                tags=["flow", "safe-edge"],
+            input_model=ConnectAccessoryInput,
+            handler=flow_connect_accessory,
+            tags=["flow", "ai", "safe-edge"],
+        ),
+        Tool(
+            name="flow.connect_button",
+            description="PREFERRED way to wire a screen-local forward-navigation button (menu→section, 'Buy', course pick): connect the exact reply/inline keyboard button straight to the next node via a button-edge (target-handler-{nodeId}-{buttonText}). The engine pauses on the keyboard-bearing node and routes the button press through this edge — do NOT create a CallbackQueryTriggerNode for such buttons. Works for any keyboard-bearing node: SendTextMessageNode, EditOrSendMessageNode, EditMessageNode, MessageNode. (Reserve a global CallbackQueryTriggerNode only for buttons that repeat across screens / must work anywhere, e.g. Back/Home.)",
+            input_model=ConnectButtonInput,
+            handler=flow_connect_button,
+            tags=["flow", "safe-edge"],
+        ),
+        Tool(
+            name="flow.connect_branch",
+            description="Connect a branch edge with an exact engine handle such as true, false, found, not_found, is-member, not-member, loop-body, no-items, loop-continue, loop-done, option_0, paid, failed (PaymentNode result — react to a payment ONLY via paid/failed, never with a PaymentStatusTriggerNode).",
+            input_model=ConnectBranchInput,
+            handler=flow_connect_branch,
+            tags=["flow", "safe-edge"],
+        ),
+        Tool(
+            name="flow.ask_text",
+            description=(
+                "Create a safe text question pair: SendTextMessageNode -> "
+                "MessageTriggerNode(global=false,state). Creates nodes "
+                "`<id_prefix>-ask` and `<id_prefix>-capture` — connect follow-ups "
+                "from `<id_prefix>-capture`."
             ),
-            Tool(
-                name="flow.connect_branch",
-                description="Connect a branch edge with an exact engine handle such as true, false, found, not_found, is-member, not-member, loop-body, no-items, loop-continue, loop-done, option_0, paid, failed (PaymentNode result — react to a payment ONLY via paid/failed, never with a PaymentStatusTriggerNode).",
-                input_model=ConnectBranchInput,
-                handler=flow_connect_branch,
-                tags=["flow", "safe-edge"],
+            input_model=AskTextInput,
+            handler=flow_ask_text,
+            tags=["flow", "safe-pattern", "form"],
+        ),
+        Tool(
+            name="flow.ask_contact",
+            description=(
+                "Create a safe contact question: text with request_contact keyboard "
+                "-> MessageTriggerNode(type=contact,state phone_number). Creates "
+                "`<id_prefix>-ask` and `<id_prefix>-capture` — connect follow-ups "
+                "from `<id_prefix>-capture`."
             ),
-            Tool(
-                name="flow.ask_text",
-                description=(
-                    "Create a safe text question pair: SendTextMessageNode -> "
-                    "MessageTriggerNode(global=false,state). Creates nodes "
-                    "`<id_prefix>-ask` and `<id_prefix>-capture` — connect follow-ups "
-                    "from `<id_prefix>-capture`."
-                ),
-                input_model=AskTextInput,
-                handler=flow_ask_text,
-                tags=["flow", "safe-pattern", "form"],
+            input_model=AskContactInput,
+            handler=flow_ask_contact,
+            tags=["flow", "safe-pattern", "form"],
+        ),
+        Tool(
+            name="flow.ask_location",
+            description=(
+                "Create a safe location question and capture latitude/longitude "
+                "state keys. Creates `<id_prefix>-ask`, "
+                "`<id_prefix>-capture-latitude` and `<id_prefix>-capture-longitude` "
+                "— connect follow-ups from `<id_prefix>-capture-longitude`."
             ),
-            Tool(
-                name="flow.ask_contact",
-                description=(
-                    "Create a safe contact question: text with request_contact keyboard "
-                    "-> MessageTriggerNode(type=contact,state phone_number). Creates "
-                    "`<id_prefix>-ask` and `<id_prefix>-capture` — connect follow-ups "
-                    "from `<id_prefix>-capture`."
-                ),
-                input_model=AskContactInput,
-                handler=flow_ask_contact,
-                tags=["flow", "safe-pattern", "form"],
+            input_model=AskLocationInput,
+            handler=flow_ask_location,
+            tags=["flow", "safe-pattern", "form"],
+        ),
+        Tool(
+            name="flow.ask_buttons",
+            description=(
+                "Create a safe button question with reply/inline keyboard and exact "
+                "button-handle edges into a StateNode. Creates `<id_prefix>-ask` and "
+                "`<id_prefix>-capture` — connect follow-ups from `<id_prefix>-capture`. "
+                "For a CMS document choice use style='inline', "
+                "state_type='collection_id' (or 'full_data'), collection_name=<slug>, "
+                "and put each document _id in option.value; the tool builds the "
+                "canonical callback automatically."
             ),
-            Tool(
-                name="flow.ask_location",
-                description=(
-                    "Create a safe location question and capture latitude/longitude "
-                    "state keys. Creates `<id_prefix>-ask`, "
-                    "`<id_prefix>-capture-latitude` and `<id_prefix>-capture-longitude` "
-                    "— connect follow-ups from `<id_prefix>-capture-longitude`."
-                ),
-                input_model=AskLocationInput,
-                handler=flow_ask_location,
-                tags=["flow", "safe-pattern", "form"],
+            input_model=AskButtonsInput,
+            handler=flow_ask_buttons,
+            tags=["flow", "safe-pattern", "form"],
+        ),
+        Tool(
+            name="flow.save_to_collection",
+            description=(
+                "Create a CollectionNode with fieldMappings and optional connection. "
+                "Captured state uses a bare key (full_name, phone); runtime Telegram "
+                "values must be {{user_id}}/{{chat_id}}/{{first_name}} templates "
+                "(bare built-ins are normalized automatically)."
             ),
-            Tool(
-                name="flow.ask_buttons",
-                description=(
-                    "Create a safe button question with reply/inline keyboard and exact "
-                    "button-handle edges into a StateNode. Creates `<id_prefix>-ask` and "
-                    "`<id_prefix>-capture` — connect follow-ups from `<id_prefix>-capture`."
-                ),
-                input_model=AskButtonsInput,
-                handler=flow_ask_buttons,
-                tags=["flow", "safe-pattern", "form"],
-            ),
-            Tool(
-                name="flow.save_to_collection",
-                description="Create a CollectionNode with fieldMappings and optional connection from previous node.",
-                input_model=SaveToCollectionInput,
-                handler=flow_save_to_collection,
-                tags=["flow", "safe-pattern", "data"],
-            ),
-            Tool(
-                name="flow.finish",
-                description="Create the final SendTextMessageNode, optionally connected from previous node, and auto-layout the flow.",
-                input_model=FinishInput,
-                handler=flow_finish,
-                tags=["flow", "safe-pattern"],
-            ),
+            input_model=SaveToCollectionInput,
+            handler=flow_save_to_collection,
+            tags=["flow", "safe-pattern", "data"],
+        ),
+        Tool(
+            name="flow.finish",
+            description="Create the final SendTextMessageNode, optionally connected from previous node, and auto-layout the flow.",
+            input_model=FinishInput,
+            handler=flow_finish,
+            tags=["flow", "safe-pattern"],
+        ),
     ]
     return tools
