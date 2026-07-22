@@ -180,6 +180,30 @@ async def test_blueprint_draft_uses_registered_presets_and_reports_cms_requireme
 
 
 @pytest.mark.asyncio
+async def test_blueprint_draft_reports_incompatible_capture_field_kind():
+    ctx = ToolContext(
+        run_id="test",
+        project_id="project-1",
+        user_id="user-1",
+        state={
+            "collections": [
+                {
+                    "name": "leads",
+                    "fields": ["full_name", "phone"],
+                    "field_kinds": {"full_name": "text", "phone": "text"},
+                }
+            ]
+        },
+    )
+    result = await blueprint_draft.run(
+        DraftBlueprintInput(pattern="lead", title="Lead").model_dump(), ctx
+    )
+
+    assert result.data["ready"] is False
+    assert "phone:text→phone" in result.data["requirements"][0]
+
+
+@pytest.mark.asyncio
 async def test_build_blueprint_is_atomic_and_restorable():
     previous = {
         "nodes": [
@@ -273,6 +297,44 @@ async def test_build_blueprint_rejects_missing_collection_without_mutation():
     assert result.is_error
     assert result.state_updates == {}
     assert "`leads`" in result.content
+
+
+@pytest.mark.asyncio
+async def test_build_blueprint_rejects_incompatible_capture_field_kind():
+    ctx = ToolContext(
+        run_id="test",
+        project_id="project-1",
+        user_id="user-1",
+        state={
+            "working_flow": {"nodes": [], "edges": []},
+            "collections": [
+                {
+                    "name": "leads",
+                    "fields": ["full_name", "phone"],
+                    "field_kinds": {"full_name": "text", "phone": "text"},
+                }
+            ],
+        },
+    )
+    blueprint = BotBlueprint(
+        pattern="lead",
+        title="Lead",
+        destination_collection="leads",
+        fields=[_field(), _field("phone", "contact")],
+    )
+
+    result = await build_blueprint.run(
+        BuildBlueprintInput(
+            blueprint=blueprint,
+            verify=False,
+            save_regression_test=False,
+        ).model_dump(),
+        ctx,
+    )
+
+    assert result.is_error
+    assert "`leads.phone` text emas, `phone`" in result.content
+    assert result.state_updates == {}
 
 
 @pytest.mark.asyncio

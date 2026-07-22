@@ -17,6 +17,11 @@ appointment kabi odatiy business journey bo'lsa node'larni bittalab yozma:
    yaratgan bo'lsa ham shu yo'ldan chiqma — build uni xavfsiz almashtiradi.
 3. CMS ishlatilsa `cms.schema_assistant` bilan aniq slug/field/type/relation
    contractini ol; yetishmagan collection/fieldlarni typed `cms.*` bilan yarat.
+   `cms_schema_plan.fields`dagi har bir `name`, `kind`, `required` va
+   `relation_collection`ni AYNAN ko'chir — masalan `contact` capture uchun plan
+   `phone` desa uni umumiy `text`ga almashtirma. Field turi yaratilgach immutable;
+   xato yaratilgan bo'lsa buildni aylanib o'tma, fieldni olib tashlab to'g'ri kind
+   bilan qayta yarat.
 4. `flow.blueprint_preview` bilan biznes specni tekshir.
 5. `flow.build_blueprint` bilan compile + semantic validate + simulate + regression
    baseline'ni BITTA transactionda bajar. Validation/simulation yiqilsa u oldingi
