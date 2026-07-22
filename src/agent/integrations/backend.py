@@ -1886,6 +1886,11 @@ async def load_project_collections(
         return []
 
     out: list[dict[str, Any]] = []
+    collection_slugs_by_id = {
+        str(c.get("id")): str(c.get("slug") or c.get("name"))
+        for c in cols or []
+        if isinstance(c, dict) and c.get("id") and (c.get("slug") or c.get("name"))
+    }
     for c in cols or []:
         # CMS list responses carry both a user-facing `name`/label and the API
         # identifier `slug`. Every subsequent endpoint and flow node requires
@@ -1920,6 +1925,8 @@ async def load_project_collections(
                         "required": bool(f.get("required")),
                     }
                     relation = f.get("relation_collection") or f.get("relationCollection")
+                    if not relation and f.get("relation_collection_id"):
+                        relation = collection_slugs_by_id.get(str(f["relation_collection_id"]))
                     if relation:
                         contract["relation_collection"] = str(relation)
                     field_contracts.append(contract)

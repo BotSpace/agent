@@ -12,6 +12,7 @@ from agent.flow.blueprint import (
     regression_steps,
 )
 from agent.flow.validator import validate
+from agent.integrations.backend import BackendClient
 from agent.tools.base import ToolContext
 from agent.tools.flow.blueprints import (
     BuildBlueprintInput,
@@ -25,6 +26,15 @@ from agent.tools.flow.blueprints import (
 
 def _field(key: str = "full_name", kind: str = "text") -> BlueprintField:
     return BlueprintField(key=key, label=key, prompt=f"{key} ni kiriting", kind=kind)
+
+
+class _BoardBackend(BackendClient):
+    def __init__(self, board: dict):
+        super().__init__("http://backend.invalid")
+        self.board = board
+
+    async def get_kanban_board(self, board_id, **kwargs):
+        return self.board
 
 
 def test_blueprint_registry_auto_discovers_extension_modules():
@@ -82,6 +92,97 @@ def test_registration_compiler_produces_semantically_valid_dynamic_flow():
     save = flow.get_node("save-result")
     assert save is not None
     assert save.data["fieldMappings"]["course_id"] == "{{selected_item.id}}"
+
+
+def test_registration_can_write_operational_result_to_kanban():
+    blueprint = BotBlueprint(
+        pattern="registration",
+        title="Kursga yozilish",
+        intro="Kursni tanlang",
+        catalog_collection="courses",
+        relation_field="course_id",
+        kanban_board_id="board-1",
+        kanban_column_id="column-1",
+        fields=[_field(), _field("phone", "contact")],
+    )
+
+    flow = compile_blueprint(blueprint)
+    save = flow.get_node("save-result")
+    assert save is not None
+    assert save.type == "KanbanCardNode"
+    assert save.data == {
+        "boardId": "board-1",
+        "columnId": "column-1",
+        "operation": "upsert",
+        "kind": "registration",
+        "title": "{{full_name}} — {{selected_item.name}}",
+        "description": "Tanlov: {{selected_item.name}}\nfull_name: {{full_name}}\nphone: {{phone}}",
+        "priority": "normal",
+        "externalKey": "{{chat_id}}:registration:{{selected_item.id}}",
+        "outputKey": "kanban_card",
+    }
+    assert all(node.type != "CollectionNode" for node in flow.nodes)
+
+
+@pytest.mark.asyncio
+async def test_build_blueprint_verifies_board_link_and_real_column():
+    blueprint = BotBlueprint(
+        pattern="lead",
+        title="Lead",
+        kanban_board_id="board-1",
+        kanban_column_id="column-1",
+        fields=[_field()],
+    )
+    ctx = ToolContext(
+        run_id="test",
+        project_id="project-1",
+        user_id="user-1",
+        state={"working_flow": {"nodes": [], "edges": []}, "collections": []},
+        services={
+            "backend": _BoardBackend(
+                {
+                    "id": "board-1",
+                    "project_ids": ["project-1"],
+                    "columns": [{"id": "column-1", "name": "Yangi"}],
+                }
+            )
+        },
+    )
+
+    result = await build_blueprint.run(
+        BuildBlueprintInput(
+            blueprint=blueprint,
+            verify=False,
+            save_regression_test=False,
+        ).model_dump(),
+        ctx,
+    )
+
+    assert not result.is_error, result.content
+    assert result.state_updates["working_flow"]["nodes"][-2]["type"] == "KanbanCardNode"
+
+    blueprint.kanban_column_id = "invented-column"
+    invalid = await build_blueprint.run(
+        BuildBlueprintInput(
+            blueprint=blueprint,
+            verify=False,
+            save_regression_test=False,
+        ).model_dump(),
+        ctx,
+    )
+    assert invalid.is_error
+    assert "real column ID" in invalid.content
+
+
+def test_catalog_blueprint_rejects_capture_or_destination_fields():
+    with pytest.raises(ValidationError, match="browse-only"):
+        BotBlueprint(
+            pattern="catalog",
+            title="Noto'g'ri katalog",
+            catalog_collection="courses",
+            destination_collection="registrations",
+            fields=[_field()],
+        )
 
 
 def test_registration_regression_uses_real_catalog_fixture_for_full_journey():
@@ -177,6 +278,39 @@ async def test_blueprint_draft_uses_registered_presets_and_reports_cms_requireme
         "phone": "phone",
         "preferred_time": "text",
     }
+
+
+@pytest.mark.asyncio
+async def test_blueprint_draft_uses_kanban_instead_of_destination_collection():
+    ctx = ToolContext(
+        run_id="test",
+        project_id="project-1",
+        user_id="user-1",
+        state={
+            "collections": [
+                {
+                    "name": "courses",
+                    "fields": ["name"],
+                    "field_kinds": {"name": "text"},
+                }
+            ]
+        },
+    )
+    result = await blueprint_draft.run(
+        DraftBlueprintInput(
+            pattern="registration",
+            title="Kursga yozilish",
+            kanban_board_id="board-1",
+            kanban_column_id="column-1",
+        ).model_dump(),
+        ctx,
+    )
+
+    assert not result.is_error, result.content
+    assert result.data["ready"] is True
+    assert result.data["blueprint"]["destination_collection"] is None
+    assert result.data["blueprint"]["kanban_board_id"] == "board-1"
+    assert result.data["cms_schema_plan"]["destination"] is None
 
 
 @pytest.mark.asyncio

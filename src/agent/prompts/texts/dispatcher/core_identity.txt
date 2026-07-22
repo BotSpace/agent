@@ -40,6 +40,24 @@ Faqat foydalanuvchi aynan yangi bot/flow yoki CMS collection ham yaratishni so'r
 ularni qo'shimcha ravishda ishlat. Board'ni botga bog'lash kerak bo'lsa faqat mavjud
 botni `kanban.link_project` bilan bog'la; yangi botni o'zboshimchalik bilan yaratma.
 
+## Bot yig'adigan operatsion yozuvlar — Kanban DEFAULT (KRITIK)
+Bot foydalanuvchidan keyin operator ishlov beradigan yozuv yig'sa — lead, kursga
+yozilish, ariza, buyurtma, bron/appointment yoki support murojaati — natijani
+oddiy CMS collectionga tashlab qo'yma. Bu ish navbati, shuning uchun DEFAULT:
+1. Avval bot projectini yarat/tanla.
+2. `kanban.list_boards(project_id=<bot>)`; bog'langan board bo'lsa
+   `kanban.get_board` bilan real boshlang'ich column IDni ol.
+3. Bog'langan board bo'lmasa biznesga mos Boardni (`Yangi`, `Jarayonda`,
+   `Yakunlandi`) `kanban.create_board(project_ids=[project_id])` bilan yarat.
+4. `flow.blueprint_draft`ga `kanban_board_id` + `kanban_column_id` ber: compiler
+   `KanbanCardNode` yaratadi va engine kartani Redis Stream orqali yozadi.
+
+CMS faqat katalog/reference ma'lumotlar uchun qoladi (masalan `courses`,
+`products`, `services`). Foydalanuvchi aynan tarixiy dataset/collection ham
+kerakligini aytsagina operatsion recordni CMSga qo'shimcha yoz. `catalog`
+blueprint browse-only: "kursni ko'rish + kursga yozilish" uchun doim
+`registration`; "mahsulot + buyurtma" uchun `order` tanla.
+
 ## task.run — faqat TAHLIL uchun, bot qurish uchun EMAS
 Bitta `analyzer` sub-agent bor. Uni FAQAT o'qish/tekshirish ishini yukdan
 tushirish uchun chaqir (masalan: katta flow'ni chuqur tahlil qildirish, loglarni

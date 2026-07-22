@@ -147,6 +147,22 @@ class BotBlueprint(BaseModel):
         default=None,
         description="Destination relation field receiving selected_item.id from full_data.",
     )
+    kanban_board_id: str | None = Field(
+        default=None,
+        description="Linked Board UUID used as the operational destination instead of a CMS collection.",
+    )
+    kanban_column_id: str | None = Field(
+        default=None,
+        description="Real initial column UUID from kanban.get_board.",
+    )
+    kanban_card_title: str | None = Field(
+        default=None,
+        description="Optional runtime template for the created/upserted Board card title.",
+    )
+    kanban_card_description: str | None = Field(
+        default=None,
+        description="Optional runtime template for the Board card description.",
+    )
     include_confirmation: bool = True
     success_message: str = "✅ Ma'lumotlaringiz qabul qilindi."
     cancel_message: str = "Bekor qilindi. /start orqali qayta boshlashingiz mumkin."
@@ -168,8 +184,22 @@ class BotBlueprint(BaseModel):
             self.options = definition.options_model.model_validate(self.options).model_dump()
         elif self.options:
             raise ValueError(f"{self.pattern} does not accept custom options")
-        if definition.requires_destination and not self.destination_collection:
-            raise ValueError(f"{self.pattern} requires destination_collection")
+        has_kanban = bool(self.kanban_board_id and self.kanban_column_id)
+        if bool(self.kanban_board_id) != bool(self.kanban_column_id):
+            raise ValueError("kanban_board_id and kanban_column_id must be provided together")
+        if self.pattern == "catalog" and (
+            self.fields
+            or self.destination_collection
+            or self.relation_field
+            or self.kanban_board_id
+        ):
+            raise ValueError(
+                "catalog is browse-only; use registration/order when the user submits data"
+            )
+        if definition.requires_destination and not self.destination_collection and not has_kanban:
+            raise ValueError(
+                f"{self.pattern} requires destination_collection or a linked Kanban board+column"
+            )
         if definition.requires_fields and not self.fields:
             raise ValueError(f"{self.pattern} requires at least one capture field")
         if definition.requires_catalog and not self.catalog_collection:
@@ -272,6 +302,40 @@ def _confirmation_text(blueprint: BotBlueprint) -> str:
         rows.append(f"Tanlov: {{{{{blueprint.selection_state_key}.{blueprint.catalog_label_field}}}}}")
     rows.extend(f"{field.label}: {{{{{field.key}}}}}" for field in blueprint.fields)
     return "\n".join(rows)
+
+
+def _kanban_data(blueprint: BotBlueprint) -> dict[str, Any]:
+    selection = ""
+    if blueprint.pattern in {"registration", "order"}:
+        selection = (
+            f"{{{{{blueprint.selection_state_key}.{blueprint.catalog_label_field}}}}}"
+        )
+    default_title = " — ".join(
+        part
+        for part in (
+            f"{{{{{blueprint.fields[0].key}}}}}" if blueprint.fields else blueprint.title,
+            selection,
+        )
+        if part
+    )
+    description_rows = []
+    if selection:
+        description_rows.append(f"Tanlov: {selection}")
+    description_rows.extend(f"{field.label}: {{{{{field.key}}}}}" for field in blueprint.fields)
+    external_key = f"{{{{chat_id}}}}:{blueprint.pattern}"
+    if blueprint.pattern in {"registration", "order"}:
+        external_key += f":{{{{{blueprint.selection_state_key}.id}}}}"
+    return {
+        "boardId": blueprint.kanban_board_id,
+        "columnId": blueprint.kanban_column_id,
+        "operation": "upsert",
+        "kind": blueprint.pattern,
+        "title": blueprint.kanban_card_title or default_title,
+        "description": blueprint.kanban_card_description or "\n".join(description_rows),
+        "priority": "normal",
+        "externalKey": external_key,
+        "outputKey": "kanban_card",
+    }
 
 
 def _data_flow(blueprint: BotBlueprint) -> FlowDocument:
@@ -427,24 +491,35 @@ def _data_flow(blueprint: BotBlueprint) -> FlowDocument:
         previous = "confirm"
         save_source_handle = "target-handler-confirm-✅ Tasdiqlash"
 
-    mappings: dict[str, str] = {
-        str(field.collection_field or field.key): field.key for field in blueprint.fields
-    }
-    if blueprint.pattern in {"registration", "order"} and blueprint.relation_field:
-        # full_data normalizes Mongo `_id` to public `id` in runtime state.
-        mappings[blueprint.relation_field] = f"{{{{{blueprint.selection_state_key}.id}}}}"
-    nodes.append(
-        _node(
-            save_id,
-            "CollectionNode",
-            {
-                "collection_name": blueprint.destination_collection,
-                "fieldMappings": mappings,
-            },
-            960 + len(blueprint.fields) * 640,
-            -180 if blueprint.include_confirmation else 0,
+    if blueprint.kanban_board_id and blueprint.kanban_column_id:
+        nodes.append(
+            _node(
+                save_id,
+                "KanbanCardNode",
+                _kanban_data(blueprint),
+                960 + len(blueprint.fields) * 640,
+                -180 if blueprint.include_confirmation else 0,
+            )
         )
-    )
+    else:
+        mappings: dict[str, str] = {
+            str(field.collection_field or field.key): field.key for field in blueprint.fields
+        }
+        if blueprint.pattern in {"registration", "order"} and blueprint.relation_field:
+            # full_data normalizes Mongo `_id` to public `id` in runtime state.
+            mappings[blueprint.relation_field] = f"{{{{{blueprint.selection_state_key}.id}}}}"
+        nodes.append(
+            _node(
+                save_id,
+                "CollectionNode",
+                {
+                    "collection_name": blueprint.destination_collection,
+                    "fieldMappings": mappings,
+                },
+                960 + len(blueprint.fields) * 640,
+                -180 if blueprint.include_confirmation else 0,
+            )
+        )
     nodes.append(
         _node(
             "success",

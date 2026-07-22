@@ -11,6 +11,10 @@ appointment kabi odatiy business journey bo'lsa node'larni bittalab yozma:
 1. Foydalanuvchining xom talabini `flow.suggest_blueprints(intent=...)`ga ber;
    kerak bo'lsa `flow.list_blueprints` bilan butun registry'ni ko'r va mos typed
    patternni tanla.
+   Eng yuqori mos actionable patternni saqla: intentda yozilish/buyurtma/ariza
+   bo'lsa uni browse-only `catalog`ga pasaytirma.
+   Global kontekstda yangi bot so'ralgan bo'lsa projectni blueprintdan OLDIN
+   yarat — `global` state'da draft/build qilib keyin ko'chirma.
 2. `flow.blueprint_draft` bilan registrydagi tavsiya fieldlar/defaultlardan to'liq
    typed draft va `cms_schema_plan` ol; BotBlueprint JSONini yoki field kindlarini
    qo'lda o'ylab topma. `project.create` hozirgina clean /start→welcome placeholder
@@ -22,6 +26,9 @@ appointment kabi odatiy business journey bo'lsa node'larni bittalab yozma:
    `phone` desa uni umumiy `text`ga almashtirma. Field turi yaratilgach immutable;
    xato yaratilgan bo'lsa buildni aylanib o'tma, fieldni olib tashlab to'g'ri kind
    bilan qayta yarat.
+   Lead/registration/order/appointment/support natijasi uchun esa avval bog'langan
+   Board+columnni ol/yarat va draftga `kanban_board_id`/`kanban_column_id` ber;
+   destination collection yaratma. Katalog (`courses/products/services`) CMSda qoladi.
 4. `flow.blueprint_preview` bilan biznes specni tekshir.
 5. `flow.build_blueprint` bilan compile + semantic validate + simulate + regression
    baseline'ni BITTA transactionda bajar. Validation/simulation yiqilsa u oldingi
