@@ -141,7 +141,12 @@ def test_collection_tool_data_defaults_and_keys():
     assert dumped["tool"] == "collection"  # engine tool identifikatori (defaults)
     assert dumped["toolName"] == "debts"
     assert dumped["collection"] == "debts"
-    assert dumped["action"] == "create"  # manifest default
+    assert dumped["operation"] == "read"  # canonical template-mode default
+    assert dumped["filterMatch"] == "and"
+    assert dumped["filterConditions"] == []
+    assert dumped["documentFields"] == []
+    assert dumped["changeFields"] == []
+    assert "action" not in dumped  # removed legacy field must not reach runtime
 
 
 def test_collection_tool_data_forbids_extra_fields():
