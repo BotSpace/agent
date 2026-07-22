@@ -666,6 +666,7 @@ def validate(
     # ── 6. Unknown {{var}} references (#9b, conservative) ──────────────
     issues.extend(_collection_mapping_issues(flow))
     issues.extend(_button_template_issues(flow))
+    issues.extend(_collection_data_issues(flow))
     issues.extend(_unknown_variable_warnings(flow, module_map))
 
     # ── 7. Screen-specific button → global trigger over-use ────────────
@@ -1138,6 +1139,66 @@ def _button_template_issues(flow: FlowDocument) -> list[ValidationIssue]:
         if isinstance(keyboard, dict):
             scan_rows(node, keyboard.get("inline"))
             scan_rows(node, keyboard.get("reply"))
+    return out
+
+
+def _collection_data_issues(flow: FlowDocument) -> list[ValidationIssue]:
+    """Validate runtime collection-backed keyboard definitions."""
+    out: list[ValidationIssue] = []
+
+    def walk(node: FlowNode, value: object) -> None:
+        if isinstance(value, list):
+            for item in value:
+                walk(node, item)
+            return
+        if not isinstance(value, dict):
+            return
+        collection_data = value.get("collectionData")
+        if isinstance(collection_data, dict):
+            collection = collection_data.get("collection")
+            field = collection_data.get("field")
+            text = collection_data.get("text")
+            pattern = collection_data.get("callbackDataPattern")
+            has_template = isinstance(text, str) and bool(_SIMPLE_VAR_RE.search(text))
+            if not isinstance(collection, str) or not collection.strip():
+                out.append(
+                    ValidationIssue(
+                        "error",
+                        "collection_data_collection_required",
+                        "collectionData.collection must be a CMS collection slug.",
+                        node_id=node.id,
+                    )
+                )
+            if not (isinstance(field, str) and field.strip()) and not has_template:
+                out.append(
+                    ValidationIssue(
+                        "error",
+                        "invalid_collection_data_text",
+                        "collectionData needs `field` or a double-brace text template "
+                        "such as `{{name}} — {{price}}`. Single braces like `{name}` "
+                        "are not resolved by the engine.",
+                        node_id=node.id,
+                    )
+                )
+            if isinstance(pattern, str) and pattern and isinstance(collection, str):
+                expected = f"collection:{collection}:{{id}}"
+                if pattern != expected:
+                    out.append(
+                        ValidationIssue(
+                            "error",
+                            "invalid_collection_data_callback",
+                            f"collectionData callback must be `{expected}` (or omitted "
+                            "to use the engine default), so collection_id/full_data can resolve it.",
+                            node_id=node.id,
+                        )
+                    )
+        for child in value.values():
+            walk(node, child)
+
+    for node in flow.nodes:
+        data = node.data if isinstance(node.data, dict) else {}
+        walk(node, data.get("rows"))
+        walk(node, data.get("keyboard"))
     return out
 
 
