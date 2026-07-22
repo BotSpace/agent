@@ -228,6 +228,96 @@ async def get_collection(input: GetCollectionInput, ctx: ToolContext) -> ToolRes
     )
 
 
+class SchemaAssistantInput(BaseModel):
+    collections: list[str] = Field(
+        default_factory=list,
+        description="Collection sluglari. Bo'sh bo'lsa loyihadagi barcha collectionlar olinadi.",
+    )
+    project_id: str | int | None = None
+
+
+@tool(
+    name="cms.schema_assistant",
+    description=(
+        "Return a compact, agent-oriented CMS contract: exact collection slugs, field "
+        "names/types, required flags, relation targets and safe CollectionNode mappings. "
+        "Call before building any flow that reads or writes CMS data."
+    ),
+    input_model=SchemaAssistantInput,
+    core=True,
+)
+async def schema_assistant(input: SchemaAssistantInput, ctx: ToolContext) -> ToolResult:
+    pid = resolve_project_id(ctx, input.project_id)
+    if pid is None:
+        return ToolResult.error("No project_id.")
+    names = [name.strip() for name in input.collections if name.strip()]
+    try:
+        if not names:
+            listed = await _backend(ctx).cms_list_collections(
+                pid,
+                page_size=100,
+                auth_claims=ctx.state.get("auth_claims"),
+            )
+            names = [str(item.get("name")) for item in listed if isinstance(item, dict) and item.get("name")]
+        contracts: list[dict[str, Any]] = []
+        for name in names:
+            collection = await _backend(ctx).cms_get_collection(
+                pid,
+                name,
+                auth_claims=ctx.state.get("auth_claims"),
+            )
+            fields = []
+            for raw in collection.get("fields") or []:
+                if not isinstance(raw, dict) or not raw.get("name"):
+                    continue
+                kind = raw.get("kind") or raw.get("type") or "text"
+                field = {
+                    "name": str(raw["name"]),
+                    "kind": str(kind),
+                    "required": bool(raw.get("required")),
+                }
+                relation = raw.get("relation_collection") or raw.get("relationCollection")
+                if relation:
+                    field["relation_collection"] = str(relation)
+                fields.append(field)
+            contracts.append(
+                {
+                    "name": name,
+                    "label": collection.get("label"),
+                    "fields": fields,
+                    "write_contract": {
+                        "node_type": "CollectionNode",
+                        "collection_name": name,
+                        "fieldMappings": {
+                            field["name"]: (
+                                "{{selected_item.id}}" if field["kind"] == "relation" else field["name"]
+                            )
+                            for field in fields
+                        },
+                    },
+                }
+            )
+    except BackendError as exc:
+        return _error(exc)
+    lines = [f"CMS contract — {len(contracts)} collection:"]
+    for contract in contracts:
+        rendered = []
+        for field in contract["fields"]:
+            suffix = "*" if field["required"] else ""
+            relation = f"→{field['relation_collection']}" if field.get("relation_collection") else ""
+            rendered.append(f"{field['name']}:{field['kind']}{relation}{suffix}")
+        lines.append(f"• {contract['name']}: {', '.join(rendered) or "(field yo'q)"}")
+    lines.append(
+        "Mapping qoidasi: oddiy capture uchun yalang'och state key; relation uchun "
+        "tanlangan full_data hujjatning `{{selected_item.id}}` qiymati. Labelni slug o'rnida ishlatmang."
+    )
+    return ToolResult.ok(
+        "\n".join(lines),
+        data={"contracts": contracts},
+        data_in_content=True,
+    )
+
+
 class CreateCollectionInput(BaseModel):
     # `initial_schema` is a very common alias the model invents for `fields`;
     # accept it so the schema isn't silently dropped (→ fieldless collection).
@@ -865,6 +955,7 @@ def build_cms_tools() -> list[Tool]:
     return [
         list_collections,
         get_collection,
+        schema_assistant,
         create_collection,
         delete_collection,
         add_field,

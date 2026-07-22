@@ -26,6 +26,7 @@ from ...flow import (
     get_node_spec,
     validate,
 )
+from ...flow.repair import repair_flow
 from .._common import resolve_concrete_project_id
 from ..base import Tool, ToolContext, ToolResult, tool
 from .actions import build_flow_action_tools, remap_button_edge_handles
@@ -642,6 +643,63 @@ async def flow_validate(_: FlowValidateInput, ctx: ToolContext) -> ToolResult:
     return ToolResult.ok(result.render(), data=summary, state_updates={"last_validation": summary})
 
 
+class FlowAutoRepairInput(BaseModel):
+    apply_layout: bool = Field(
+        default=False,
+        description="True bo'lsa repairdan keyin node pozitsiyalarini ham auto-layout qiladi.",
+    )
+
+
+@tool(
+    name="flow.auto_repair",
+    description=(
+        "Conservatively repair unambiguous legacy/common flow mistakes: old state object, "
+        "unsafe typed `any` triggers, callback state type, state_ templates, collection "
+        "callbacks/global triggers, contact/location button aliases and bare nested CMS "
+        "mappings. Returns every applied change and re-validates; never invents nodes or "
+        "deletes business logic."
+    ),
+    input_model=FlowAutoRepairInput,
+    core=True,
+)
+async def flow_auto_repair(input: FlowAutoRepairInput, ctx: ToolContext) -> ToolResult:
+    original = _load_working_flow(ctx)
+    repaired, changes = repair_flow(original)
+    if input.apply_layout and changes:
+        auto_layout(repaired)
+        changes.append("Node pozitsiyalari auto-layout qilindi")
+    result = validate(
+        repaired,
+        known_collections=_known_collections(ctx),
+        collection_schemas=_collection_schemas(ctx),
+        module_nodes=_module_nodes(ctx),
+    )
+    summary = {
+        "ok": result.ok,
+        "repairs": changes,
+        "errors": [issue.message for issue in result.errors],
+        "warnings": [issue.message for issue in result.warnings],
+    }
+    if not changes:
+        return ToolResult.ok(
+            "Avtomatik tuzatiladigan xavfsiz muammo topilmadi.\n" + result.render(),
+            data=summary,
+            state_updates={"last_validation": summary},
+        )
+    lines = [f"{len(changes)} ta xavfsiz repair qo'llandi:"]
+    lines.extend(f"• {change}" for change in changes)
+    lines.append("\nKeyingi validation:\n" + result.render())
+    return ToolResult.ok(
+        "\n".join(lines),
+        data=summary,
+        state_updates={
+            "working_flow": repaired.model_dump(),
+            "flow_dirty": True,
+            "last_validation": summary,
+        },
+    )
+
+
 # ── flow.layout_auto ─────────────────────────────────────────────────────────
 
 
@@ -951,8 +1009,36 @@ async def flow_diff(_: FlowDiffInput, ctx: ToolContext) -> ToolResult:
     baseline = FlowDocument.model_validate(baseline_raw) if baseline_raw else FlowDocument()
     current = _load_working_flow(ctx)
     d = diff(baseline, current)
+    current_nodes = {node.id: node for node in current.nodes}
+    baseline_nodes = {node.id: node for node in baseline.nodes}
+    lines: list[str] = []
+    if d.added_nodes:
+        lines.append(
+            "Qo'shiladi: "
+            + ", ".join(
+                f"{node_id} ({current_nodes[node_id].type})" for node_id in d.added_nodes
+            )
+        )
+    if d.modified_nodes:
+        lines.append(
+            "O'zgartiriladi: "
+            + ", ".join(
+                f"{node_id} ({current_nodes[node_id].type})" for node_id in d.modified_nodes
+            )
+        )
+    if d.removed_nodes:
+        lines.append(
+            "O'chiriladi: "
+            + ", ".join(
+                f"{node_id} ({baseline_nodes[node_id].type})" for node_id in d.removed_nodes
+            )
+        )
+    if d.added_edges or d.removed_edges:
+        lines.append(f"Bog'lanishlar: +{len(d.added_edges)}, -{len(d.removed_edges)}")
+    if not lines:
+        lines.append("O'zgarish yo'q.")
     return ToolResult.ok(
-        d.render(),
+        "\n".join(lines),
         data={
             "added_nodes": d.added_nodes,
             "removed_nodes": d.removed_nodes,
@@ -1244,6 +1330,8 @@ async def flow_save(input: FlowSaveInput, ctx: ToolContext) -> ToolResult:
 
 
 def build_flow_tools() -> list[Tool]:
+    from .blueprints import build_blueprint_tools
+
     # LAZY schema loading: drop the ~23 typed `flow.add_*` tools (each carried a
     # full per-node JSON schema → ~16K tokens/request). All node types go through
     # the generic `flow.add_node`; the agent fetches a type's schema on demand
@@ -1255,6 +1343,7 @@ def build_flow_tools() -> list[Tool]:
     ]
     return [
         flow_get,
+        *build_blueprint_tools(),
         *action_tools,
         *build_flow_template_tools(),
         flow_add_node,
@@ -1264,6 +1353,7 @@ def build_flow_tools() -> list[Tool]:
         flow_connect,
         flow_disconnect,
         flow_validate,
+        flow_auto_repair,
         flow_layout_auto,
         flow_set_languages,
         flow_list_node_types,

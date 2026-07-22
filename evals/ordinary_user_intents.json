@@ -1,0 +1,34 @@
+[
+  {
+    "intent": "o'quv markazga bot kerak kursni tanlasin ism telefonini qoldirsin",
+    "expected": "registration"
+  },
+  {
+    "intent": "mijozlardan ism va telefon olib ariza yig'adigan oddiy bot qil",
+    "expected": "lead"
+  },
+  {
+    "intent": "mahsulotlarim collectionga qo'shilsa bot katalogi avtomatik yangilansin",
+    "expected": "catalog"
+  },
+  {
+    "intent": "restoran uchun ovqatni tanlab buyurtma qoldiradigan bot kerak",
+    "expected": "order"
+  },
+  {
+    "intent": "odam muammosini yozsin operator keyin javob beradigan support bot qil",
+    "expected": "support"
+  },
+  {
+    "intent": "xizmatdan keyin 5 yulduz baho va fikr yig'ib ol",
+    "expected": "feedback"
+  },
+  {
+    "intent": "klinika qabuliga vaqt band qilib uchrashuvga yozadigan bot kerak",
+    "expected": "appointment"
+  },
+  {
+    "intent": "kompaniyam haqida malumot va faq ko'rsatadigan bot",
+    "expected": "info"
+  }
+]
