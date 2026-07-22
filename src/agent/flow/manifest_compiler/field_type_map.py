@@ -88,6 +88,11 @@ FIELD_TYPE_MAP: dict[str, FieldTypeSpec] = {
         data_key_fields=("key", "contextKeyField"),
         note="UI tanlaydigan collection slug/name — har doim string",
     ),
+    "board-select": _spec(
+        FieldKind.SCALAR_STR,
+        data_key_fields=("key", "columnKey"),
+        note="owner-global Kanban board UUID + destination column UUID",
+    ),
     "collection-binding": _spec(
         FieldKind.OBJECT, note="collection + field map + filter + pagination nested config"
     ),
@@ -174,7 +179,7 @@ BACKEND_ALLOWED_FIELD_TYPES: frozenset[str] = frozenset({
 FRONTEND_NODE_FIELD_TYPES: frozenset[str] = frozenset({
     "description", "widget", "text", "number", "textarea", "select", "checkbox",
     "switch", "stringArray", "stateConfig", "richTextMessage", "mediaMessage",
-    "array-editor", "code-editor", "collection-select", "state-type-select",
+    "array-editor", "code-editor", "collection-select", "board-select", "state-type-select",
     "condition-list", "cron-editor", "trigger-config", "dynamic-params",
     "tool-params", "action-recipients", "action-keyboard", "nested-rows",
     "collection-binding", "credential", "dynamic_inputs", "dynamic_select",

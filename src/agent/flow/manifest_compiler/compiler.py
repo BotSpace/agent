@@ -179,7 +179,7 @@ def _emit_field(f: dict, defaults: dict) -> list[_Emit]:
     options = [o["value"] for o in f.get("options") or [] if isinstance(o, dict) and "value" in o]
     out.append((key, _scalar_type(spec.kind, options or None), desc, not optional, defaults.get(key)))
     # collection-select / dynamic_select ikkilamchi kalitlari (ixtiyoriy).
-    for attr in ("contextKeyField", "credentialKey"):
+    for attr in ("contextKeyField", "credentialKey", "columnKey"):
         dk = f.get(attr)
         if dk:
             out.append((dk, str, None, False, defaults.get(dk)))
