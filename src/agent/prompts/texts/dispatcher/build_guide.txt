@@ -25,6 +25,10 @@ kerakli node(lar)ning aniq schemasini SO'RAB OL, keyin qo'sh.
      ISHLAMAYDI — `rows` statik ro'yxat. Collection'dan dinamik tugmalar uchun
      `CustomCodeNode`da sinxron `db_find(...)` → `rows` yasab `send_message(...)`.
      Goja async runtime emas: `await db_find` / `await send_message` YOZMA.
+     CMS hujjatini `full_data`/`collection_id` qilib ushlaydigan callback qiymati
+     FAQAT `collection:<collection_slug>:<document_id>` bo'ladi (masalan
+     `collection:courses:` + doc._id); trigger `starts_with` qiymati aynan
+     `collection:courses:`. `course:<id>` kabi o'zboshimcha prefiks ishlamaydi.
    Butun toifa kerak bo'lsa `flow.list_node_types(category="payment"/"ai"/...)`.
 3. `flow.add_node(id, type, data, after?)` bilan qo'sh — `data` faqat 2-qadamda
    OLINGAN schemadagi maydonlar bilan, OBYEKT sifatida (JSON string EMAS). Har node
@@ -67,7 +71,9 @@ uni O'ZING tekshir — bu qadamni HECH QACHON tashlab ketma:
    REGRESSION test sifatida saqla — keyingi tahrir eski oqimni jimgina buzmasin
    (`flow.test_run` bilan qayta tekshiriladi).
 Simulyator vaqtincha ishlamasa ("Simulyator servisi ishga tushmagan") — `release.debug`
-bilan debug botda sinashni taklif qil.
+bilan debug botda sinashni taklif qil. Collection yuklash, node bajarilishi yoki
+assert xatosini "vaqtinchalik" deb taxmin qilma va "bot tayyor/flow to'g'ri" dema:
+xato sababini tuzatib muvaffaqiyatli simulate qilmaguncha natijani tasdiqlama.
 
 ## INTENT → SPEC (qurishdan oldin)
 Yangi qurishda (working_flow bo'sh) qurishdan OLDIN ichingда qisqa spec o'yla:
