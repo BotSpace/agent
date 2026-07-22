@@ -84,9 +84,9 @@ FIELD_TYPE_MAP: dict[str, FieldTypeSpec] = {
     # — Erkin obyekt / config —
     "json": _spec(FieldKind.OBJECT, note="modul json field (backend ALLOWED)"),
     "collection-select": _spec(
-        FieldKind.OBJECT,
+        FieldKind.SCALAR_STR,
         data_key_fields=("key", "contextKeyField"),
-        note="collection + (ixtiyoriy) field-mapping/filter/sort nested config",
+        note="UI tanlaydigan collection slug/name — har doim string",
     ),
     "collection-binding": _spec(
         FieldKind.OBJECT, note="collection + field map + filter + pagination nested config"

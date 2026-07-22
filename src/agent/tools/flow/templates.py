@@ -296,6 +296,44 @@ async def flow_apply_template(input: FlowApplyTemplateInput, ctx: ToolContext) -
             "o'rnatilmaguncha bot to'liq ishlamaydi."
         )
 
+    # Credential IDs are account-scoped and therefore can never be safely
+    # baked into a public template. Surface every missing credential at apply
+    # time so the builder resolves it before saving a bot that only fails at
+    # runtime.
+    from ...flow.manifest_compiler.loader import load_node_manifests
+
+    manifests = load_node_manifests()
+    required_credentials: list[dict[str, str]] = []
+    for node in working["nodes"]:
+        manifest = manifests.get(str(node.get("type") or ""), {})
+        node_data = node.get("data") if isinstance(node.get("data"), dict) else {}
+        for field in manifest.get("content") or []:
+            if not isinstance(field, dict) or field.get("type") != "credential":
+                continue
+            key = str(field.get("key") or "credential_id")
+            value = node_data.get(key)
+            legacy_key = str(node_data.get("apiKey") or "").strip()
+            if value not in (None, "", 0, "0") or legacy_key:
+                continue
+            required_credentials.append({
+                "node_id": str(node.get("id") or ""),
+                "node_type": str(node.get("type") or ""),
+                "field": key,
+                "type_key": str(field.get("credentialType") or ""),
+            })
+
+    credential_note = ""
+    if required_credentials:
+        listing = ", ".join(
+            f"{item['node_id']}→{item['type_key']}"
+            for item in required_credentials
+        )
+        credential_note = (
+            f" Accountga bog'liq credentiallar yetishmaydi: {listing}. "
+            "credentials.list(type_key=...) orqali mavjud IDni topib tegishli "
+            "node credential_id maydoniga yoz; mavjud bo'lmasa foydalanuvchidan so'ra."
+        )
+
     data: dict[str, Any] = {
         "template_id": tpl.get("id"),
         "slug": tpl.get("slug"),
@@ -306,10 +344,12 @@ async def flow_apply_template(input: FlowApplyTemplateInput, ctx: ToolContext) -
     }
     if required_envs:
         data["required_envs"] = required_envs
+    if required_credentials:
+        data["required_credentials"] = required_credentials
     return ToolResult.ok(
         f"Applied template `{tpl.get('name')}` (id={tpl.get('id')}): "
         f"{len(nodes)} nodes + {len(edges)} edges loaded.{norm_note} "
-        f"Edit with flow.add_*, flow.connect, flow.patch as needed.{env_note}",
+        f"Edit with flow.add_*, flow.connect, flow.patch as needed.{env_note}{credential_note}",
         data=data,
         state_updates={
             "working_flow": working,

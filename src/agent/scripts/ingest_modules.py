@@ -20,6 +20,8 @@ flow_list_node_types after the module is enabled.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
 import sys
 from typing import Any
@@ -92,17 +94,39 @@ async def _clear_existing() -> int:
     return rows
 
 
-async def _delete_one(slug: str) -> None:
+async def _existing_hashes() -> dict[str, str]:
+    s = get_settings()
+    dsn = _normalize_psycopg_url(s.database_url)
+    async with await psycopg.AsyncConnection.connect(dsn) as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "SELECT metadata->>'module_slug', metadata->>'content_hash' "
+                "FROM agent_memory WHERE project_id = %s AND kind = %s",
+                (MODULE_PROJECT_ID, MODULE_KIND),
+            )
+            return {str(row[0]): str(row[1] or "") for row in await cur.fetchall() if row[0]}
+
+
+async def _delete_slugs(slugs: list[str]) -> int:
+    if not slugs:
+        return 0
     s = get_settings()
     dsn = _normalize_psycopg_url(s.database_url)
     async with await psycopg.AsyncConnection.connect(dsn) as conn:
         async with conn.cursor() as cur:
             await cur.execute(
                 "DELETE FROM agent_memory WHERE project_id = %s AND kind = %s "
-                "AND metadata->>'module_slug' = %s",
-                (MODULE_PROJECT_ID, MODULE_KIND, slug),
+                "AND metadata->>'module_slug' = ANY(%s)",
+                (MODULE_PROJECT_ID, MODULE_KIND, slugs),
             )
+            rows = cur.rowcount
         await conn.commit()
+    return rows
+
+
+def _content_hash(content: str, metadata: dict[str, Any]) -> str:
+    payload = json.dumps([content, metadata], sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(payload.encode()).hexdigest()
 
 
 def _metadata(mod: dict[str, Any]) -> dict[str, Any]:
@@ -141,28 +165,39 @@ async def ingest(*, rebuild: bool = False) -> dict[str, int]:
         deleted = await _clear_existing()
         logger.info("Rebuild: cleared %d existing module entries", deleted)
 
-    retriever = get_retriever()
-    indexed = 0
+    desired: dict[str, tuple[str, dict[str, Any]]] = {}
     for mod in modules:
         slug = mod.get("slug")
         if not slug:
             continue
-        # Upsert mode (no rebuild): drop the prior row so the embedding refreshes
-        # instead of accumulating duplicates.
-        if not rebuild:
-            await _delete_one(str(slug))
+        content = _summary_text(mod)
+        metadata = _metadata(mod)
+        metadata["content_hash"] = _content_hash(content, metadata)
+        desired[str(slug)] = (content, metadata)
+
+    existing = {} if rebuild else await _existing_hashes()
+    changed = [slug for slug, (_, meta) in desired.items() if existing.get(slug) != meta["content_hash"]]
+    stale = [slug for slug in existing if slug not in desired]
+    if not rebuild:
+        deleted += await _delete_slugs(changed + stale)
+
+    retriever = get_retriever()
+    indexed = 0
+    for slug in changed if not rebuild else desired:
+        content, metadata = desired[slug]
         await retriever.remember(
             project_id=MODULE_PROJECT_ID,
             user_id=None,
             kind=MODULE_KIND,
-            content=_summary_text(mod),
-            metadata=_metadata(mod),
+            content=content,
+            metadata=metadata,
         )
         indexed += 1
     logger.info(
-        "Done. fetched=%d indexed=%d deleted=%d", len(modules), indexed, deleted
+        "Done. fetched=%d indexed=%d skipped=%d deleted=%d",
+        len(modules), indexed, len(desired) - indexed, deleted,
     )
-    return {"fetched": len(modules), "indexed": indexed, "deleted": deleted}
+    return {"fetched": len(modules), "indexed": indexed, "skipped": len(desired) - indexed, "deleted": deleted}
 
 
 def main() -> None:

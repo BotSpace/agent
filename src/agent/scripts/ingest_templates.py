@@ -17,6 +17,8 @@ search; we fetch it separately when applying a match).
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
 import sys
 from typing import Any
@@ -75,17 +77,39 @@ async def _clear_existing() -> int:
     return rows
 
 
-async def _delete_one(template_id: str | int) -> None:
+async def _existing_hashes() -> dict[str, str]:
+    s = get_settings()
+    dsn = _normalize_psycopg_url(s.database_url)
+    async with await psycopg.AsyncConnection.connect(dsn) as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "SELECT metadata->>'template_id', metadata->>'content_hash' "
+                "FROM agent_memory WHERE project_id = %s AND kind = %s",
+                (TEMPLATE_PROJECT_ID, TEMPLATE_KIND),
+            )
+            return {str(row[0]): str(row[1] or "") for row in await cur.fetchall() if row[0]}
+
+
+async def _delete_ids(template_ids: list[str]) -> int:
+    if not template_ids:
+        return 0
     s = get_settings()
     dsn = _normalize_psycopg_url(s.database_url)
     async with await psycopg.AsyncConnection.connect(dsn) as conn:
         async with conn.cursor() as cur:
             await cur.execute(
                 "DELETE FROM agent_memory WHERE project_id = %s AND kind = %s "
-                "AND metadata->>'template_id' = %s",
-                (TEMPLATE_PROJECT_ID, TEMPLATE_KIND, str(template_id)),
+                "AND metadata->>'template_id' = ANY(%s)",
+                (TEMPLATE_PROJECT_ID, TEMPLATE_KIND, template_ids),
             )
+            rows = cur.rowcount
         await conn.commit()
+    return rows
+
+
+def _content_hash(content: str, metadata: dict[str, Any]) -> str:
+    payload = json.dumps([content, metadata], sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(payload.encode()).hexdigest()
 
 
 async def ingest(*, rebuild: bool = False) -> dict[str, int]:
@@ -101,17 +125,12 @@ async def ingest(*, rebuild: bool = False) -> dict[str, int]:
         deleted = await _clear_existing()
         logger.info("Rebuild: cleared %d existing template entries", deleted)
 
-    retriever = get_retriever()
-    indexed = 0
+    desired: dict[str, tuple[str, dict[str, Any]]] = {}
     for tpl in templates:
         tid = tpl.get("id")
         if tid is None:
             continue
         content = _summary_text(tpl)
-        # In upsert mode (no rebuild): drop the prior row for this template
-        # so the embedding refreshes instead of accumulating duplicates.
-        if not rebuild:
-            await _delete_one(tid)
         # Only the env KEYS go into metadata (not descriptions) to keep the
         # vector row small; descriptions are fetched on apply_template. Skip
         # RELEASE_BOT_TOKEN — it has its own release flow, not a user env.
@@ -134,6 +153,19 @@ async def ingest(*, rebuild: bool = False) -> dict[str, int]:
         }
         if env_keys:
             metadata["required_envs"] = env_keys
+        metadata["content_hash"] = _content_hash(content, metadata)
+        desired[str(tid)] = (content, metadata)
+
+    existing = {} if rebuild else await _existing_hashes()
+    changed = [tid for tid, (_, meta) in desired.items() if existing.get(tid) != meta["content_hash"]]
+    stale = [tid for tid in existing if tid not in desired]
+    if not rebuild:
+        deleted += await _delete_ids(changed + stale)
+
+    retriever = get_retriever()
+    indexed = 0
+    for tid in changed if not rebuild else desired:
+        content, metadata = desired[tid]
         await retriever.remember(
             project_id=TEMPLATE_PROJECT_ID,
             user_id=None,
@@ -144,8 +176,9 @@ async def ingest(*, rebuild: bool = False) -> dict[str, int]:
         indexed += 1
         if indexed % 10 == 0:
             logger.info("Indexed %d / %d", indexed, len(templates))
-    logger.info("Done. fetched=%d indexed=%d deleted=%d", len(templates), indexed, deleted)
-    return {"fetched": len(templates), "indexed": indexed, "deleted": deleted}
+    skipped = len(desired) - indexed
+    logger.info("Done. fetched=%d indexed=%d skipped=%d deleted=%d", len(templates), indexed, skipped, deleted)
+    return {"fetched": len(templates), "indexed": indexed, "skipped": skipped, "deleted": deleted}
 
 
 def main() -> None:

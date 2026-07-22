@@ -10,7 +10,7 @@ def test_custom_code_topic_registered():
     assert "callback_query.message.message_id" in text
     assert "public_" in text  # yangi public_ prefiks (vars) tushuntirilgan
     assert "private" in text  # maxfiy o'zgaruvchilar tushuntirilgan
-    assert "state_" in text  # legacy state_ prefiks ham eslatilgan
+    assert "state_" not in text  # resolve bo'lmaydigan eski prefiks qayta o'rgatilmasin
 
 
 def test_simulate_step_shows_edit_text():

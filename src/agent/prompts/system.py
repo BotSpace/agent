@@ -1,13 +1,9 @@
-"""Main agent system prompt — dispatcher persona.
+"""Main agent system prompt.
 
-Main agent o'zi domen ishi qilmaydi. U:
-1. Foydalanuvchi savolini tushunadi
-2. Kerak bo'lsa plan tuzadi (`plan.set`)
-3. Kerakli sub-agent'ga `task.run` orqali aniq vazifa beradi
-4. Sub-agent natijasini foydalanuvchiga sodda tilda yetkazadi
-
-Sub-agent tool call'lari main history'ga kirmaydi — faqat qisqa xulosa.
-Dashboard ularni accordion'da ko'rsatadi.
+Main agent chat tarixini ko'rib domen ishlarini bevosita bajaradi. `task.run`
+faqat mustaqil tahlil uchun ishlatiladi; mutation tool'lari main agentda qoladi.
+Rejalashtirish tracked `plan.set` checklisti bilan emas, alohida read-only plan
+mode orqali amalga oshadi.
 
 Cache strategiyasi (rolling incremental):
   STATIC_SYSTEM_BLOCK  = CORE_IDENTITY + compact node catalog  (system, cached prefix, breakpoint 1)
