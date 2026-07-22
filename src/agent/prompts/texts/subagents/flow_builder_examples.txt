@@ -8,7 +8,7 @@ zanjiri. Yangi misol qo'shganda quyidagi OLTIN QOIDALARga amal qil:
   1. ROOT NODE = kam bo'lsin. Root node — bu trigger'dan boshqa hech qaysi
      node'ga ulanmagan kirish nuqtasi. Faqat shular root bo'lishi mumkin:
        • Command trigger'lar (/start, /admin, /help) — har biri bitta root.
-       • CronNode (vaqt bo'yicha ishga tushadigan) — root.
+       • CronTriggerNode (vaqt bo'yicha ishga tushadigan) — root.
      Menu/inline tugma uchun ALOHIDA root trigger YARATMA.
 
   2. INLINE TUGMA → Approach A (to'g'ridan-to'g'ri edge), trigger node YO'Q.
@@ -46,7 +46,7 @@ SPEC:
   5. Edge holatlar: "⬅️ Ortga"; telefon olingach reply keyboard'ni olib tashla.
 
 NODE TANLOV (decision tree): EditOrSendMessageNode (menyu/sahifalar),
-SendTextMessageNode+request_contact (telefon), MessageTrigger(state) (capture),
+SendTextMessageNode+request_contact (telefon), MessageTrigger(state_key/state_type) (capture),
 flow.save_to_collection (leads). Trigger node faqat /start (+ "Ortga" global).
 → (ichki spec) → add_* / connect / validate / save.
 (To'liq tool zanjiri MISOL 1 + MISOL 2'ning lead-capture qismiga o'xshaydi.)
@@ -193,7 +193,7 @@ flow.add_node(
 )
 flow.add_message_trigger(
     id="capture-name",
-    data={"global": False, "filter": "any", "state": {"key": "order_name", "type": "text"}}
+    data={"global": False, "filter": "any", "state_key": "order_name", "state_type": "text"}
 )
 flow.add_node(
     id="ask-phone",
@@ -206,7 +206,7 @@ flow.add_node(
 )
 flow.add_message_trigger(
     id="capture-phone",
-    data={"global": False, "filter": "any", "state": {"key": "order_phone", "type": "contact_phone_number"}}
+    data={"type": "contact", "global": False, "filter": "any", "state_key": "order_phone", "state_type": "phone_number"}
 )
 flow.add_custom_code(
     id="save-order",
@@ -256,7 +256,7 @@ flow.add_node(
 )
 flow.add_message_trigger(
     id="user-msg",
-    data={"global": True, "state": {"key": "question", "type": "text"}}
+    data={"type": "text", "global": True, "state_key": "question", "state_type": "text"}
 )
 flow.add_ai_agent(
     id="agent",

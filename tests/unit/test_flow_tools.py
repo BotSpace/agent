@@ -185,6 +185,16 @@ async def test_safe_form_actions_build_valid_training_center_flow():
     assert not res.is_error
     assert res.data["ok"] is True, res.data
     flow = ctx.state["working_flow"]
+    nodes = {node["id"]: node for node in flow["nodes"]}
+    assert nodes["full-name-capture"]["data"]["state_key"] == "full_name"
+    assert "state" not in nodes["full-name-capture"]["data"]
+    assert nodes["phone-capture"]["data"]["state_key"] == "phone"
+    assert nodes["phone-capture"]["data"]["state_type"] == "phone_number"
+    phone_edges = [
+        edge for edge in flow["edges"]
+        if edge["source"] == "phone-ask" and edge["target"] == "phone-capture"
+    ]
+    assert phone_edges[0]["sourceHandle"] == "target-handler-phone-ask-Telefon yuborish"
     course_edges = [
         edge for edge in flow["edges"]
         if edge["source"] == "course-ask" and edge["target"] == "course-capture"

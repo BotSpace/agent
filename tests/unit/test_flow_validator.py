@@ -121,7 +121,7 @@ def test_training_center_form_flow_is_valid():
             FlowNode(
                 id="name-input",
                 type="MessageTriggerNode",
-                data={"type": "text", "filter": "any", "global": False, "state": {"key": "ism", "type": "text"}},
+                data={"type": "text", "filter": "any", "global": False, "state_key": "ism", "state_type": "text"},
             ),
             FlowNode(
                 id="ask-phone",
@@ -141,14 +141,15 @@ def test_training_center_form_flow_is_valid():
                     "type": "contact",
                     "filter": "any",
                     "global": False,
-                    "state": {"key": "telefon", "type": "phone_number"},
+                    "state_key": "telefon",
+                    "state_type": "phone_number",
                 },
             ),
             FlowNode(id="ask-age", type="SendTextMessageNode", data={"messageText": "Yoshingizni kiriting"}),
             FlowNode(
                 id="age-input",
                 type="MessageTriggerNode",
-                data={"type": "text", "filter": "any", "global": False, "state": {"key": "yosh", "type": "text"}},
+                data={"type": "text", "filter": "any", "global": False, "state_key": "yosh", "state_type": "text"},
             ),
             FlowNode(
                 id="course-menu",
@@ -518,7 +519,25 @@ def test_request_contact_button_requires_no_edge():
     assert not any(i.code == "missing_button_branch" for i in result.warnings), result.render()
 
 
-def test_constructor_contact_button_requires_no_edge():
+def test_plain_reply_keyboard_buttons_use_base_capture_edge():
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="ask", type="SendTextMessageNode", data={
+                "keyboard_kind": "reply",
+                "rows": [{"columns": [{"text": "Bugun"}, {"text": "Ertaga"}]}],
+            }),
+            FlowNode(id="capture", type="MessageTriggerNode", data={
+                "type": "text", "global": False,
+                "state_key": "day", "state_type": "text",
+            }),
+        ],
+        edges=[FlowEdge(id="e1", source="ask", target="capture")],
+    )
+    result = validate(flow)
+    assert not any(i.code == "missing_button_branch" for i in result.warnings), result.render()
+
+
+def test_contact_alias_is_rejected_in_favor_of_request_contact():
     flow = FlowDocument(
         nodes=[
             FlowNode(id="t", type="CommandTriggerNode", data={"command": "/start"}),
@@ -534,7 +553,7 @@ def test_constructor_contact_button_requires_no_edge():
         edges=[FlowEdge(id="e1", source="t", target="menu")],
     )
     result = validate(flow)
-    assert not any(i.code == "missing_button_branch" for i in result.warnings), result.render()
+    assert any(i.code == "invalid_reply_button_type" for i in result.errors), result.render()
 
 
 # ── #12: collection cross-check ──────────────────────────────────────────────
@@ -586,6 +605,20 @@ def test_set_context_keys_are_known_variables():
     # No unknown_variable warning for bare keys written via set_context.
     unknown = [i for i in result.warnings if i.code == "unknown_variable"]
     assert unknown == [], [i.message for i in unknown]
+
+
+def test_each_block_fields_are_not_treated_as_flow_variables():
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="t", type="CommandTriggerNode", data={"command": "/start"}),
+            FlowNode(id="m", type="SendTextMessageNode", data={
+                "messageText": "{{#each orders}}{{title}} — {{price}}{{/each}}",
+            }),
+        ],
+        edges=[FlowEdge(id="e1", source="t", target="m")],
+    )
+    result = validate(flow)
+    assert not any(i.code == "unknown_variable" for i in result.warnings), result.render()
 
 
 def test_underscore_state_form_is_flagged():
@@ -670,3 +703,27 @@ def test_reusable_back_button_global_trigger_ok():
     )
     res = validate(flow)
     assert not any(i.code == "global_callback_should_be_button_edge" for i in res.issues)
+
+
+def test_explicit_terminal_output_is_not_reported_as_unused():
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(id="t", type="CommandTriggerNode", data={"command": "/start"}),
+            FlowNode(
+                id="code",
+                type="CustomCodeNode",
+                data={
+                    "jsCode": "exit('done');",
+                    "outputs": [{"name": "done"}, {"name": "next"}],
+                    "terminalOutputs": ["done"],
+                },
+            ),
+            FlowNode(id="m", type="SendTextMessageNode", data={"messageText": "ok"}),
+        ],
+        edges=[
+            FlowEdge(id="e1", source="t", target="code"),
+            FlowEdge(id="e2", source="code", target="m", sourceHandle="output-next"),
+        ],
+    )
+    result = validate(flow)
+    assert not any(i.code == "unused_custom_output" for i in result.warnings), result.render()
