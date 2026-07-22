@@ -52,7 +52,6 @@ configMaps:
     # 8080, serves /api/v1/* natively in-cluster).
     BACKEND_BASE_URL: "http://backend-golang:8080"
     MONGO_BASE_URL: "mongodb://mongodb:27017"
-    ENGINE_BASE_URL: "http://engine-plugin:8090"
     AGENT_RAG_ENABLED: "true"
     AGENT_RAG_TOP_K: "6"
     # Template vector index re-sync every N hours (0 = disabled).

@@ -20,7 +20,6 @@ configMaps:
     AGENT_MAX_WALL_SECONDS: "900"
     BACKEND_BASE_URL: "http://backend-golang:8080"
     MONGO_BASE_URL: "mongodb://mongodb:27017"
-    ENGINE_BASE_URL: "http://engine-plugin:8090"
     AGENT_RAG_ENABLED: "false"
     AGENT_RAG_TOP_K: "6"
     JWT_ALGORITHM: "HS256"
