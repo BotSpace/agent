@@ -1096,33 +1096,40 @@ def _button_template_issues(flow: FlowDocument) -> list[ValidationIssue]:
     out: list[ValidationIssue] = []
 
     def scan_rows(node: FlowNode, rows: object) -> None:
-        if not isinstance(rows, list):
-            return
-        for row in rows:
-            if not isinstance(row, list):
-                continue
-            for button in row:
-                if not isinstance(button, dict):
+        def walk(value: object) -> None:
+            if isinstance(value, list):
+                for item in value:
+                    walk(item)
+                return
+            if not isinstance(value, dict):
+                return
+
+            # collectionData is the one keyboard subtree where row-document
+            # templates ({{name}}, callback {id}, …) are intentionally valid.
+            for field_name in ("text", "value"):
+                field_value = value.get(field_name)
+                if not isinstance(field_value, str) or "{{" not in field_value:
                     continue
-                for field_name in ("text", "value"):
-                    value = button.get(field_name)
-                    if not isinstance(value, str) or "{{" not in value:
-                        continue
-                    roots = {match.group(1) for match in _SIMPLE_VAR_RE.finditer(value)}
-                    unsupported = sorted(root for root in roots if root not in allowed)
-                    if "{{#each" in value or unsupported:
-                        bad = ", ".join(unsupported) or "#each"
-                        out.append(
-                            ValidationIssue(
-                                "error",
-                                "dynamic_keyboard_template_unsupported",
-                                f"Static keyboard `{field_name}` uses row-local template "
-                                f"`{bad}`. Keyboard rows do not iterate collection data. "
-                                "Build dynamic rows in synchronous CustomCode with db_find "
-                                "and send_message, or use flow.ask_buttons with concrete IDs.",
-                                node_id=node.id,
-                            )
+                roots = {match.group(1) for match in _SIMPLE_VAR_RE.finditer(field_value)}
+                unsupported = sorted(root for root in roots if root not in allowed)
+                if "{{#each" in field_value or unsupported:
+                    bad = ", ".join(unsupported) or "#each"
+                    out.append(
+                        ValidationIssue(
+                            "error",
+                            "dynamic_keyboard_template_unsupported",
+                            f"Static keyboard `{field_name}` uses row-local template "
+                            f"`{bad}`. Keyboard rows do not iterate collection data. "
+                            "Use rows[].columns[].collectionData, build rows in synchronous "
+                            "CustomCode, or use flow.ask_buttons with concrete IDs.",
+                            node_id=node.id,
                         )
+                    )
+            for key, child in value.items():
+                if key != "collectionData":
+                    walk(child)
+
+        walk(rows)
 
     for node in flow.nodes:
         data = node.data if isinstance(node.data, dict) else {}
