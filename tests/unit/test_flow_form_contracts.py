@@ -351,3 +351,27 @@ def test_collection_data_requires_global_matching_trigger() -> None:
 
     result = validate(flow)
     assert any(issue.code == "collection_data_trigger_must_be_global" for issue in result.errors)
+
+
+def test_any_message_trigger_cannot_capture_contact_phone() -> None:
+    flow = FlowDocument.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "phone",
+                    "type": "MessageTriggerNode",
+                    "data": {
+                        "type": "any",
+                        "filter": "any",
+                        "global": False,
+                        "state_key": "phone",
+                        "state_type": "phone_number",
+                    },
+                }
+            ],
+            "edges": [],
+        }
+    )
+
+    result = validate(flow)
+    assert any(issue.code == "incompatible_trigger_state_type" for issue in result.errors)
