@@ -99,9 +99,6 @@ class Settings(BaseSettings):
         default="mongodb://localhost:27017", alias="MONGO_BASE_URL"
     )
     mongo_db_prefix: str = Field(default="project_", alias="MONGO_DB_PREFIX")
-    engine_base_url: str = Field(
-        default="http://localhost:9100", alias="ENGINE_BASE_URL"
-    )
     # Engine-side flow simulator service — `flow.simulate` tool POSTs the
     # working flow + a list of user steps and gets back per-step bot messages.
     simulator_url: str = Field(
