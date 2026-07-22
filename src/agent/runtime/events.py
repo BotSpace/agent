@@ -17,6 +17,7 @@ EventType = Literal[
     "plan_set",
     "plan_update",
     "flow_changed",
+    "workflow_progress",
     "context_compacted",
     "approval_required",
     "approval_resolved",

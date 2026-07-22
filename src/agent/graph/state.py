@@ -26,6 +26,9 @@ class AgentState(TypedDict, total=False):
     flow_dirty: bool
     pending_save: bool
     last_validation: dict[str, Any] | None
+    active_blueprint: dict[str, Any] | None
+    blueprint_previous_flow: dict[str, Any] | None
+    blueprint_test_steps: list[dict[str, Any]] | None
 
     # ── cms awareness ───────────────────────────────────────────────────
     collections: list[dict[str, Any]] | None

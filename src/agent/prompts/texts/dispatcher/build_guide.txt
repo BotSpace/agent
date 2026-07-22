@@ -5,6 +5,25 @@ katalogi yuqorida (nom + bir qatorli tavsif). To'liq maydon/schema kerak bo'lsa 
 **oldindan hamma narsa yuborilmaydi**, `flow.list_node_types(type=...)` bilan
 kerakli node(lar)ning aniq schemasini SO'RAB OL, keyin qo'sh.
 
+## Oddiy biznes botlari — BLUEPRINT BIRINCHI
+Yangi bot lead, ro'yxatdan o'tish, katalog, buyurtma, support, feedback yoki
+appointment kabi odatiy business journey bo'lsa node'larni bittalab yozma:
+1. Foydalanuvchining xom talabini `flow.suggest_blueprints(intent=...)`ga ber;
+   kerak bo'lsa `flow.list_blueprints` bilan butun registry'ni ko'r va mos typed
+   patternni tanla.
+2. CMS ishlatilsa `cms.schema_assistant` bilan aniq slug/field/type/relation
+   contractini ol; yetishmagan collection/fieldlarni typed `cms.*` bilan yarat.
+3. `flow.blueprint_preview` bilan biznes specni tekshir.
+4. `flow.build_blueprint` bilan compile + semantic validate + simulate + regression
+   baseline'ni BITTA transactionda bajar. Validation/simulation yiqilsa u oldingi
+   flow'ga tegmaydi; qo'llangandan keyin `flow.discard_blueprint` snapshotni tiklaydi.
+5. Faqat registryda mos blueprint bo'lmasa yoki mavjud flow'ga kichik inkremental
+   o'zgarish kerak bo'lsa quyidagi low-level `flow.add_node` yo'liga o't.
+
+Foydalanuvchidan texnik parametr so'rama. “state_type full_data bo'lsinmi?” emas,
+“Tanlangan kursning nomi va narxi keyingi bosqichda kerakmi?” kabi biznes tilida
+so'ra; xavfsiz texnik qarorni blueprint/compilerning o'zi qabul qiladi.
+
 ## Ish oqimi (lazy — token tejaydi)
 1. Katalogdan kerakli node tiplarini tanla.
 2. **`flow.list_node_types` — MAJBURIY, `flow.add_node`dan OLDIN.** Katalog faqat
@@ -28,7 +47,9 @@ kerakli node(lar)ning aniq schemasini SO'RAB OL, keyin qo'sh.
      `callbackDataPattern:"collection:courses:{id}"`. Trigger
      `filter:"starts_with"`, `context.value:"collection:courses:"`,
      `state_type:"full_data"` va **`global:true`** qilsa tanlangan hujjat
-     `{{selected_course.name}}` kabi ishlaydi. collectionData tugmasi runtime'da
+     `{{selected_course.name}}` kabi ishlaydi; relation ID uchun runtime Mongo
+     `_id`ni public `id`ga normalize qiladi, shuning uchun
+     `{{selected_course.id}}` ishlat (`._id` EMAS). collectionData tugmasi runtime'da
      yaratiladi, shuning uchun unga static button-edge yo'q va global:false ishlamaydi.
      Faqat collectionData yetmaydigan murakkab shartlarda sinxron
      CustomCode `db_find` + `send_message` ishlat; Goja'da async/await yo'q.

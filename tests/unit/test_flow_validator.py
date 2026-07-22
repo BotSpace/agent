@@ -14,6 +14,36 @@ def test_valid_flow_passes():
     assert result.ok, result.render()
 
 
+def test_full_data_relation_mapping_requires_public_id_not_mongo_id():
+    flow = FlowDocument(
+        nodes=[
+            FlowNode(
+                id="selected",
+                type="CallbackQueryTriggerNode",
+                data={
+                    "filter": "starts_with",
+                    "context": {"value": "collection:courses:"},
+                    "global": True,
+                    "state_key": "course",
+                    "state_type": "full_data",
+                },
+            ),
+            FlowNode(
+                id="save",
+                type="CollectionNode",
+                data={
+                    "collection_name": "registrations",
+                    "fieldMappings": {"course_id": "{{course._id}}"},
+                },
+            ),
+        ],
+        edges=[FlowEdge(id="e1", source="selected", target="save")],
+    )
+    result = validate(flow, known_collections=["courses", "registrations"])
+    assert not result.ok
+    assert any(issue.code == "full_data_uses_public_id" for issue in result.errors)
+
+
 def test_missing_required_field_is_error():
     flow = FlowDocument(
         nodes=[

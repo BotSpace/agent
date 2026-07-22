@@ -1024,6 +1024,13 @@ def _collect_state_keys(flow: FlowDocument) -> set[str]:
 def _collection_mapping_issues(flow: FlowDocument) -> list[ValidationIssue]:
     """Check CollectionNode mapping sources without pretending they produce state."""
     state_keys = _collect_state_keys(flow)
+    full_data_keys = {
+        str(node.data.get("state_key"))
+        for node in flow.nodes
+        if node.type == "CallbackQueryTriggerNode"
+        and node.data.get("state_type") == "full_data"
+        and node.data.get("state_key")
+    }
     allowed = state_keys | set(_STANDARD_CONTEXT_VARS)
     out: list[ValidationIssue] = []
     for node in flow.nodes:
@@ -1043,6 +1050,19 @@ def _collection_mapping_issues(flow: FlowDocument) -> list[ValidationIssue]:
                     )
                 )
                 continue
+            full_data_id = re.fullmatch(r"\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\._id\s*\}\}", source)
+            if full_data_id and full_data_id.group(1) in full_data_keys:
+                key = full_data_id.group(1)
+                out.append(
+                    ValidationIssue(
+                        "error",
+                        "full_data_uses_public_id",
+                        f"Collection field `{field_name}` maps from `{{{{{key}._id}}}}`, "
+                        f"but full_data normalizes Mongo `_id` to public `id`. Use "
+                        f"`{{{{{key}.id}}}}`; otherwise an empty relation is saved.",
+                        node_id=node.id,
+                    )
+                )
             template_vars = list(_SIMPLE_VAR_RE.finditer(source))
             for match in template_vars:
                 root = match.group(1)
