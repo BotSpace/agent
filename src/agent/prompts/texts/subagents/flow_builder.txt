@@ -659,7 +659,7 @@ engine collection'dan har document uchun tugma generatsiya qiladi (pagination ha
         "collection": "courses",
         "field": "name",
         "text": "{{name}} — {{price}} so'm",
-        "callbackDataPattern": "course:{id}",
+        "callbackDataPattern": "collection:courses:{id}",
         "enablePagination": True,
         "layout": {"rows": 5, "columns": 1}
     }}]},
@@ -670,7 +670,11 @@ engine collection'dan har document uchun tugma generatsiya qiladi (pagination ha
 `text` (`{{field}}` template), `callbackDataPattern` (`{id}`/`{value}`/`{field}`),
 `filterType` ("static"|"state") + `filterField` + `filterValue`/`stateKey`,
 `enablePagination`, `layout:{rows,columns}`. Tanlangan tugma callback'ini
-`CallbackQueryTriggerNode(data:{global: true, filter:"starts_with", context:{value:"course:"}})` ushlaydi.
+`CallbackQueryTriggerNode(data:{global: true, filter:"starts_with",
+context:{value:"collection:courses:"}, state_key:"selected_course",
+state_type:"full_data"})` ushlaydi. Shunda detal `{{selected_course.name}}`,
+relation mapping esa `{{selected_course._id}}` orqali olinadi; callback kodini
+business fieldga saqlama.
 ⚠️ **`global: true` MAJBURIY** — dinamik tugmalar runtime'da generatsiya qilingani uchun
 engine ularni NON-global (`global: false`) trigger orqali TRACK QILA OLMAYDI: tugma
 bosilganda hech narsa bo'lmaydi. Dinamik `collectionData` tugmalari uchun trigger DOIM
