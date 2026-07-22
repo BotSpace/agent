@@ -63,6 +63,17 @@ def _collection_contract(ctx: ToolContext) -> tuple[list[str], dict[str, dict[st
     return names, schemas
 
 
+def _expected_field_kind(field: BlueprintField) -> str:
+    return {"text": "text", "contact": "phone", "location": "geo"}[field.kind]
+
+
+def _kind_matches(actual: str | None, expected: str) -> bool:
+    # A longtext field can safely store a normal text capture. Typed captures
+    # such as phone/geo remain strict because the CMS UI, filters and future
+    # integrations depend on their semantic kind.
+    return actual in ({"text", "longtext"} if expected == "text" else {expected})
+
+
 def _business_summary(blueprint: BotBlueprint) -> list[str]:
     lines = [f"• Tur: {blueprint.pattern}", f"• Nomi: {blueprint.title}"]
     if blueprint.catalog_collection:
@@ -208,6 +219,21 @@ async def blueprint_draft(input: DraftBlueprintInput, ctx: ToolContext) -> ToolR
             if missing:
                 requirements.append(
                     f"`{destination}`ga field qo'shing: " + ", ".join(missing)
+                )
+            wrong_kinds = [
+                f"{field.collection_field or field.key}:"
+                f"{schemas[destination].get(field.collection_field or field.key)}"
+                f"→{_expected_field_kind(field)}"
+                for field in blueprint.fields
+                if (field.collection_field or field.key) in schemas[destination]
+                and not _kind_matches(
+                    schemas[destination].get(field.collection_field or field.key),
+                    _expected_field_kind(field),
+                )
+            ]
+            if wrong_kinds:
+                requirements.append(
+                    f"`{destination}` field turlarini tuzating: " + ", ".join(wrong_kinds)
                 )
     catalog = blueprint.catalog_collection
     if catalog:
@@ -363,6 +389,22 @@ async def blueprint_preview(input: BlueprintPreviewInput, ctx: ToolContext) -> T
         missing = sorted(field for field in requested if schema and field not in schema)
         if missing:
             issues.append(f"`{blueprint.destination_collection}`da maydon yetishmaydi: {', '.join(missing)}.")
+        wrong_kinds = [
+            f"{field.collection_field or field.key}:"
+            f"{schema.get(field.collection_field or field.key)}"
+            f"→{_expected_field_kind(field)}"
+            for field in blueprint.fields
+            if (field.collection_field or field.key) in schema
+            and not _kind_matches(
+                schema.get(field.collection_field or field.key), _expected_field_kind(field)
+            )
+        ]
+        if wrong_kinds:
+            issues.append(
+                f"`{blueprint.destination_collection}`da field turi noto'g'ri: "
+                + ", ".join(wrong_kinds)
+                + "."
+            )
     if blueprint.catalog_collection in schemas and schemas[str(blueprint.catalog_collection)]:
         catalog_schema = schemas[str(blueprint.catalog_collection)]
         display_fields = [blueprint.catalog_label_field]
@@ -462,6 +504,29 @@ async def build_blueprint(input: BuildBlueprintInput, ctx: ToolContext) -> ToolR
                 f"`{destination}` collection schema'sida maydon yo'q: "
                 + ", ".join(f"`{field}`" for field in missing_fields)
                 + ". Avval cms.add_field bilan qo'shing."
+            )
+        wrong_kinds = [
+            (
+                field.collection_field or field.key,
+                schema.get(field.collection_field or field.key),
+                _expected_field_kind(field),
+            )
+            for field in blueprint.fields
+            if not _kind_matches(
+                schema.get(field.collection_field or field.key), _expected_field_kind(field)
+            )
+        ]
+        if wrong_kinds:
+            await _progress(ctx, "collections", "failed", "Capture field turi noto'g'ri")
+            rendered = ", ".join(
+                f"`{destination}.{name}` {actual or 'missing'} emas, `{expected}` bo'lishi kerak"
+                for name, actual, expected in wrong_kinds
+            )
+            return ToolResult.error(
+                "Blueprint typed CMS contractiga mos emas: "
+                + rendered
+                + ". CMS field turi yaratilgandan keyin o'zgarmaydi: noto'g'ri fieldni "
+                "cms.remove_field bilan olib tashlab, cms.add_field orqali to'g'ri kind bilan qayta yarating."
             )
         if blueprint.relation_field and schema.get(blueprint.relation_field) != "relation":
             await _progress(ctx, "collections", "failed", "Relation maydoni noto'g'ri turda")
