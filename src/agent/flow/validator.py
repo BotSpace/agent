@@ -83,7 +83,10 @@ _MESSAGE_STATE_TYPES_BY_KIND = {
     "animation": {"file_id", "caption", "static"},
     "sticker": {"file_id", "static"},
 }
-_ANY_MESSAGE_STATE_TYPES = set().union(*_MESSAGE_STATE_TYPES_BY_KIND.values())
+# `type:any` can receive text, contact, location or media. Capturing a
+# type-specific value from it is unsafe: the trigger may match a different
+# update and persist nothing. Use an explicit message type for those values.
+_ANY_MESSAGE_STATE_TYPES = {"text", "static"}
 
 # Accessory targetHandle prefix (contract §1.1)
 _ACC_PREFIX = "acc:"
