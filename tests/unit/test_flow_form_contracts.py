@@ -219,7 +219,7 @@ def test_static_keyboard_rejects_collection_row_templates() -> None:
                             }
                         ],
                     },
-                }
+                },
             ],
             "edges": [],
         }
@@ -253,7 +253,18 @@ def test_collection_data_keyboard_allows_row_templates() -> None:
                             }
                         ],
                     },
-                }
+                },
+                {
+                    "id": "pick",
+                    "type": "CallbackQueryTriggerNode",
+                    "data": {
+                        "global": True,
+                        "filter": "starts_with",
+                        "context": {"value": "collection:courses:"},
+                        "state_key": "selected_course",
+                        "state_type": "full_data",
+                    },
+                },
             ],
             "edges": [],
         }
@@ -295,3 +306,48 @@ def test_collection_data_rejects_single_brace_field_placeholders() -> None:
 
     result = validate(flow)
     assert any(issue.code == "invalid_collection_data_text" for issue in result.errors)
+
+
+def test_collection_data_requires_global_matching_trigger() -> None:
+    flow = FlowDocument.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "courses",
+                    "type": "EditOrSendMessageNode",
+                    "data": {
+                        "messageText": "Kursni tanlang",
+                        "rows": [
+                            {
+                                "columns": [
+                                    {
+                                        "collectionData": {
+                                            "collection": "courses",
+                                            "field": "name",
+                                            "text": "{{name}}",
+                                            "callbackDataPattern": "collection:courses:{id}",
+                                        }
+                                    }
+                                ]
+                            }
+                        ],
+                    },
+                },
+                {
+                    "id": "pick",
+                    "type": "CallbackQueryTriggerNode",
+                    "data": {
+                        "global": False,
+                        "filter": "starts_with",
+                        "context": {"value": "collection:courses:"},
+                        "state_key": "selected_course",
+                        "state_type": "full_data",
+                    },
+                },
+            ],
+            "edges": [],
+        }
+    )
+
+    result = validate(flow)
+    assert any(issue.code == "collection_data_trigger_must_be_global" for issue in result.errors)

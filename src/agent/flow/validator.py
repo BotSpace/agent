@@ -1145,6 +1145,7 @@ def _button_template_issues(flow: FlowDocument) -> list[ValidationIssue]:
 def _collection_data_issues(flow: FlowDocument) -> list[ValidationIssue]:
     """Validate runtime collection-backed keyboard definitions."""
     out: list[ValidationIssue] = []
+    callback_prefixes: dict[str, str] = {}
 
     def walk(node: FlowNode, value: object) -> None:
         if isinstance(value, list):
@@ -1192,13 +1193,47 @@ def _collection_data_issues(flow: FlowDocument) -> list[ValidationIssue]:
                             node_id=node.id,
                         )
                     )
+                else:
+                    callback_prefixes[f"collection:{collection}:"] = node.id
         for child in value.values():
             walk(node, child)
 
+    matched_prefixes: set[str] = set()
     for node in flow.nodes:
         data = node.data if isinstance(node.data, dict) else {}
         walk(node, data.get("rows"))
         walk(node, data.get("keyboard"))
+    for node in flow.nodes:
+        if node.type != "CallbackQueryTriggerNode":
+            continue
+        data = node.data if isinstance(node.data, dict) else {}
+        context = data.get("context")
+        prefix = context.get("value") if isinstance(context, dict) else None
+        if prefix not in callback_prefixes:
+            continue
+        matched_prefixes.add(prefix)
+        if not bool(data.get("global")):
+            out.append(
+                ValidationIssue(
+                    "error",
+                    "collection_data_trigger_must_be_global",
+                    f"collectionData creates `{prefix}<id>` buttons at runtime, so the "
+                    "matching CallbackQueryTriggerNode must set global=true; there is no "
+                    "static button edge to activate a non-global trigger.",
+                    node_id=node.id,
+                )
+            )
+    for prefix, source_node_id in callback_prefixes.items():
+        if prefix not in matched_prefixes:
+            out.append(
+                ValidationIssue(
+                    "error",
+                    "collection_data_trigger_missing",
+                    f"collectionData emits `{prefix}<id>` but no matching global "
+                    "CallbackQueryTriggerNode captures that prefix.",
+                    node_id=source_node_id,
+                )
+            )
     return out
 
 

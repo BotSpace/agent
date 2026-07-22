@@ -27,8 +27,10 @@ kerakli node(lar)ning aniq schemasini SO'RAB OL, keyin qo'sh.
      `text:"{{name}} — {{price}}"`,
      `callbackDataPattern:"collection:courses:{id}"`. Trigger
      `filter:"starts_with"`, `context.value:"collection:courses:"`,
-     `state_type:"full_data"` qilsa tanlangan hujjat `{{selected_course.name}}`
-     kabi ishlaydi. Faqat collectionData yetmaydigan murakkab shartlarda sinxron
+     `state_type:"full_data"` va **`global:true`** qilsa tanlangan hujjat
+     `{{selected_course.name}}` kabi ishlaydi. collectionData tugmasi runtime'da
+     yaratiladi, shuning uchun unga static button-edge yo'q va global:false ishlamaydi.
+     Faqat collectionData yetmaydigan murakkab shartlarda sinxron
      CustomCode `db_find` + `send_message` ishlat; Goja'da async/await yo'q.
    Butun toifa kerak bo'lsa `flow.list_node_types(category="payment"/"ai"/...)`.
 3. `flow.add_node(id, type, data, after?)` bilan qo'sh — `data` faqat 2-qadamda
