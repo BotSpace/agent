@@ -625,7 +625,7 @@ def test_contact_alias_is_rejected_in_favor_of_request_contact():
 # ── #12: collection cross-check ──────────────────────────────────────────────
 
 
-def test_unknown_collection_warns_when_list_known():
+def test_unknown_collection_blocks_save_when_list_known():
     flow = FlowDocument(
         nodes=[
             FlowNode(id="t", type="CommandTriggerNode", data={"command": "/start"}),
@@ -635,10 +635,11 @@ def test_unknown_collection_warns_when_list_known():
         edges=[FlowEdge(id="e1", source="t", target="save")],
     )
     result = validate(flow, known_collections=["orders", "users"])
-    assert any(i.code == "unknown_collection" for i in result.warnings)
-    # Known collection → no warning.
+    assert any(i.code == "unknown_collection" for i in result.errors)
+    assert not result.ok
+    # Known collection → no error.
     result2 = validate(flow, known_collections=["ghosts"])
-    assert not any(i.code == "unknown_collection" for i in result2.warnings)
+    assert not any(i.code == "unknown_collection" for i in result2.errors)
     # No list provided → check skipped entirely.
     result3 = validate(flow)
     assert not any(i.code == "unknown_collection" for i in result3.issues)

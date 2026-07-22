@@ -148,7 +148,10 @@ def validate(
         mod = module_map.get(node_type)
         return bool(mod and mod.get("is_trigger"))
     # #12 — known collection names (from the workspace's loaded CMS list). When
-    # provided, flow nodes referencing an unknown collection get a WARNING.
+    # provided, a collection-select value must be one of these exact API values.
+    # The constructor uses the same value as the Radix SelectItem value; allowing
+    # a translated label or an invented name here makes the UI render the select
+    # as empty and lets runtime target a collection that does not exist.
     known_set: set[str] | None = (
         {c for c in known_collections if isinstance(c, str) and c}
         if known_collections is not None
@@ -379,11 +382,12 @@ def validate(
             if ref and ref not in known_set:
                 issues.append(
                     ValidationIssue(
-                        "warning",
+                        "error",
                         "unknown_collection",
                         f"`{node.type}` `{node.id}` references collection `{ref}` which is "
                         f"not in this project's collections ({sorted(known_set) or '—'}). "
-                        "Create it (cms.* tools) or fix the name.",
+                        "Use one of those exact values (not the UI label), or create it "
+                        "with cms.* first and reload the project collection list.",
                         node_id=node.id,
                     )
                 )
