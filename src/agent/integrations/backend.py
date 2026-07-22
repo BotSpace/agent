@@ -190,7 +190,8 @@ def format_backend_error(action: str | None, err: BackendError) -> str:
     """
     header = (
         f"{action} muvaffaqiyatsiz (HTTP {err.status or '?'})"
-        if action else f"Backend xato (HTTP {err.status or '?'})"
+        if action
+        else f"Backend xato (HTTP {err.status or '?'})"
     )
     parts: list[str] = [header]
 
@@ -280,10 +281,7 @@ def _extract_field_errors(payload: Any) -> dict[str, list[str]]:
     # Bare DRF ValidationError dict: {"plan_id": [...], "project": [...]}.
     # Heuristic: every value is a list/str of messages and no envelope keys.
     envelope_keys = {"status", "detail", "code", "incident_id"}
-    if all(
-        k not in envelope_keys and isinstance(v, (list, str))
-        for k, v in payload.items()
-    ) and payload:
+    if all(k not in envelope_keys and isinstance(v, (list, str)) for k, v in payload.items()) and payload:
         return {k: _as_msg_list(v) for k, v in payload.items()}
     return {}
 
@@ -489,11 +487,7 @@ def _auth_kw(auth_claims: dict | None) -> dict[str, Any]:
     if not auth_claims:
         return {}
     user_block = auth_claims.get("user") or {}
-    user_id = (
-        auth_claims.get("user_id")
-        or user_block.get("id")
-        or auth_claims.get("sub")
-    )
+    user_id = auth_claims.get("user_id") or user_block.get("id") or auth_claims.get("sub")
     return {
         "user_id": str(user_id) if user_id is not None else None,
         "bearer": auth_claims.get("access_token"),
@@ -510,9 +504,7 @@ class BackendClient:
         self._internal_token = internal_token
         self._client = httpx.AsyncClient(timeout=timeout)
 
-    def _headers(
-        self, *, bearer: str | None = None, user_id: str | None = None
-    ) -> dict[str, str]:
+    def _headers(self, *, bearer: str | None = None, user_id: str | None = None) -> dict[str, str]:
         """Compose auth headers.
 
         Priority:
@@ -645,11 +637,7 @@ class BackendClient:
         # When the request was made with the internal token + X-User-Id
         # there is no refresh to perform — the internal token does not
         # expire, and a 401 there means the X-User-Id is invalid.
-        if (
-            resp.status_code == 401
-            and not use_internal
-            and refresh_token
-        ):
+        if resp.status_code == 401 and not use_internal and refresh_token:
             refreshed = await self._try_refresh(refresh_token)
             if refreshed:
                 new_access, new_refresh = refreshed
@@ -728,7 +716,9 @@ class BackendClient:
         d = await self._request("GET", f"/api/v1/projects/{project_id}", **_auth_kw(auth_claims))
         return _unwrap_item(d)
 
-    async def create_project(self, body: dict[str, Any], *, auth_claims: dict | None = None) -> dict[str, Any]:
+    async def create_project(
+        self, body: dict[str, Any], *, auth_claims: dict | None = None
+    ) -> dict[str, Any]:
         d = await self._request("POST", "/api/v1/projects", json=body, **_auth_kw(auth_claims))
         return _unwrap_item(d)
 
@@ -740,6 +730,131 @@ class BackendClient:
 
     async def delete_project(self, project_id: str | int, *, auth_claims: dict | None = None) -> None:
         await self._request("DELETE", f"/api/v1/projects/{project_id}", **_auth_kw(auth_claims))
+
+    # ── Kanban / Board ────────────────────────────────────────────────
+    async def list_kanban_boards(
+        self,
+        *,
+        project_id: str | None = None,
+        archived: bool = False,
+        auth_claims: dict | None = None,
+    ) -> PagedList:
+        path = "/api/v1/boards/archived" if archived else "/api/v1/boards"
+        params = {"project_id": project_id} if project_id else None
+        data = await self._request("GET", path, params=params, **_auth_kw(auth_claims))
+        return _unwrap_list(data)
+
+    async def get_kanban_board(
+        self,
+        board_id: str,
+        *,
+        project_id: str | None = None,
+        auth_claims: dict | None = None,
+    ) -> dict[str, Any]:
+        params = {"project_id": project_id} if project_id else None
+        data = await self._request(
+            "GET", f"/api/v1/boards/{board_id}", params=params, **_auth_kw(auth_claims)
+        )
+        return _unwrap_item(data)
+
+    async def create_kanban_board(
+        self, body: dict[str, Any], *, auth_claims: dict | None = None
+    ) -> dict[str, Any]:
+        data = await self._request("POST", "/api/v1/boards", json=body, **_auth_kw(auth_claims))
+        return _unwrap_item(data)
+
+    async def update_kanban_board(
+        self, board_id: str, body: dict[str, Any], *, auth_claims: dict | None = None
+    ) -> dict[str, Any]:
+        data = await self._request("PUT", f"/api/v1/boards/{board_id}", json=body, **_auth_kw(auth_claims))
+        return _unwrap_item(data)
+
+    async def archive_kanban_board(self, board_id: str, *, auth_claims: dict | None = None) -> None:
+        await self._request("DELETE", f"/api/v1/boards/{board_id}", **_auth_kw(auth_claims))
+
+    async def restore_kanban_board(self, board_id: str, *, auth_claims: dict | None = None) -> dict[str, Any]:
+        data = await self._request("POST", f"/api/v1/boards/{board_id}/restore", **_auth_kw(auth_claims))
+        return _unwrap_item(data)
+
+    async def link_kanban_project(
+        self,
+        board_id: str,
+        project_id: str,
+        *,
+        linked: bool,
+        auth_claims: dict | None = None,
+    ) -> None:
+        if linked:
+            await self._request(
+                "POST",
+                f"/api/v1/boards/{board_id}/projects",
+                json={"project_id": project_id},
+                **_auth_kw(auth_claims),
+            )
+        else:
+            await self._request(
+                "DELETE",
+                f"/api/v1/boards/{board_id}/projects/{project_id}",
+                **_auth_kw(auth_claims),
+            )
+
+    async def create_kanban_card(
+        self, board_id: str, body: dict[str, Any], *, auth_claims: dict | None = None
+    ) -> dict[str, Any]:
+        data = await self._request(
+            "POST", f"/api/v1/boards/{board_id}/cards", json=body, **_auth_kw(auth_claims)
+        )
+        return _unwrap_item(data)
+
+    async def get_kanban_card(self, card_id: str, *, auth_claims: dict | None = None) -> dict[str, Any]:
+        data = await self._request("GET", f"/api/v1/cards/{card_id}", **_auth_kw(auth_claims))
+        return _unwrap_item(data)
+
+    async def update_kanban_card(
+        self, card_id: str, body: dict[str, Any], *, auth_claims: dict | None = None
+    ) -> dict[str, Any]:
+        data = await self._request("PUT", f"/api/v1/cards/{card_id}", json=body, **_auth_kw(auth_claims))
+        return _unwrap_item(data)
+
+    async def move_kanban_card(
+        self,
+        card_id: str,
+        column_id: str,
+        position: int,
+        *,
+        auth_claims: dict | None = None,
+    ) -> dict[str, Any]:
+        data = await self._request(
+            "POST",
+            f"/api/v1/cards/{card_id}/move",
+            json={"column_id": column_id, "position": position},
+            **_auth_kw(auth_claims),
+        )
+        return _unwrap_item(data)
+
+    async def archive_kanban_card(self, card_id: str, *, auth_claims: dict | None = None) -> dict[str, Any]:
+        data = await self._request("DELETE", f"/api/v1/cards/{card_id}", **_auth_kw(auth_claims))
+        return _unwrap_item(data)
+
+    async def list_archived_kanban_cards(
+        self,
+        board_id: str,
+        *,
+        project_id: str | None = None,
+        auth_claims: dict | None = None,
+    ) -> PagedList:
+        params = {"project_id": project_id} if project_id else None
+        data = await self._request(
+            "GET",
+            f"/api/v1/boards/{board_id}/cards/archived",
+            params=params,
+            **_auth_kw(auth_claims),
+        )
+        return _unwrap_list(data)
+
+    async def restore_kanban_card(self, card_id: str, *, auth_claims: dict | None = None) -> dict[str, Any]:
+        data = await self._request("POST", f"/api/v1/cards/{card_id}/restore", **_auth_kw(auth_claims))
+        return _unwrap_item(data)
 
     # ── env vars ───────────────────────────────────────────────────────
     async def list_env(
@@ -765,9 +880,7 @@ class BackendClient:
         d = await self._request("POST", "/api/v1/enviroment", json=body, **_auth_kw(auth_claims))
         return _unwrap_item(d)
 
-    async def delete_env(
-        self, key: str, project_id: str | int, *, auth_claims: dict | None = None
-    ) -> None:
+    async def delete_env(self, key: str, project_id: str | int, *, auth_claims: dict | None = None) -> None:
         """DELETE /api/v1/enviroment/{key}?project=<project_id>.
 
         NOTE: Go's env delete is keyed by (key, project_id) — NOT a global
@@ -812,21 +925,15 @@ class BackendClient:
         d = await self._request("POST", "/api/v1/relase", json=body, **_auth_kw(auth_claims))
         return _unwrap_item(d)
 
-    async def get_release(
-        self, release_id: str | int, *, auth_claims: dict | None = None
-    ) -> dict[str, Any]:
+    async def get_release(self, release_id: str | int, *, auth_claims: dict | None = None) -> dict[str, Any]:
         d = await self._request("GET", f"/api/v1/relase/{release_id}", **_auth_kw(auth_claims))
         return _unwrap_item(d)
 
-    async def start_debug(
-        self, project_id: str | int, *, auth_claims: dict | None = None
-    ) -> dict[str, Any]:
+    async def start_debug(self, project_id: str | int, *, auth_claims: dict | None = None) -> dict[str, Any]:
         """Start (or refresh) the project's DEBUG container — no bot token needed,
         auto-expires (~30 min) via the backend's cleanup task. Same endpoint the
         constructor's 'Debug Run' uses: GET /api/v1/projects/{id}/debug."""
-        d = await self._request(
-            "GET", f"/api/v1/projects/{project_id}/debug", **_auth_kw(auth_claims)
-        )
+        d = await self._request("GET", f"/api/v1/projects/{project_id}/debug", **_auth_kw(auth_claims))
         return _unwrap_item(d) if isinstance(d, dict) else {}
 
     async def get_release_logs(
@@ -901,9 +1008,7 @@ class BackendClient:
         if type_key:
             params["type_key"] = type_key
         params.update(_page_params(page, page_size))
-        d = await self._request(
-            "GET", "/api/v1/credentials", params=params or None, **_auth_kw(auth_claims)
-        )
+        d = await self._request("GET", "/api/v1/credentials", params=params or None, **_auth_kw(auth_claims))
         return _unwrap_list(d)
 
     async def create_credential(
@@ -946,12 +1051,8 @@ class BackendClient:
         )
         return _unwrap_item(d)
 
-    async def delete_credential(
-        self, credential_id: str | int, *, auth_claims: dict | None = None
-    ) -> None:
-        await self._request(
-            "DELETE", f"/api/v1/credentials/{credential_id}", **_auth_kw(auth_claims)
-        )
+    async def delete_credential(self, credential_id: str | int, *, auth_claims: dict | None = None) -> None:
+        await self._request("DELETE", f"/api/v1/credentials/{credential_id}", **_auth_kw(auth_claims))
 
     # ── debug flow errors (read-only) ──────────────────────────────────
     async def list_project_errors(
@@ -980,9 +1081,7 @@ class BackendClient:
         params: dict[str, Any] = {"project_id": project_id}
         if limit:
             params["limit"] = limit
-        d = await self._request(
-            "GET", "/api/v1/debug/errors", params=params, **_auth_kw(auth_claims)
-        )
+        d = await self._request("GET", "/api/v1/debug/errors", params=params, **_auth_kw(auth_claims))
         payload = _unwrap_envelopes(d)
         if isinstance(payload, dict):
             rows = payload.get("errors")
@@ -1064,9 +1163,7 @@ class BackendClient:
             params["search"] = search
         params.update(_page_params(page, page_size))
         try:
-            d = await self._request(
-                "GET", "/api/v1/modules", params=params, **_auth_kw(auth_claims)
-            )
+            d = await self._request("GET", "/api/v1/modules", params=params, **_auth_kw(auth_claims))
         except BackendError:
             logger.warning("Failed to list modules catalog; continuing", exc_info=True)
             return PagedList()
@@ -1100,9 +1197,7 @@ class BackendClient:
         )
         return _unwrap_item(d) if isinstance(d, dict) else {}
 
-    async def list_credential_types(
-        self, *, auth_claims: dict | None = None
-    ) -> list[dict[str, Any]]:
+    async def list_credential_types(self, *, auth_claims: dict | None = None) -> list[dict[str, Any]]:
         """All registered credential TYPES (not the user's saved credentials).
 
         GET /api/v1/credentials/types → a list of type descriptors. On the Go
@@ -1117,9 +1212,7 @@ class BackendClient:
         created with a secret. Returns [] on failure.
         """
         try:
-            d = await self._request(
-                "GET", "/api/v1/credentials/types", **_auth_kw(auth_claims)
-            )
+            d = await self._request("GET", "/api/v1/credentials/types", **_auth_kw(auth_claims))
         except BackendError:
             logger.warning("Failed to load credential types; continuing", exc_info=True)
             return []
@@ -1617,9 +1710,7 @@ class BackendClient:
         """
         d = await self._request(
             "POST",
-            self._cms(
-                f"/projects/{project_id}/collections/{name}/documents/{document_id}/restore"
-            ),
+            self._cms(f"/projects/{project_id}/collections/{name}/documents/{document_id}/restore"),
             **_auth_kw(auth_claims),
         )
         return d if isinstance(d, dict) else {}
@@ -1863,9 +1954,7 @@ async def load_project_module_nodes(
         return []
     try:
         backend = client or get_backend_client()
-        manifests = await backend.list_project_module_manifests(
-            pid, auth_claims=auth_claims
-        )
+        manifests = await backend.list_project_module_manifests(pid, auth_claims=auth_claims)
     except Exception:
         logger.warning(
             "Failed to load module manifests for project=%s; continuing without modules",
@@ -1893,17 +1982,10 @@ async def load_project_module_nodes(
             if not isinstance(key, str) or not key:
                 continue
             if f.get("type") == "credential":
-                credential_fields.append(
-                    {"key": key, "type_key": str(f.get("credentialType") or "")}
-                )
+                credential_fields.append({"key": key, "type_key": str(f.get("credentialType") or "")})
                 continue
             (optional if f.get("optional") else required).append(key)
-        desc = (
-            m.get("descriptionFallback")
-            or m.get("titleFallback")
-            or m.get("description")
-            or node_type
-        )
+        desc = m.get("descriptionFallback") or m.get("titleFallback") or m.get("description") or node_type
         # Source handle ids for connecting FROM this node. Module nodes often use
         # NAMED handles (e.g. youtube.Download → output-success / output-error),
         # NOT the generic "source-handler"; an edge whose sourceHandle doesn't
@@ -1912,9 +1994,7 @@ async def load_project_module_nodes(
         source_handles: list[dict[str, str]] = []
         for h in m.get("handles") or []:
             if isinstance(h, dict) and h.get("kind") == "source" and h.get("id"):
-                source_handles.append(
-                    {"id": str(h["id"]), "label": str(h.get("label") or h["id"])}
-                )
+                source_handles.append({"id": str(h["id"]), "label": str(h.get("label") or h["id"])})
         out.append(
             {
                 "type": node_type,
@@ -1928,9 +2008,7 @@ async def load_project_module_nodes(
                 "optional_fields": optional,
                 "credential_fields": credential_fields,
                 "source_handles": source_handles,
-                "produces_state": [
-                    str(s) for s in (m.get("producesState") or []) if s
-                ],
+                "produces_state": [str(s) for s in (m.get("producesState") or []) if s],
             }
         )
     return out

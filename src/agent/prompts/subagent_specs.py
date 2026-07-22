@@ -90,6 +90,7 @@ _ANALYZER_ALLOWED = [
     "payment.*",
     "file.*",
     "cms.*",
+    "kanban.*",
     "chat.*",
     "broadcast.*",
     "credentials.*",
@@ -100,7 +101,7 @@ _ANALYZER_ALLOWED = [
 
 ANALYZER = SubAgentSpec(
     name="analyzer",
-    description="Tahlil/tekshiruv yordamchisi — flow, CRM, CMS, loyiha holatini "
+    description="Tahlil/tekshiruv yordamchisi — flow, Board/Kanban, CRM, CMS, loyiha holatini "
     "o'qib-tekshirib main agentga qisqa xulosa qaytaradi. Bot qurish uchun emas.",
     system_prompt=load_prompt("subagents/analyzer.txt").replace(
         "{node_params_table}", render_summary_table()

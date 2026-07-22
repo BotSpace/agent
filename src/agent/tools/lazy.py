@@ -19,19 +19,48 @@ from .base import Tool, ToolContext, ToolResult, tool
 _CORE_NAMES: frozenset[str] = frozenset(
     {
         # flow building essentials
-        "flow.get", "flow.add_node", "flow.remove_node", "flow.patch",
-        "flow.patch_many", "flow.connect", "flow.connect_button",
-        "flow.connect_branch", "flow.connect_accessory", "flow.disconnect",
-        "flow.validate", "flow.save", "flow.layout_auto", "flow.list_node_types",
-        "flow.diff", "flow.set_languages", "flow.finish", "flow.save_to_collection",
-        "flow.ask_text", "flow.ask_contact", "flow.ask_buttons", "flow.ask_location",
+        "flow.get",
+        "flow.add_node",
+        "flow.remove_node",
+        "flow.patch",
+        "flow.patch_many",
+        "flow.connect",
+        "flow.connect_button",
+        "flow.connect_branch",
+        "flow.connect_accessory",
+        "flow.disconnect",
+        "flow.validate",
+        "flow.save",
+        "flow.layout_auto",
+        "flow.list_node_types",
+        "flow.diff",
+        "flow.set_languages",
+        "flow.finish",
+        "flow.save_to_collection",
+        "flow.ask_text",
+        "flow.ask_contact",
+        "flow.ask_buttons",
+        "flow.ask_location",
         # orchestration / project / user
-        "ask_user", "task.run", "sleep", "search.semantic", "tools.search",
-        "project.list", "project.get", "project.create", "project.update",
+        "ask_user",
+        "task.run",
+        "sleep",
+        "search.semantic",
+        "tools.search",
+        "project.list",
+        "project.get",
+        "project.create",
+        "project.update",
         "project.snapshot",
+        # standalone Board/Kanban intent must resolve before bot/CMS tools
+        "kanban.list_boards",
+        "kanban.get_board",
         # common deploy + checks
-        "credentials.list", "env.list",
-        "release.deploy", "release.debug", "release.status",
+        "credentials.list",
+        "env.list",
+        "release.deploy",
+        "release.debug",
+        "release.status",
     }
 )
 # Whole namespaces that are always core.
@@ -71,7 +100,7 @@ class ToolsSearchInput(BaseModel):
     query: str | list[str] = Field(
         description=(
             "Qidiruv — tool nomi yoki tavsifidagi so'z(lar). Bir yoki bir nechta: "
-            "`query=\"broadcast\"` yoki `query=[\"to'lov\",\"collection\"]`. Qisman mos "
+            '`query="broadcast"` yoki `query=["to\'lov","collection"]`. Qisman mos '
             "kelsa ham topadi; mos tool'larning TO'LIQ schemasi qaytadi va shu suhbatda "
             "chaqirish uchun FAOLLASHADI (keyingi javobdan chaqira olasan)."
         )
