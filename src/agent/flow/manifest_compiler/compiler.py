@@ -128,6 +128,17 @@ def _emit_field(f: dict, defaults: dict) -> list[_Emit]:
                 out.append((dk, str, None, False, defaults.get(dk)))
         return out
 
+    if ftype == "collection-select":
+        key = f.get("key")
+        if key:
+            out.append((key, str, desc, not optional, defaults.get(key)))
+        context_key = f.get("contextKeyField")
+        if context_key:
+            out.append((context_key, str, None, False, defaults.get(context_key)))
+        if f.get("withFieldMapping"):
+            out.append(("fieldMappings", dict[str, Any], "Collection field mappings.", False, defaults.get("fieldMappings") or {}))
+        return out
+
     if ftype == "mediaMessage":
         # The media widget (frontend) writes `<kind>SourceType` + one of
         # `<kind>FileId` / `<kind>Url` / upload — the conditional source fields

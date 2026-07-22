@@ -441,6 +441,72 @@ def test_state_node_with_type_passes():
     assert not any(i.code == "state_type_required" for i in result.issues)
 
 
+def test_callback_trigger_rejects_message_state_type():
+    flow = FlowDocument(
+        nodes=[FlowNode(
+            id="course-callback", type="CallbackQueryTriggerNode",
+            data={
+                "filter": "starts_with", "context": {"value": "collection:"},
+                "state_key": "selected_course", "state_type": "text",
+            },
+        )],
+        edges=[],
+    )
+    result = validate(flow)
+    assert any(i.code == "incompatible_trigger_state_type" for i in result.errors)
+
+
+def test_callback_trigger_accepts_full_collection_data():
+    flow = FlowDocument(
+        nodes=[FlowNode(
+            id="course-callback", type="CallbackQueryTriggerNode",
+            data={
+                "filter": "starts_with", "context": {"value": "collection:"},
+                "state_key": "selected_course", "state_type": "full_data",
+            },
+        )],
+        edges=[],
+    )
+    result = validate(flow)
+    assert not any(i.code == "incompatible_trigger_state_type" for i in result.errors)
+
+
+def test_contact_trigger_rejects_text_capture():
+    flow = FlowDocument(
+        nodes=[FlowNode(
+            id="phone", type="MessageTriggerNode",
+            data={
+                "type": "contact", "filter": "any", "state_key": "phone",
+                "state_type": "text",
+            },
+        )],
+        edges=[],
+    )
+    result = validate(flow)
+    assert any(i.code == "incompatible_trigger_state_type" for i in result.errors)
+
+
+def test_message_trigger_rejects_unknown_select_value():
+    flow = FlowDocument(nodes=[FlowNode(
+        id="message", type="MessageTriggerNode",
+        data={"type": "Matn", "filter": "any", "global": False},
+    )])
+    result = validate(flow)
+    assert any(i.code == "invalid_select_value" for i in result.errors)
+
+
+def test_collection_select_must_be_string():
+    flow = FlowDocument(nodes=[
+        FlowNode(id="start", type="CommandTriggerNode", data={"command": "/start"}),
+        FlowNode(
+            id="save", type="CollectionNode",
+            data={"collection_name": {"name": "courses"}, "fieldMappings": {}},
+        ),
+    ], edges=[FlowEdge(id="e", source="start", target="save")])
+    result = validate(flow)
+    assert any(i.code == "invalid_collection_select_value" for i in result.errors)
+
+
 # ── #8a: global CallbackQueryTrigger suppresses "button has no edge" warning ──
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from .manifest_compiler.loader import load_node_manifests
 from .manifest_compiler.node_catalog import (
     NODE_TYPES,
     acc_port_accepts,
@@ -54,6 +55,29 @@ class ValidationResult:
 
 VARIABLE_RE = re.compile(r"\{\{\s*[\w\.\[\]]+\s*\}\}|\$[\w\.\[\]]+")
 
+_CALLBACK_STATE_TYPES = {"callback", "data", "collection_id", "full_data", "static"}
+_MESSAGE_STATE_TYPES_BY_KIND = {
+    "text": {"text", "static"},
+    "phone": {"text", "static"},
+    "contact": {
+        "phone_number", "contact_phone_number", "contact_first_name",
+        "contact_last_name", "static",
+    },
+    "location": {
+        "location", "latitude", "location_latitude", "longitude",
+        "location_longitude", "static",
+    },
+    "photo": {"file_id", "caption", "static"},
+    "video": {"file_id", "caption", "static"},
+    "document": {"file_id", "caption", "static"},
+    "audio": {"file_id", "caption", "static"},
+    "voice": {"file_id", "caption", "static"},
+    "video_note": {"file_id", "static"},
+    "animation": {"file_id", "caption", "static"},
+    "sticker": {"file_id", "static"},
+}
+_ANY_MESSAGE_STATE_TYPES = set().union(*_MESSAGE_STATE_TYPES_BY_KIND.values())
+
 # Accessory targetHandle prefix (contract §1.1)
 _ACC_PREFIX = "acc:"
 
@@ -87,6 +111,15 @@ def _referenced_collection_name(node) -> str | None:
     return None
 
 
+def _nested_value(data: dict, dotted_key: str):
+    value = data
+    for part in dotted_key.split("."):
+        if not isinstance(value, dict) or part not in value:
+            return None
+        value = value[part]
+    return value
+
+
 def validate(
     flow: FlowDocument,
     *,
@@ -105,6 +138,7 @@ def validate(
         for m in (module_nodes or [])
         if isinstance(m, dict) and m.get("type")
     }
+    builtin_manifests = load_node_manifests()
 
     def _node_is_trigger(node_type: str) -> bool:
         """Trigger if a static-catalog trigger OR a module trigger node
@@ -191,6 +225,78 @@ def validate(
                         node_id=node.id,
                     )
                 )
+
+        # Validate every manifest-backed select, including nodes changed via
+        # flow.patch/import (paths that do not pass through flow.add_node's
+        # Pydantic model). Unknown option values render as an empty select in
+        # the constructor and often change runtime semantics silently.
+        option_sets: dict[str, set[object]] = {}
+        for manifest_field in (builtin_manifests.get(node.type, {}).get("content") or []):
+            if not isinstance(manifest_field, dict):
+                continue
+            key = manifest_field.get("key")
+            if manifest_field.get("type") == "select" and isinstance(key, str):
+                if key in {"state_type", "public_type"}:
+                    # Trigger state compatibility is runtime-dependent and is
+                    # validated by the matrix below; old backend manifests had
+                    # stale state options, so do not use their list here.
+                    continue
+                option_sets.setdefault(key, set()).update(
+                    option.get("value")
+                    for option in (manifest_field.get("options") or [])
+                    if isinstance(option, dict) and "value" in option
+                )
+            if manifest_field.get("type") == "collection-select" and isinstance(key, str):
+                selected = _nested_value(node.data, key)
+                if selected is not None and not isinstance(selected, str):
+                    issues.append(ValidationIssue(
+                        "error", "invalid_collection_select_value",
+                        f"`{key}` must be a collection slug/name string, not "
+                        f"{type(selected).__name__}. Use a value returned by collections.list.",
+                        node_id=node.id,
+                    ))
+        for key, allowed in option_sets.items():
+            selected = _nested_value(node.data, key)
+            if selected is not None and selected not in allowed:
+                issues.append(ValidationIssue(
+                    "error", "invalid_select_value",
+                    f"`{node.type}.{key}` value `{selected}` is not a manifest option. "
+                    f"Use one of: {', '.join(sorted(map(str, allowed)))}.",
+                    node_id=node.id,
+                ))
+
+        # A trigger can only persist values that exist on its incoming Telegram
+        # update.  The engine intentionally has separate callback and message
+        # extraction branches; accepting `text` on a callback silently stores
+        # nothing and lets the flow continue with an undefined variable.
+        state_key = node.data.get("public_key") or node.data.get("state_key")
+        if isinstance(state_key, str) and state_key.strip() and node.type in {
+            "CallbackQueryTriggerNode", "MessageTriggerNode",
+        }:
+            state_type = node.data.get("public_type") or node.data.get("state_type")
+            if not isinstance(state_type, str) or not state_type.strip():
+                issues.append(ValidationIssue(
+                    "error", "trigger_state_type_required",
+                    f"`{node.type}` saves `{state_key}` but has no state type.",
+                    node_id=node.id,
+                ))
+            else:
+                if node.type == "CallbackQueryTriggerNode":
+                    allowed = _CALLBACK_STATE_TYPES
+                    source = "callback query"
+                else:
+                    message_kind = str(node.data.get("type") or "any")
+                    allowed = _MESSAGE_STATE_TYPES_BY_KIND.get(
+                        message_kind, _ANY_MESSAGE_STATE_TYPES,
+                    )
+                    source = f"{message_kind} message"
+                if state_type not in allowed:
+                    issues.append(ValidationIssue(
+                        "error", "incompatible_trigger_state_type",
+                        f"`{state_type}` cannot be extracted from a {source}; "
+                        f"use one of: {', '.join(sorted(allowed))}.",
+                        node_id=node.id,
+                    ))
 
         # State-saving nodes MUST declare `data.type` (what kind of value is
         # captured — text/phone_number/file_id/Custom/…). Without it the engine

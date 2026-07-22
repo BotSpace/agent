@@ -33,7 +33,7 @@ def test_filter_kind_mismatch_warns():
             "nodes": [
                 {"id": "t", "type": "CommandTriggerNode", "data": {"command": "/start"}},
                 {"id": "load", "type": "LoadCollectionItemNode",
-                 "data": {"collection": {"name": "users"}, "contextKey": "u",
+                 "data": {"collection_name": "users", "collection": "users", "contextKey": "u",
                           "filters": [{"field": "is_active", "operator": "equals",
                                        "valueSource": "static", "value": "true"}]}},
             ],

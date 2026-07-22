@@ -1299,7 +1299,7 @@ flow.add_node(
     id="load-product",
     type="LoadCollectionItemNode",
     data={
-        "collection": {"name": "products"},
+        "collection_name": "products",
         "contextKey": "product",
         "filters": [{"field": "_id", "operator": "equals", "valueSource": "state", "stateKey": "product_id"}]
     },

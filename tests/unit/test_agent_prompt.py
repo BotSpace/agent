@@ -12,7 +12,7 @@ def test_main_agent_prompt_does_the_work_itself():
     # Its own dispatching/planning levers plus the analysis-only sub-agent.
     assert "task.run" in prompt
     assert "analyzer" in prompt
-    assert "plan.set" in prompt
+    assert "plan.set" not in prompt  # planning alohida read-only plan mode orqali
     assert "project.list" in prompt
     # The old 4-subagent dispatcher persona is gone.
     assert "flow-builder" not in prompt

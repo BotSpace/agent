@@ -23,7 +23,7 @@ def test_main_registry_has_full_toolset():
     names = {t.name for t in main.all()}
     assert "task.run" in names
     for must in (
-        "plan.set", "project.list", "search.semantic",
+        "project.list", "search.semantic",
         "flow.save", "flow.add_node", "cms.find", "broadcast.send",
         "release.deploy", "env.list", "credentials.list",
     ):
