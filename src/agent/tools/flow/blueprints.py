@@ -17,7 +17,8 @@ from ...flow.blueprint import (
 from ...flow.diff import diff
 from ...flow.schema import FlowDocument
 from ...flow.validator import validate
-from .._common import resolve_concrete_project_id
+from ...integrations.backend import BackendError
+from .._common import backend_from_ctx, resolve_concrete_project_id
 from ..base import Tool, ToolContext, ToolResult, tool
 
 
@@ -78,7 +79,9 @@ def _business_summary(blueprint: BotBlueprint) -> list[str]:
     lines = [f"• Tur: {blueprint.pattern}", f"• Nomi: {blueprint.title}"]
     if blueprint.catalog_collection:
         lines.append(f"• Dinamik manba: {blueprint.catalog_collection}")
-    if blueprint.destination_collection:
+    if blueprint.kanban_board_id:
+        lines.append(f"• Operatsion natija: Kanban Board `{blueprint.kanban_board_id}`")
+    elif blueprint.destination_collection:
         lines.append(f"• Saqlash joyi: {blueprint.destination_collection}")
     if blueprint.fields:
         lines.append(
@@ -120,6 +123,16 @@ class DraftBlueprintInput(BaseModel):
     catalog_label_field: str = "name"
     catalog_secondary_field: str | None = None
     relation_field: str | None = None
+    kanban_board_id: str | None = Field(
+        default=None,
+        description="kanban.get_board orqali olingan, botga bog'langan Board UUID.",
+    )
+    kanban_column_id: str | None = Field(
+        default=None,
+        description="Yangi lead/registration tushadigan real boshlang'ich column UUID.",
+    )
+    kanban_card_title: str | None = None
+    kanban_card_description: str | None = None
     fields: list[BlueprintField] | None = Field(
         default=None,
         description="Berilmasa registrydagi shu pattern uchun tavsiya capture fieldlari olinadi.",
@@ -188,11 +201,19 @@ async def blueprint_draft(input: DraftBlueprintInput, ctx: ToolContext) -> ToolR
         "pattern": definition.pattern,
         "title": input.title or definition.title,
         "fields": fields,
-        "destination_collection": input.destination_collection or definition.default_destination,
+        "destination_collection": (
+            None
+            if input.kanban_board_id
+            else input.destination_collection or definition.default_destination
+        ),
         "catalog_collection": input.catalog_collection or definition.default_catalog,
         "catalog_label_field": input.catalog_label_field,
         "catalog_secondary_field": input.catalog_secondary_field,
         "relation_field": input.relation_field or definition.default_relation_field,
+        "kanban_board_id": input.kanban_board_id,
+        "kanban_column_id": input.kanban_column_id,
+        "kanban_card_title": input.kanban_card_title,
+        "kanban_card_description": input.kanban_card_description,
         "options": input.options,
     }
     if input.intro is not None:
@@ -207,7 +228,7 @@ async def blueprint_draft(input: DraftBlueprintInput, ctx: ToolContext) -> ToolR
     names, schemas = _collection_contract(ctx)
     collections_loaded = isinstance(ctx.state.get("collections"), list)
     requirements: list[str] = []
-    destination = blueprint.destination_collection
+    destination = blueprint.destination_collection if not blueprint.kanban_board_id else None
     if destination:
         if collections_loaded and destination not in names:
             requirements.append(f"`{destination}` collection yarating")
@@ -287,7 +308,7 @@ async def blueprint_draft(input: DraftBlueprintInput, ctx: ToolContext) -> ToolR
                     "collection": blueprint.destination_collection,
                     "fields": destination_fields,
                 }
-                if blueprint.destination_collection
+                if blueprint.destination_collection and not blueprint.kanban_board_id
                 else None,
                 "catalog": {
                     "collection": blueprint.catalog_collection,
@@ -378,17 +399,18 @@ async def blueprint_preview(input: BlueprintPreviewInput, ctx: ToolContext) -> T
     names, schemas = _collection_contract(ctx)
     collections_loaded = isinstance(ctx.state.get("collections"), list)
     issues: list[str] = []
-    for name in (blueprint.catalog_collection, blueprint.destination_collection):
+    destination = blueprint.destination_collection if not blueprint.kanban_board_id else None
+    for name in (blueprint.catalog_collection, destination):
         if name and collections_loaded and name not in names:
             issues.append(f"Collection `{name}` mavjud emas — avval yaratilishi kerak.")
-    if blueprint.destination_collection in schemas:
-        schema = schemas[str(blueprint.destination_collection)]
+    if destination in schemas:
+        schema = schemas[str(destination)]
         requested = {field.collection_field or field.key for field in blueprint.fields}
         if blueprint.relation_field:
             requested.add(blueprint.relation_field)
         missing = sorted(field for field in requested if schema and field not in schema)
         if missing:
-            issues.append(f"`{blueprint.destination_collection}`da maydon yetishmaydi: {', '.join(missing)}.")
+            issues.append(f"`{destination}`da maydon yetishmaydi: {', '.join(missing)}.")
         wrong_kinds = [
             f"{field.collection_field or field.key}:"
             f"{schema.get(field.collection_field or field.key)}"
@@ -401,7 +423,7 @@ async def blueprint_preview(input: BlueprintPreviewInput, ctx: ToolContext) -> T
         ]
         if wrong_kinds:
             issues.append(
-                f"`{blueprint.destination_collection}`da field turi noto'g'ri: "
+                f"`{destination}`da field turi noto'g'ri: "
                 + ", ".join(wrong_kinds)
                 + "."
             )
@@ -481,7 +503,46 @@ async def build_blueprint(input: BuildBlueprintInput, ctx: ToolContext) -> ToolR
     await _progress(ctx, "collections", "running", "Collection contract tekshirilmoqda")
     names, schemas = _collection_contract(ctx)
     collections_loaded = isinstance(ctx.state.get("collections"), list)
-    required = [name for name in (blueprint.catalog_collection, blueprint.destination_collection) if name]
+    project_id = resolve_concrete_project_id(ctx)
+    if blueprint.kanban_board_id and blueprint.kanban_column_id:
+        if not project_id:
+            await _progress(ctx, "collections", "failed", "Board uchun bot project tanlanmagan")
+            return ToolResult.error(
+                "Kanban destination faqat aniq bot project ichida quriladi. "
+                "Avval project.create/project.select qiling."
+            )
+        try:
+            board = await backend_from_ctx(ctx).get_kanban_board(
+                blueprint.kanban_board_id,
+                project_id=project_id,
+                auth_claims=ctx.state.get("auth_claims"),
+            )
+        except BackendError as error:
+            await _progress(ctx, "collections", "failed", "Board topilmadi")
+            return ToolResult.error(f"Kanban Board tekshiruvi muvaffaqiyatsiz: {error}")
+
+        linked_projects = {str(value) for value in board.get("project_ids") or []}
+        if str(project_id) not in linked_projects:
+            await _progress(ctx, "collections", "failed", "Board botga bog'lanmagan")
+            return ToolResult.error(
+                f"Board `{blueprint.kanban_board_id}` bot `{project_id}`ga bog'lanmagan. "
+                "Avval kanban.link_project chaqiring."
+            )
+        column_ids = {
+            str(column.get("id"))
+            for column in board.get("columns") or []
+            if isinstance(column, dict) and column.get("id")
+        }
+        if blueprint.kanban_column_id not in column_ids:
+            await _progress(ctx, "collections", "failed", "Board column topilmadi")
+            return ToolResult.error(
+                f"Column `{blueprint.kanban_column_id}` Board "
+                f"`{blueprint.kanban_board_id}` ichida yo'q. "
+                "kanban.get_board orqali real column IDni qayta oling."
+            )
+
+    destination = blueprint.destination_collection if not blueprint.kanban_board_id else None
+    required = [name for name in (blueprint.catalog_collection, destination) if name]
     missing_collections = sorted({name for name in required if collections_loaded and name not in names})
     if missing_collections:
         await _progress(ctx, "collections", "failed", "Kerakli collection topilmadi")
@@ -491,7 +552,6 @@ async def build_blueprint(input: BuildBlueprintInput, ctx: ToolContext) -> ToolR
             + ". Avval cms.create_collection bilan typed schema yarating."
         )
 
-    destination = blueprint.destination_collection
     if destination and destination in schemas and schemas[destination]:
         schema = schemas[destination]
         requested = {field.collection_field or field.key for field in blueprint.fields}
@@ -567,7 +627,6 @@ async def build_blueprint(input: BuildBlueprintInput, ctx: ToolContext) -> ToolR
     definition = get_blueprint_definition(blueprint.pattern)
     if definition is None:  # BotBlueprint validation already guarantees this
         return ToolResult.error(f"Blueprint `{blueprint.pattern}` registryda topilmadi.")
-    project_id = resolve_concrete_project_id(ctx)
     catalog_document: dict[str, Any] | None = None
     if project_id and blueprint.catalog_collection:
         try:
@@ -619,7 +678,12 @@ async def build_blueprint(input: BuildBlueprintInput, ctx: ToolContext) -> ToolR
         if isinstance(response, dict):
             relation_saved: bool | None = None
             expected_relation = None
-            if catalog_document and blueprint.relation_field and blueprint.destination_collection:
+            if (
+                catalog_document
+                and blueprint.relation_field
+                and blueprint.destination_collection
+                and not blueprint.kanban_board_id
+            ):
                 expected_relation = catalog_document.get("_id") or catalog_document.get("id")
                 after = response.get("collections_after")
                 rows = after.get(blueprint.destination_collection) if isinstance(after, dict) else None

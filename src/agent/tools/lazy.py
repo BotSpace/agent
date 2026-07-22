@@ -55,6 +55,8 @@ _CORE_NAMES: frozenset[str] = frozenset(
         # standalone Board/Kanban intent must resolve before bot/CMS tools
         "kanban.list_boards",
         "kanban.get_board",
+        "kanban.create_board",
+        "kanban.link_project",
         # common deploy + checks
         "credentials.list",
         "env.list",

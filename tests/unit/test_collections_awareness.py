@@ -69,6 +69,38 @@ def test_load_collections_uses_slug_as_runtime_identifier():
     assert out[0]["field_kinds"] == {"message": "text"}
 
 
+def test_load_collections_resolves_go_relation_id_back_to_target_slug():
+    backend = _FakeBackend(
+        cols=[
+            {"id": "courses-id", "name": "Kurslar", "slug": "courses"},
+            {"id": "registrations-id", "name": "Yozilishlar", "slug": "registrations"},
+        ],
+        detail={
+            "courses": {"fields": [{"name": "name", "type": "text"}]},
+            "registrations": {
+                "fields": [
+                    {
+                        "name": "course_id",
+                        "type": "relation",
+                        "relation_collection_id": "courses-id",
+                    }
+                ]
+            },
+        },
+    )
+
+    out = _run(load_project_collections("123", client=backend))
+    registration = next(item for item in out if item["name"] == "registrations")
+    assert registration["field_contracts"] == [
+        {
+            "name": "course_id",
+            "kind": "relation",
+            "required": False,
+            "relation_collection": "courses",
+        }
+    ]
+
+
 def test_load_collections_list_failure_returns_empty():
     class Boom:
         async def cms_list_collections(self, pid, *, auth_claims=None):
