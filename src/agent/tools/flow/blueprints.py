@@ -7,6 +7,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from ...flow.blueprint import (
+    BlueprintField,
     BotBlueprint,
     compile_blueprint,
     get_blueprint_definition,
@@ -72,6 +73,31 @@ class SuggestBlueprintsInput(BaseModel):
     limit: int = Field(default=3, ge=1, le=5)
 
 
+class DraftBlueprintInput(BaseModel):
+    pattern: str = Field(description="flow.suggest_blueprints qaytargan registered pattern.")
+    title: str | None = Field(default=None, description="Botning foydalanuvchiga tushunarli nomi.")
+    intro: str | None = None
+    destination_collection: str | None = Field(
+        default=None,
+        description="Mavjud aniq slug; berilmasa blueprintning tavsiya slugi ishlatiladi.",
+    )
+    catalog_collection: str | None = Field(
+        default=None,
+        description="Mavjud aniq slug; berilmasa blueprintning tavsiya slugi ishlatiladi.",
+    )
+    catalog_label_field: str = "name"
+    catalog_secondary_field: str | None = None
+    relation_field: str | None = None
+    fields: list[BlueprintField] | None = Field(
+        default=None,
+        description="Berilmasa registrydagi shu pattern uchun tavsiya capture fieldlari olinadi.",
+    )
+    options: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Faqat plugin e'lon qilgan typed extension options.",
+    )
+
+
 @tool(
     name="flow.suggest_blueprints",
     description=(
@@ -106,6 +132,95 @@ async def suggest_blueprint_tool(input: SuggestBlueprintsInput, ctx: ToolContext
 
 
 @tool(
+    name="flow.blueprint_draft",
+    description=(
+        "Create a complete typed blueprint draft from a registered pattern using that "
+        "extension's field presets and current CMS contracts. Use after suggest_blueprints; "
+        "do not manually invent the full BotBlueprint payload. This tool never changes the flow."
+    ),
+    input_model=DraftBlueprintInput,
+    core=True,
+)
+async def blueprint_draft(input: DraftBlueprintInput, ctx: ToolContext) -> ToolResult:
+    definition = get_blueprint_definition(input.pattern)
+    if definition is None:
+        available = ", ".join(item.pattern for item in list_blueprint_definitions())
+        return ToolResult.error(
+            f"Blueprint `{input.pattern}` topilmadi. Mavjud patternlar: {available}."
+        )
+
+    fields = input.fields
+    if fields is None:
+        fields = [BlueprintField.model_validate(item) for item in definition.field_presets]
+    values: dict[str, Any] = {
+        "pattern": definition.pattern,
+        "title": input.title or definition.title,
+        "fields": fields,
+        "destination_collection": input.destination_collection or definition.default_destination,
+        "catalog_collection": input.catalog_collection or definition.default_catalog,
+        "catalog_label_field": input.catalog_label_field,
+        "catalog_secondary_field": input.catalog_secondary_field,
+        "relation_field": input.relation_field or definition.default_relation_field,
+        "options": input.options,
+    }
+    if input.intro is not None:
+        values["intro"] = input.intro
+    try:
+        blueprint = BotBlueprint.model_validate(values)
+    except Exception as exc:
+        return ToolResult.error(
+            "Blueprint draftni tugatish uchun majburiy biznes qiymati yetishmaydi: " + str(exc)
+        )
+
+    names, schemas = _collection_contract(ctx)
+    collections_loaded = isinstance(ctx.state.get("collections"), list)
+    requirements: list[str] = []
+    destination = blueprint.destination_collection
+    if destination:
+        if collections_loaded and destination not in names:
+            requirements.append(f"`{destination}` collection yarating")
+        elif schemas.get(destination):
+            required_fields = {field.collection_field or field.key for field in blueprint.fields}
+            if blueprint.relation_field:
+                required_fields.add(blueprint.relation_field)
+            missing = sorted(required_fields - set(schemas[destination]))
+            if missing:
+                requirements.append(
+                    f"`{destination}`ga field qo'shing: " + ", ".join(missing)
+                )
+    catalog = blueprint.catalog_collection
+    if catalog:
+        if collections_loaded and catalog not in names:
+            requirements.append(f"`{catalog}` collection yarating")
+        elif schemas.get(catalog):
+            display = [blueprint.catalog_label_field]
+            if blueprint.catalog_secondary_field:
+                display.append(blueprint.catalog_secondary_field)
+            missing = [field for field in display if field not in schemas[catalog]]
+            if missing:
+                requirements.append(f"`{catalog}`ga display field qo'shing: " + ", ".join(missing))
+
+    return ToolResult.ok(
+        "Blueprint draft tayyor. "
+        + ("CMS talablari: " + "; ".join(requirements) if requirements else "CMS contract mos."),
+        data={
+            "blueprint": blueprint.model_dump(),
+            "requirements": requirements,
+            "ready": not requirements,
+            "definition": {
+                "pattern": definition.pattern,
+                "version": definition.version,
+                "options_schema": (
+                    definition.options_model.model_json_schema()
+                    if definition.options_model is not None
+                    else None
+                ),
+            },
+        },
+    )
+
+
+@tool(
     name="flow.list_blueprints",
     description=(
         "List every registered high-level bot blueprint and its requirements. "
@@ -130,9 +245,21 @@ async def list_blueprints(_: ListBlueprintsInput, ctx: ToolContext) -> ToolResul
         rows.append(
             {
                 "pattern": definition.pattern,
+                "version": definition.version,
                 "title": definition.title,
                 "description": definition.description,
                 "requirements": requirements,
+                "field_presets": list(definition.field_presets),
+                "defaults": {
+                    "destination_collection": definition.default_destination,
+                    "catalog_collection": definition.default_catalog,
+                    "relation_field": definition.default_relation_field,
+                },
+                "options_schema": (
+                    definition.options_model.model_json_schema()
+                    if definition.options_model is not None
+                    else None
+                ),
             }
         )
     return ToolResult.ok(
@@ -160,9 +287,10 @@ async def blueprint_preview(input: BlueprintPreviewInput, ctx: ToolContext) -> T
     blueprint = input.blueprint
     flow = compile_blueprint(blueprint)
     names, schemas = _collection_contract(ctx)
+    collections_loaded = isinstance(ctx.state.get("collections"), list)
     issues: list[str] = []
     for name in (blueprint.catalog_collection, blueprint.destination_collection):
-        if name and names and name not in names:
+        if name and collections_loaded and name not in names:
             issues.append(f"Collection `{name}` mavjud emas — avval yaratilishi kerak.")
     if blueprint.destination_collection in schemas:
         schema = schemas[str(blueprint.destination_collection)]
@@ -243,10 +371,13 @@ async def build_blueprint(input: BuildBlueprintInput, ctx: ToolContext) -> ToolR
         )
 
     blueprint = input.blueprint
+    await _progress(ctx, "blueprint", "running", "Biznes talabi blueprintga tayyorlanmoqda")
     await _progress(ctx, "blueprint", "done", "Biznes talabi typed blueprintga aylantirildi")
+    await _progress(ctx, "collections", "running", "Collection contract tekshirilmoqda")
     names, schemas = _collection_contract(ctx)
+    collections_loaded = isinstance(ctx.state.get("collections"), list)
     required = [name for name in (blueprint.catalog_collection, blueprint.destination_collection) if name]
-    missing_collections = sorted({name for name in required if names and name not in names})
+    missing_collections = sorted({name for name in required if collections_loaded and name not in names})
     if missing_collections:
         await _progress(ctx, "collections", "failed", "Kerakli collection topilmadi")
         return ToolResult.error(
@@ -290,6 +421,7 @@ async def build_blueprint(input: BuildBlueprintInput, ctx: ToolContext) -> ToolR
             )
     await _progress(ctx, "collections", "done", "Collection va field contract tekshirildi")
 
+    await _progress(ctx, "validation", "running", "Flow compile va semantic validation qilinmoqda")
     flow = compile_blueprint(blueprint)
     result = validate(
         flow,
@@ -344,6 +476,7 @@ async def build_blueprint(input: BuildBlueprintInput, ctx: ToolContext) -> ToolR
             emit=ctx.emit,
             services=ctx.services,
         )
+        await _progress(ctx, "simulation", "running", "Realistik journey simulatorga yuborildi")
         try:
             response = await _run_simulation(
                 temp_ctx,
@@ -393,6 +526,7 @@ async def build_blueprint(input: BuildBlueprintInput, ctx: ToolContext) -> ToolR
             "Journey muvaffaqiyatli" if verification["ran"] else "Simulator mavjud emas",
         )
 
+    await _progress(ctx, "apply", "running", "Working draft va regression baseline tayyorlanmoqda")
     test_saved = False
     if input.save_regression_test and project_id:
         from ...mcp.flow_tests import get_flow_test_store
@@ -404,7 +538,7 @@ async def build_blueprint(input: BuildBlueprintInput, ctx: ToolContext) -> ToolR
             steps=steps,
             enabled=True,
         )
-    await _progress(ctx, "apply", "done", "Flow va regression baseline tayyor")
+    await _progress(ctx, "apply", "done", "Tekshirilgan working draft tayyor; endi flow.save")
 
     compiled = flow.model_dump()
     delta = diff(FlowDocument.model_validate(previous), flow)
@@ -413,6 +547,7 @@ async def build_blueprint(input: BuildBlueprintInput, ctx: ToolContext) -> ToolR
         *_business_summary(blueprint),
         f"• Tekshiruv: {"o'tdi" if verification['ran'] else "semantic validation o'tdi"}",
         f"• Regression test: {'saqlandi' if test_saved else 'saqlanmadi'}",
+        "• Holat: tekshirilgan working draft; production/debugga qo'llash uchun flow.save chaqiring.",
         "• Oldingi flow: flow.discard_blueprint bilan shu run davomida tiklanadi.",
     ]
     return ToolResult.ok(
@@ -470,6 +605,7 @@ def build_blueprint_tools() -> list[Tool]:
     return [
         list_blueprints,
         suggest_blueprint_tool,
+        blueprint_draft,
         blueprint_preview,
         build_blueprint,
         discard_blueprint,

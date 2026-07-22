@@ -1,11 +1,14 @@
 import pytest
-from pydantic import ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
+import agent.flow.blueprint as blueprint_module
 from agent.flow.blueprint import (
+    BlueprintDefinition,
     BlueprintField,
     BotBlueprint,
     compile_blueprint,
     list_blueprint_definitions,
+    register_blueprint,
     regression_steps,
 )
 from agent.flow.validator import validate
@@ -13,6 +16,8 @@ from agent.tools.base import ToolContext
 from agent.tools.flow.blueprints import (
     BuildBlueprintInput,
     DiscardBlueprintInput,
+    DraftBlueprintInput,
+    blueprint_draft,
     build_blueprint,
     discard_blueprint,
 )
@@ -113,6 +118,61 @@ def test_feedback_blueprint_supplies_typed_rating_field_by_default():
     assert [field.key for field in blueprint.fields] == ["rating"]
 
 
+class _ExtensionOptions(BaseModel):
+    minimum_age: int = Field(default=18, ge=1)
+
+
+def test_extension_can_own_version_presets_and_typed_options(monkeypatch):
+    monkeypatch.setattr(blueprint_module, "_BLUEPRINTS", dict(blueprint_module._BLUEPRINTS))
+    register_blueprint(
+        BlueprintDefinition(
+            pattern="typed_extension",
+            title="Typed extension",
+            description="Test",
+            compiler=lambda blueprint: compile_blueprint(
+                blueprint.model_copy(update={"pattern": "info"})
+            ),
+            test_generator=regression_steps,
+            version=2,
+            field_presets=(
+                {"key": "full_name", "label": "Ism", "prompt": "Ismingiz:"},
+            ),
+            options_model=_ExtensionOptions,
+        )
+    )
+    blueprint = BotBlueprint(
+        pattern="typed_extension",
+        title="Typed",
+        options={"minimum_age": 21},
+    )
+    assert blueprint.options == {"minimum_age": 21}
+    with pytest.raises(ValidationError, match="greater than or equal"):
+        BotBlueprint(pattern="typed_extension", title="Typed", options={"minimum_age": 0})
+
+
+@pytest.mark.asyncio
+async def test_blueprint_draft_uses_registered_presets_and_reports_cms_requirements():
+    ctx = ToolContext(
+        run_id="test",
+        project_id="project-1",
+        user_id="user-1",
+        state={"collections": []},
+    )
+    result = await blueprint_draft.run(
+        DraftBlueprintInput(pattern="appointment", title="Klinika qabuli").model_dump(),
+        ctx,
+    )
+    assert not result.is_error, result.content
+    assert result.data["blueprint"]["destination_collection"] == "appointments"
+    assert [field["key"] for field in result.data["blueprint"]["fields"]] == [
+        "full_name",
+        "phone",
+        "preferred_time",
+    ]
+    assert result.data["ready"] is False
+    assert "`appointments` collection yarating" in result.data["requirements"]
+
+
 @pytest.mark.asyncio
 async def test_build_blueprint_is_atomic_and_restorable():
     previous = {
@@ -206,4 +266,30 @@ async def test_build_blueprint_rejects_missing_collection_without_mutation():
     )
     assert result.is_error
     assert result.state_updates == {}
+    assert "`leads`" in result.content
+
+
+@pytest.mark.asyncio
+async def test_build_blueprint_treats_loaded_empty_collection_list_as_authoritative():
+    ctx = ToolContext(
+        run_id="test",
+        project_id="project-1",
+        user_id="user-1",
+        state={"working_flow": {"nodes": [], "edges": []}, "collections": []},
+    )
+    blueprint = BotBlueprint(
+        pattern="lead",
+        title="Lead",
+        destination_collection="leads",
+        fields=[_field("name")],
+    )
+    result = await build_blueprint.run(
+        BuildBlueprintInput(
+            blueprint=blueprint,
+            verify=False,
+            save_regression_test=False,
+        ).model_dump(),
+        ctx,
+    )
+    assert result.is_error
     assert "`leads`" in result.content

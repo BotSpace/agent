@@ -41,6 +41,12 @@ class BlueprintDefinition:
     requires_fields: bool = False
     requires_catalog: bool = False
     requires_relation: bool = False
+    version: int = 1
+    field_presets: tuple[dict[str, Any], ...] = ()
+    default_destination: str | None = None
+    default_catalog: str | None = None
+    default_relation_field: str | None = None
+    options_model: type[BaseModel] | None = None
 
 
 _BLUEPRINTS: dict[str, BlueprintDefinition] = {}
@@ -50,6 +56,12 @@ def register_blueprint(definition: BlueprintDefinition) -> None:
     """Register/replace a blueprint definition by stable pattern id."""
     if not re.fullmatch(r"[a-z][a-z0-9_-]*", definition.pattern):
         raise ValueError(f"invalid blueprint pattern: {definition.pattern}")
+    if definition.version < 1:
+        raise ValueError("blueprint version must be positive")
+    # Extension xatosini user buildining o'rtasida emas, servis ishga tushishida
+    # ko'rsatamiz.
+    for field in definition.field_presets:
+        BlueprintField.model_validate(field)
     _BLUEPRINTS[definition.pattern] = definition
 
 
@@ -129,7 +141,7 @@ class BotBlueprint(BaseModel):
         description="Dynamic catalog source for catalog/registration/order.",
     )
     catalog_label_field: str = "name"
-    catalog_secondary_field: str | None = "price"
+    catalog_secondary_field: str | None = None
     selection_state_key: str = "selected_item"
     relation_field: str | None = Field(
         default=None,
@@ -138,6 +150,13 @@ class BotBlueprint(BaseModel):
     include_confirmation: bool = True
     success_message: str = "✅ Ma'lumotlaringiz qabul qilindi."
     cancel_message: str = "Bekor qilindi. /start orqali qayta boshlashingiz mumkin."
+    options: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Blueprint extensioniga tegishli parametrlar. Plugin o'zining typed "
+            "Pydantic modeli bilan tekshiradi; ixtiyoriy noma'lum options qabul qilinmaydi."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_contract(self) -> BotBlueprint:
@@ -145,6 +164,10 @@ class BotBlueprint(BaseModel):
         if definition is None:
             available = ", ".join(item.pattern for item in list_blueprint_definitions())
             raise ValueError(f"unknown blueprint `{self.pattern}`; available: {available or '(none)'}")
+        if definition.options_model is not None:
+            self.options = definition.options_model.model_validate(self.options).model_dump()
+        elif self.options:
+            raise ValueError(f"{self.pattern} does not accept custom options")
         if definition.requires_destination and not self.destination_collection:
             raise ValueError(f"{self.pattern} requires destination_collection")
         if definition.requires_fields and not self.fields:
@@ -539,6 +562,16 @@ def _register_builtins() -> None:
             keywords=("lead", "ariza", "ism va telefon", "bog'lan", "mijoz"),
             requires_destination=True,
             requires_fields=True,
+            field_presets=(
+                {"key": "full_name", "label": "Ism", "prompt": "Ismingizni kiriting:"},
+                {
+                    "key": "phone",
+                    "label": "Telefon",
+                    "prompt": "Telefon raqamingizni yuboring:",
+                    "kind": "contact",
+                },
+            ),
+            default_destination="leads",
         ),
         BlueprintDefinition(
             "registration",
@@ -558,6 +591,18 @@ def _register_builtins() -> None:
             requires_fields=True,
             requires_catalog=True,
             requires_relation=True,
+            field_presets=(
+                {"key": "full_name", "label": "Ism", "prompt": "Ismingizni kiriting:"},
+                {
+                    "key": "phone",
+                    "label": "Telefon",
+                    "prompt": "Telefon raqamingizni yuboring:",
+                    "kind": "contact",
+                },
+            ),
+            default_destination="registrations",
+            default_catalog="courses",
+            default_relation_field="course_id",
         ),
         BlueprintDefinition(
             "catalog",
@@ -567,6 +612,7 @@ def _register_builtins() -> None:
             regression_steps,
             keywords=("katalog", "ro'yxatni ko'rsat", "kurslar", "mahsulotlar"),
             requires_catalog=True,
+            default_catalog="catalog_items",
         ),
         BlueprintDefinition(
             "order",
@@ -579,6 +625,23 @@ def _register_builtins() -> None:
             requires_fields=True,
             requires_catalog=True,
             requires_relation=True,
+            field_presets=(
+                {"key": "full_name", "label": "Ism", "prompt": "Ismingizni kiriting:"},
+                {
+                    "key": "phone",
+                    "label": "Telefon",
+                    "prompt": "Telefon raqamingizni yuboring:",
+                    "kind": "contact",
+                },
+                {
+                    "key": "delivery_address",
+                    "label": "Manzil",
+                    "prompt": "Yetkazib berish manzilini kiriting:",
+                },
+            ),
+            default_destination="orders",
+            default_catalog="products",
+            default_relation_field="product_id",
         ),
         BlueprintDefinition(
             "support",
@@ -589,6 +652,21 @@ def _register_builtins() -> None:
             keywords=("support", "yordam", "murojaat", "operator", "muammo"),
             requires_destination=True,
             requires_fields=True,
+            field_presets=(
+                {"key": "full_name", "label": "Ism", "prompt": "Ismingizni kiriting:"},
+                {
+                    "key": "phone",
+                    "label": "Telefon",
+                    "prompt": "Telefon raqamingizni yuboring:",
+                    "kind": "contact",
+                },
+                {
+                    "key": "message",
+                    "label": "Murojaat",
+                    "prompt": "Murojaatingizni yozing:",
+                },
+            ),
+            default_destination="support_requests",
         ),
         BlueprintDefinition(
             "feedback",
@@ -598,6 +676,11 @@ def _register_builtins() -> None:
             regression_steps,
             keywords=("feedback", "baho", "fikr", "yulduz"),
             requires_destination=True,
+            field_presets=(
+                {"key": "rating", "label": "Baho", "prompt": "1 dan 5 gacha baholang:"},
+                {"key": "comment", "label": "Fikr", "prompt": "Fikringizni yozing:"},
+            ),
+            default_destination="feedback",
         ),
     ]
     for definition in definitions:

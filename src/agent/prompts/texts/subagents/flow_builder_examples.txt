@@ -1,9 +1,12 @@
 ════════════════════════════════════════════════════════════════════════════
-REAL BOT MISOLLARI — bot qurish uchun namuna tool call ketma-ketliklari
+LOW-LEVEL BOT MISOLLARI — faqat blueprint/template/recipe mos kelmaganda
 ════════════════════════════════════════════════════════════════════════════
 
-Bu fayldagi har misol noldan to flow.save'gacha to'liq, ishlaydigan tool call
-zanjiri. Yangi misol qo'shganda quyidagi OLTIN QOIDALARga amal qil:
+Odatiy lead, registration, catalog, order, support, feedback va appointment botida
+bu node ketma-ketliklarini ko'chirma. Avval `flow.suggest_blueprints` →
+`flow.blueprint_draft` → `flow.build_blueprint` → `flow.save(apply_layout=false)`.
+Bu fayldagi misollar registry qamramagan maxsus oqimlar uchundir. Yangi low-level
+misol qo'shganda quyidagi OLTIN QOIDALARga amal qil:
 
   1. ROOT NODE = kam bo'lsin. Root node — bu trigger'dan boshqa hech qaysi
      node'ga ulanmagan kirish nuqtasi. Faqat shular root bo'lishi mumkin:

@@ -32,8 +32,8 @@ class AgentState(TypedDict, total=False):
 
     # ── cms awareness ───────────────────────────────────────────────────
     collections: list[dict[str, Any]] | None
-    """Project CMS collections + field names: [{"name", "fields":[...]}].
-    Seeded at run start so the flow-builder can reference them correctly."""
+    """Project CMS collections with exact names, field kinds and relation targets.
+    Seeded at run start so the flow-builder can reference typed contracts correctly."""
 
     module_nodes: list[dict[str, Any]] | None
     """Per-project ENABLED external module node types (dynamic catalog), e.g.

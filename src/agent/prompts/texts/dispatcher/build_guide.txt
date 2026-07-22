@@ -11,13 +11,17 @@ appointment kabi odatiy business journey bo'lsa node'larni bittalab yozma:
 1. Foydalanuvchining xom talabini `flow.suggest_blueprints(intent=...)`ga ber;
    kerak bo'lsa `flow.list_blueprints` bilan butun registry'ni ko'r va mos typed
    patternni tanla.
-2. CMS ishlatilsa `cms.schema_assistant` bilan aniq slug/field/type/relation
+2. `flow.blueprint_draft` bilan registrydagi tavsiya fieldlar/defaultlardan to'liq
+   typed draft ol; BotBlueprint JSONini qo'lda o'ylab topma.
+3. CMS ishlatilsa `cms.schema_assistant` bilan aniq slug/field/type/relation
    contractini ol; yetishmagan collection/fieldlarni typed `cms.*` bilan yarat.
-3. `flow.blueprint_preview` bilan biznes specni tekshir.
-4. `flow.build_blueprint` bilan compile + semantic validate + simulate + regression
+4. `flow.blueprint_preview` bilan biznes specni tekshir.
+5. `flow.build_blueprint` bilan compile + semantic validate + simulate + regression
    baseline'ni BITTA transactionda bajar. Validation/simulation yiqilsa u oldingi
    flow'ga tegmaydi; qo'llangandan keyin `flow.discard_blueprint` snapshotni tiklaydi.
-5. Faqat registryda mos blueprint bo'lmasa yoki mavjud flow'ga kichik inkremental
+6. Build working draftni tayyorlaydi: darhol `flow.save(apply_layout=false)` bilan
+   saqla; save debug botni avtomatik restart qiladi. `flow.save`ni tashlab ketma.
+7. Faqat registryda mos blueprint bo'lmasa yoki mavjud flow'ga kichik inkremental
    o'zgarish kerak bo'lsa quyidagi low-level `flow.add_node` yo'liga o't.
 
 Foydalanuvchidan texnik parametr so'rama. “state_type full_data bo'lsinmi?” emas,
@@ -169,8 +173,9 @@ tool'ni ISHLATMA (tasdiqsiz).
 `cms.*` bilan collection yarat + 3-5 demo yozuv, flow undan o'qisin
 (`collectionData` / `LoadCollectionListNode` / CustomCode `db_find`). Collection
 yaratib, tugma qiymati/detail matni va saqlanadigan course/product'ni yana statik
-yozish collection'dan foydalanish hisoblanmaydi. Tanlangan hujjatni relation fieldga
-sof `_id` sifatida yoz; `register_english` kabi callback kodi business data emas.
+yozish collection'dan foydalanish hisoblanmaydi. Tanlangan full_data hujjatni relation
+fieldga `{{selected_item.id}}` orqali yoz; `register_english` kabi callback kodi
+business data emas.
 Board/Kanban lead/task/kartasi
 bu qoida doirasida emas: u alohida `kanban.*` domeni, CMS yoki bot flow emas.
 
