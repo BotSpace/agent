@@ -142,3 +142,86 @@ def test_custom_code_rejects_async_await() -> None:
 
     result = validate(flow)
     assert any(issue.code == "custom_code_async_unsupported" for issue in result.errors)
+
+
+def test_collection_trigger_requires_canonical_callback_prefix() -> None:
+    flow = FlowDocument.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "pick",
+                    "type": "CallbackQueryTriggerNode",
+                    "data": {
+                        "filter": "starts_with",
+                        "context": {"value": "course:"},
+                        "state_key": "selected_course",
+                        "state_type": "full_data",
+                    },
+                }
+            ],
+            "edges": [],
+        }
+    )
+
+    result = validate(flow)
+    assert any(issue.code == "invalid_collection_callback_prefix" for issue in result.errors)
+
+
+def test_nested_collection_mapping_must_be_a_template() -> None:
+    flow = FlowDocument.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "pick",
+                    "type": "CallbackQueryTriggerNode",
+                    "data": {
+                        "filter": "starts_with",
+                        "context": {"value": "collection:courses:"},
+                        "state_key": "selected_course",
+                        "state_type": "full_data",
+                    },
+                },
+                {
+                    "id": "save",
+                    "type": "CollectionNode",
+                    "data": {
+                        "collection_name": "registrations",
+                        "fieldMappings": {"course_id": "selected_course._id"},
+                    },
+                },
+            ],
+            "edges": [],
+        }
+    )
+
+    result = validate(flow)
+    assert any(issue.code == "unwrapped_collection_mapping_source" for issue in result.errors)
+
+
+def test_static_keyboard_rejects_collection_row_templates() -> None:
+    flow = FlowDocument.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "courses",
+                    "type": "EditOrSendMessageNode",
+                    "data": {
+                        "messageText": "Kursni tanlang",
+                        "rows": [
+                            [
+                                {
+                                    "text": "{{name}}",
+                                    "type": "callback",
+                                    "value": "course:{{_id}}",
+                                }
+                            ]
+                        ],
+                    },
+                }
+            ],
+            "edges": [],
+        }
+    )
+
+    result = validate(flow)
+    assert any(issue.code == "dynamic_keyboard_template_unsupported" for issue in result.errors)

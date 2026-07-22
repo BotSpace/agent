@@ -14,7 +14,7 @@ from .manifest_compiler.node_catalog import (
     is_trigger,
     state_saving_types,
 )
-from .schema import FlowDocument
+from .schema import FlowDocument, FlowNode
 
 
 @dataclass
@@ -321,6 +321,25 @@ def validate(
                             node_id=node.id,
                         )
                     )
+
+                if node.type == "CallbackQueryTriggerNode" and state_type in {"collection_id", "full_data"}:
+                    context = node.data.get("context")
+                    callback_value = context.get("value") if isinstance(context, dict) else None
+                    if not (
+                        isinstance(callback_value, str)
+                        and re.fullmatch(r"collection:[A-Za-z0-9_-]+:", callback_value)
+                    ):
+                        issues.append(
+                            ValidationIssue(
+                                "error",
+                                "invalid_collection_callback_prefix",
+                                f"`{state_type}` only understands canonical callbacks "
+                                "`collection:<collection_slug>:<document_id>`. Set this "
+                                "trigger to filter='starts_with' and context.value to "
+                                "`collection:<collection_slug>:`.",
+                                node_id=node.id,
+                            )
+                        )
 
         # State-saving nodes MUST declare `data.type` (what kind of value is
         # captured — text/phone_number/file_id/Custom/…). Without it the engine
@@ -646,6 +665,7 @@ def validate(
 
     # ── 6. Unknown {{var}} references (#9b, conservative) ──────────────
     issues.extend(_collection_mapping_issues(flow))
+    issues.extend(_button_template_issues(flow))
     issues.extend(_unknown_variable_warnings(flow, module_map))
 
     # ── 7. Screen-specific button → global trigger over-use ────────────
@@ -1036,6 +1056,21 @@ def _collection_mapping_issues(flow: FlowDocument) -> list[ValidationIssue]:
                             node_id=node.id,
                         )
                     )
+            if not template_vars and re.fullmatch(
+                r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+", source
+            ):
+                root = source.split(".", 1)[0]
+                if root in allowed:
+                    out.append(
+                        ValidationIssue(
+                            "error",
+                            "unwrapped_collection_mapping_source",
+                            f"Collection field `{field_name}` maps from nested state "
+                            f"`{source}` as literal text. Use `{{{{{source}}}}}` so the "
+                            "runtime resolves the nested value.",
+                            node_id=node.id,
+                        )
+                    )
             # Per tool contract, an identifier-shaped bare value is normally a
             # state key. Keep constants backward-compatible, but surface likely
             # typos instead of silently certifying them as valid.
@@ -1051,6 +1086,51 @@ def _collection_mapping_issues(flow: FlowDocument) -> list[ValidationIssue]:
                             node_id=node.id,
                         )
                     )
+    return out
+
+
+def _button_template_issues(flow: FlowDocument) -> list[ValidationIssue]:
+    """Reject row-local templates in static keyboard definitions."""
+    state_keys = _collect_state_keys(flow)
+    allowed = state_keys | set(_STANDARD_CONTEXT_VARS)
+    out: list[ValidationIssue] = []
+
+    def scan_rows(node: FlowNode, rows: object) -> None:
+        if not isinstance(rows, list):
+            return
+        for row in rows:
+            if not isinstance(row, list):
+                continue
+            for button in row:
+                if not isinstance(button, dict):
+                    continue
+                for field_name in ("text", "value"):
+                    value = button.get(field_name)
+                    if not isinstance(value, str) or "{{" not in value:
+                        continue
+                    roots = {match.group(1) for match in _SIMPLE_VAR_RE.finditer(value)}
+                    unsupported = sorted(root for root in roots if root not in allowed)
+                    if "{{#each" in value or unsupported:
+                        bad = ", ".join(unsupported) or "#each"
+                        out.append(
+                            ValidationIssue(
+                                "error",
+                                "dynamic_keyboard_template_unsupported",
+                                f"Static keyboard `{field_name}` uses row-local template "
+                                f"`{bad}`. Keyboard rows do not iterate collection data. "
+                                "Build dynamic rows in synchronous CustomCode with db_find "
+                                "and send_message, or use flow.ask_buttons with concrete IDs.",
+                                node_id=node.id,
+                            )
+                        )
+
+    for node in flow.nodes:
+        data = node.data if isinstance(node.data, dict) else {}
+        scan_rows(node, data.get("rows"))
+        keyboard = data.get("keyboard")
+        if isinstance(keyboard, dict):
+            scan_rows(node, keyboard.get("inline"))
+            scan_rows(node, keyboard.get("reply"))
     return out
 
 

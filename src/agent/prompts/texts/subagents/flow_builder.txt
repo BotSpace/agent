@@ -414,6 +414,12 @@ ma'lumot avtomatik saqlanadi:
   ishlat; har `option.value`ga CMS hujjat `_id`si beriladi. Tool callback'ni
   `collection:courses:<id>` formatida o'zi yasaydi va state'ga sof ID yozadi.
   To'liq hujjat kerak bo'lsa `state_type="full_data"` ishlat.
+  Dinamik CustomCode klaviaturada ham callback aynan
+  `collection:<slug>:<document_id>` bo'lsin va CallbackQueryTriggerNode
+  `context.value="collection:<slug>:"` bilan `starts_with` qilsin.
+  `course:<id>` kabi boshqa prefiks `collection_id/full_data` tomonidan
+  yechilmaydi. Nested qiymatni collection'ga yozishda yalang'och
+  `selected_course._id` emas, `{{selected_course._id}}` template ishlat.
 - `CommandTriggerNode` `withArgs:true` + `state_key` + `state_type:"text"`
   bilan buyruq argumentini saqlaydi.
 
