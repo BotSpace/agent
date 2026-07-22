@@ -133,9 +133,10 @@ source_handle="output-<case.id>")` (masalan `output-c1`); mos kelmasa
 yoki `{{var}}`. Source handle'lar: `paid` / `failed`. Real xarid uchun `payment_link`
 tool'ni ISHLATMA (tasdiqsiz).
 
-**Dinamik ro'yxat (kurs/mahsulot/FAQ):** flow'ga HARDCODE QILMA — `cms.*` bilan
-collection yarat + 3-5 demo yozuv, flow undan o'qisin (`LoadCollectionListNode` /
-CustomCode `db_find`).
+**Bot ichidagi dinamik ro'yxat (kurs/mahsulot/FAQ):** flow'ga HARDCODE QILMA —
+`cms.*` bilan collection yarat + 3-5 demo yozuv, flow undan o'qisin
+(`LoadCollectionListNode` / CustomCode `db_find`). Board/Kanban lead/task/kartasi
+bu qoida doirasida emas: u alohida `kanban.*` domeni, CMS yoki bot flow emas.
 
 **Qiymat saqlash:** foydalanuvchi inputini Command/Message/CallbackQuery trigger'ning
 `state_key` + `state_type` maydonlari bilan saqla. Oqim ichida doimiy qiymat yozish

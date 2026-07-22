@@ -11,6 +11,7 @@ from .credentials import build_credentials_tools
 from .env import build_env_tools
 from .file import build_file_tools
 from .flow import build_flow_tools
+from .kanban import build_kanban_tools
 from .modules import build_modules_tools
 from .plan import has_incomplete_plan
 from .project import build_project_tools
@@ -35,6 +36,7 @@ def build_default_registry() -> ToolRegistry:
     # that produces a detailed plan document, not a tracked checklist.
     reg.extend(build_ask_user_tools())
     reg.extend(build_flow_tools())
+    reg.extend(build_kanban_tools())
     reg.extend(build_project_tools())
     reg.extend(build_env_tools())
     reg.extend(build_release_tools())
@@ -58,22 +60,51 @@ def build_default_registry() -> ToolRegistry:
 # Read-only toolset for PLAN MODE — research/inspect + clarify only. An ALLOWLIST
 # (not a denylist) so no mutating tool (build/save/create/deploy/broadcast) can
 # ever leak into plan mode.
-_PLAN_MODE_TOOLS = frozenset({
-    "ask_user",
-    "chat.list_users", "chat.user_history", "chat.user_stats",
-    "cms.find", "cms.get_collection", "cms.get_document",
-    "cms.list_collections", "cms.aggregate", "cms.audit_log",
-    "credentials.list", "credentials.list_types",
-    "env.list", "file.list",
-    "flow.get", "flow.diff", "flow.export", "flow.history",
-    "flow.list_node_types", "flow.list_recipes", "flow.search_template",
-    "flow.validate", "flow.test_list",
-    "modules.list_available", "modules.search",
-    "plans.list",
-    "project.list", "project.get", "project.errors", "project.snapshot",
-    "release.debug_logs", "release.list", "release.logs", "release.status",
-    "search.semantic", "sleep", "subscription.current", "tools.search",
-})
+_PLAN_MODE_TOOLS = frozenset(
+    {
+        "ask_user",
+        "chat.list_users",
+        "chat.user_history",
+        "chat.user_stats",
+        "cms.find",
+        "cms.get_collection",
+        "cms.get_document",
+        "cms.list_collections",
+        "cms.aggregate",
+        "cms.audit_log",
+        "credentials.list",
+        "credentials.list_types",
+        "env.list",
+        "file.list",
+        "flow.get",
+        "flow.diff",
+        "flow.export",
+        "flow.history",
+        "flow.list_node_types",
+        "flow.list_recipes",
+        "flow.search_template",
+        "flow.validate",
+        "flow.test_list",
+        "kanban.get_board",
+        "kanban.list_archived_cards",
+        "kanban.list_boards",
+        "modules.list_available",
+        "modules.search",
+        "plans.list",
+        "project.list",
+        "project.get",
+        "project.errors",
+        "project.snapshot",
+        "release.debug_logs",
+        "release.list",
+        "release.logs",
+        "release.status",
+        "search.semantic",
+        "sleep",
+        "subscription.current",
+        "tools.search",
+    }
+)
 
 
 def build_plan_mode_registry() -> ToolRegistry:
@@ -122,4 +153,3 @@ __all__ = [
     "has_incomplete_plan",
     "tool",
 ]
-

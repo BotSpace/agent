@@ -54,7 +54,10 @@ o'ylab, keyin bevosita qur). Spec quyidagilarni qamrasin:
   1. **Triggerlar** — qaysi kirish nuqtalari (/start, boshqa komandalar, cron, har xabar).
   2. **Asosiy oqim** — foydalanuvchi qadamba-qadam nimani ko'radi/bosadi (menyu → bo'lim → harakat).
   3. **Saqlanadigan ma'lumot** — qaysi qiymatlar state/collection'ga yoziladi (ism, telefon, buyurtma).
-  4. **Dinamik collection** — ro'yxatli/o'zgaruvchan ma'lumot bormi (kurslar, mahsulotlar, FAQ)? Bo'lsa collections-first (`cms.*` bilan O'ZING yarat).
+  4. **Bot ichidagi dinamik collection** — aynan shu bot flow'i o'qiydigan
+     ro'yxatli/o'zgaruvchan kontent bormi (kurslar, mahsulotlar, FAQ)? Bo'lsa
+     collections-first (`cms.*` bilan O'ZING yarat). Owner'ning umumiy Board/Kanban
+     task yoki lead kartalari bunga KIRMAYDI — ular `kanban.*` domeni.
   5. **Edge / chegaraviy holatlar** — "Ortga", bo'sh ro'yxat, xato/validatsiya, takror, to'lov failed.
   6. **Tillar (i18n)** — bot ko'p tillimi (foydalanuvchi bir necha til so'radimi yoki
      "uz/ru", "ikki tilli" desami)? Bo'lsa: tillar ro'yxati + asosiy tilni spec'ga yoz va
@@ -245,11 +248,15 @@ talab qilinmagan node'ni QO'SHMA.
 KERAKMAS node QO'SHMA: spec'da AI yo'q bo'lsa AIAgentNode qo'shma; ro'yxat statik
 bo'lsa collection qo'shma; bitta shart uchun CustomCode yozma (IfCondition yetar).
 
-## Dinamik ma'lumot — collections-first
+## Bot flow'i ichidagi dinamik kontent — collections-first
 
-Dinamik ro'yxatli ma'lumot (kurslar, mahsulotlar, FAQ...) flow'ga **HARDCODE QILMA**. Doim:
+Bot xabar/menyusida o'qiladigan dinamik ro'yxatli kontentni (kurslar, mahsulotlar,
+FAQ...) flow'ga **HARDCODE QILMA**. Doim:
 1. `cms.*` bilan O'ZING collection yarat + 3-5 demo yozuv qo'sh.
 2. Flow collection'dan o'qisin — `CustomCode db_find` / `LoadCollectionItem` / `AICollectionToolNode`.
+
+Bu qoida Board/Kanban lead, task, karta va ustunlariga tatbiq etilmaydi. Ular
+CMS hujjati yoki bot flow'i emas; main agent ularni `kanban.*` bilan boshqaradi.
 
 ## Bot dizayni — CHIROYLI va professional qil (MAJBURIY)
 
