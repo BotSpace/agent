@@ -142,6 +142,13 @@ class ProjectCreateInput(BaseModel):
         "seeds with a minimal /start→welcome flow (drops any promo/demo content). "
         "'keep' leaves the backend's default flow untouched.",
     )
+    force_new: bool = Field(
+        default=False,
+        description=(
+            "Only true when the user explicitly asked for another separate project. "
+            "Leave false while building the project created in this run."
+        ),
+    )
 
 
 @tool(
@@ -149,12 +156,24 @@ class ProjectCreateInput(BaseModel):
     description=(
         "Create a new bot project. Returns the project id. By default replaces "
         "the backend's seeded flow with a clean /start→welcome flow "
-        "(default_flow='keep' to skip)."
+        "(default_flow='keep' to skip). If this run already created/selected a "
+        "project, continue fixing it; accidental duplicates are blocked."
     ),
     input_model=ProjectCreateInput,
 )
 async def project_create(input: ProjectCreateInput, ctx: ToolContext) -> ToolResult:
-    body = input.model_dump(exclude_none=True, exclude={"default_flow"})
+    active_project = ctx.state.get("project_id") or ctx.project_id
+    if (
+        active_project
+        and str(active_project).strip().lower() not in {"global", "none", "null"}
+        and not input.force_new
+    ):
+        return ToolResult.error(
+            f"Aktiv loyiha allaqachon mavjud: `{active_project}`. Shu loyihani davom "
+            "ettiring; xatoni tuzatish uchun yangi duplicate loyiha yaratmang. Faqat "
+            "foydalanuvchi alohida yana bir loyiha so'ragan bo'lsa force_new=true ishlating."
+        )
+    body = input.model_dump(exclude_none=True, exclude={"default_flow", "force_new"})
     backend = _backend(ctx)
     try:
         project = await backend.create_project(body, auth_claims=ctx.state.get("auth_claims"))
@@ -171,9 +190,7 @@ async def project_create(input: ProjectCreateInput, ctx: ToolContext) -> ToolRes
                 project_id, {"flow": clean}, auth_claims=ctx.state.get("auth_claims")
             )
             # Seed agent working state so flow.* tools edit the clean flow.
-            state_updates.update(
-                {"working_flow": clean, "baseline_flow": clean, "flow_dirty": False}
-            )
+            state_updates.update({"working_flow": clean, "baseline_flow": clean, "flow_dirty": False})
             note = " Boshlang'ich flow toza /start→welcome bilan almashtirildi."
         except BackendError:
             note = " (Diqqat: default flow'ni tozalab bo'lmadi — flow.remove_node bilan keraksiz node'larni o'chirishingiz mumkin.)"
@@ -254,9 +271,7 @@ async def project_delete(input: ProjectDeleteInput, ctx: ToolContext) -> ToolRes
     if not input.confirm:
         name = input.id
         try:
-            project = await _backend(ctx).get_project(
-                input.id, auth_claims=ctx.state.get("auth_claims")
-            )
+            project = await _backend(ctx).get_project(input.id, auth_claims=ctx.state.get("auth_claims"))
             if isinstance(project, dict) and project.get("name"):
                 name = f"{project['name']} (id={input.id})"
         except BackendError:
@@ -329,8 +344,7 @@ async def project_errors(input: ProjectErrorsInput, ctx: ToolContext) -> ToolRes
     pid = _resolve_project_id(input.project_id, ctx)
     if not pid:
         return ToolResult.error(
-            "Qaysi loyiha? project_id bering yoki avval loyihani tanlang "
-            "(session_use_project / project.get)."
+            "Qaysi loyiha? project_id bering yoki avval loyihani tanlang (session_use_project / project.get)."
         )
     try:
         rows = await _backend(ctx).list_project_errors(
@@ -373,8 +387,7 @@ async def project_errors(input: ProjectErrorsInput, ctx: ToolContext) -> ToolRes
         payload.append(item)
 
     lines.append(
-        "Yuqoridagi node(lar)ni flow'da topib (flow.get) sababini tuzating, "
-        "keyin flow.validate → flow.save."
+        "Yuqoridagi node(lar)ni flow'da topib (flow.get) sababini tuzating, keyin flow.validate → flow.save."
     )
     return ToolResult.ok(
         "\n".join(lines),

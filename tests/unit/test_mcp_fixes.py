@@ -20,8 +20,7 @@ def test_normalize_legacy_collection_object_to_name():
         "nodes": [
             {"id": "t", "type": "CommandTriggerNode", "data": {"command": "/start"}},
             # legacy shape: collection:{name} instead of collection_name
-            {"id": "list", "type": "LoadCollectionListNode",
-             "data": {"collection": {"name": "products"}}},
+            {"id": "list", "type": "LoadCollectionListNode", "data": {"collection": {"name": "products"}}},
         ],
         "edges": [{"id": "e", "source": "t", "target": "list"}],
     }
@@ -39,8 +38,11 @@ def test_normalize_legacy_collection_object_to_name():
 def test_normalize_legacy_string_collection():
     raw = {
         "nodes": [
-            {"id": "save", "type": "CollectionNode",
-             "data": {"collection": "orders", "fieldMappings": {"a": "b"}}},
+            {
+                "id": "save",
+                "type": "CollectionNode",
+                "data": {"collection": "orders", "fieldMappings": {"a": "b"}},
+            },
         ],
         "edges": [],
     }
@@ -56,8 +58,11 @@ def test_normalize_noop_when_already_flat():
     # fully flat → normalize must be a no-op.
     raw = {
         "nodes": [
-            {"id": "list", "type": "LoadCollectionListNode",
-             "data": {"collection_name": "products", "contextKey": "products"}},
+            {
+                "id": "list",
+                "type": "LoadCollectionListNode",
+                "data": {"collection_name": "products", "contextKey": "products"},
+            },
         ],
         "edges": [],
     }
@@ -70,8 +75,7 @@ def test_normalize_loadlist_defaults_missing_context_key():
     # the list lands at {{<collection_name>}}.
     raw = {
         "nodes": [
-            {"id": "list", "type": "LoadCollectionListNode",
-             "data": {"collection_name": "products"}},
+            {"id": "list", "type": "LoadCollectionListNode", "data": {"collection_name": "products"}},
         ],
         "edges": [],
     }
@@ -103,11 +107,8 @@ def _project_tools():
 @pytest.mark.asyncio
 async def test_project_create_clean_overwrites_default_flow():
     backend = _FakeBackend()
-    ctx = ToolContext(run_id="r", project_id=None, user_id="u",
-                      services={"backend": backend})
-    res = await _project_tools()["project.create"].run(
-        {"name": "MyBot", "default_flow": "clean"}, ctx
-    )
+    ctx = ToolContext(run_id="r", project_id=None, user_id="u", services={"backend": backend})
+    res = await _project_tools()["project.create"].run({"name": "MyBot", "default_flow": "clean"}, ctx)
     assert not res.is_error, res.content
     # The agent sent ONLY name to create (no flow), then overwrote with a flow.
     assert "flow" not in backend.created[0]
@@ -127,15 +128,11 @@ async def test_project_create_returns_compact_result_no_flow():
     class _BackendWithFlow(_FakeBackend):
         async def create_project(self, body, *, auth_claims=None):
             self.created.append(body)
-            return {"id": 777, "name": body.get("name"),
-                    "flow": {"nodes": [{"id": "x"}], "edges": []}}
+            return {"id": 777, "name": body.get("name"), "flow": {"nodes": [{"id": "x"}], "edges": []}}
 
     backend = _BackendWithFlow()
-    ctx = ToolContext(run_id="r", project_id=None, user_id="u",
-                      services={"backend": backend})
-    res = await _project_tools()["project.create"].run(
-        {"name": "MyBot", "default_flow": "clean"}, ctx
-    )
+    ctx = ToolContext(run_id="r", project_id=None, user_id="u", services={"backend": backend})
+    res = await _project_tools()["project.create"].run({"name": "MyBot", "default_flow": "clean"}, ctx)
     assert not res.is_error, res.content
     assert "flow" not in res.data["project"]
     assert res.data["project"]["id"] == "777"
@@ -145,10 +142,25 @@ async def test_project_create_returns_compact_result_no_flow():
 @pytest.mark.asyncio
 async def test_project_create_keep_skips_overwrite():
     backend = _FakeBackend()
-    ctx = ToolContext(run_id="r", project_id=None, user_id="u",
-                      services={"backend": backend})
-    res = await _project_tools()["project.create"].run(
-        {"name": "MyBot", "default_flow": "keep"}, ctx
-    )
+    ctx = ToolContext(run_id="r", project_id=None, user_id="u", services={"backend": backend})
+    res = await _project_tools()["project.create"].run({"name": "MyBot", "default_flow": "keep"}, ctx)
     assert not res.is_error
     assert backend.updated == []  # backend default flow untouched
+
+
+@pytest.mark.asyncio
+async def test_project_create_blocks_accidental_duplicate_in_active_context():
+    backend = _FakeBackend()
+    ctx = ToolContext(
+        run_id="r",
+        project_id=None,
+        user_id="u",
+        state={"project_id": "existing-project"},
+        services={"backend": backend},
+    )
+
+    res = await _project_tools()["project.create"].run({"name": "Duplicate"}, ctx)
+
+    assert res.is_error
+    assert "duplicate" in res.content
+    assert backend.created == []
