@@ -145,29 +145,12 @@ async def flow_search_template(input: FlowSearchTemplateInput, ctx: ToolContext)
     from ...memory import get_retriever
 
     retriever = get_retriever()
-    try:
-        hits = await retriever.recall(
-            project_id=TEMPLATE_PROJECT_ID,
-            query=input.query,
-            kind=TEMPLATE_KIND,
-            top_k=input.top_k,
-        )
-    except Exception as e:
-        # pgvector extension missing on the Postgres server is the most
-        # common cause here. Degrade gracefully so the agent just builds
-        # from scratch instead of bubbling a stack trace to the user.
-        msg = str(e).lower()
-        if "vector" in msg and ("not available" in msg or "control file" in msg):
-            return ToolResult.ok(
-                "Template catalog not available right now (vector store not "
-                "provisioned). Proceed by building the flow from scratch.",
-                data={"matches": [], "vector_store_unavailable": True},
-            )
-        return ToolResult.ok(
-            f"Template search unavailable ({type(e).__name__}). "
-            "Proceed by building from scratch.",
-            data={"matches": [], "error": str(e)[:200]},
-        )
+    hits = await retriever.recall(
+        project_id=TEMPLATE_PROJECT_ID,
+        query=input.query,
+        kind=TEMPLATE_KIND,
+        top_k=input.top_k,
+    )
 
     if not hits:
         return ToolResult.ok(

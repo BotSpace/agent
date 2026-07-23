@@ -26,8 +26,18 @@ class FakeDraftStore:
     def __init__(self) -> None:
         self.rows: dict[tuple[str, str], dict] = {}
 
-    async def upsert(self, *, user_id, project_id, project_name, working_flow,
-                     baseline_flow, flow_dirty, collections, snapshots) -> None:
+    async def upsert(
+        self,
+        *,
+        user_id,
+        project_id,
+        project_name,
+        working_flow,
+        baseline_flow,
+        flow_dirty,
+        collections,
+        snapshots,
+    ) -> None:
         self.rows[(user_id, project_id)] = {
             "project_name": project_name,
             "working_flow": working_flow,
@@ -40,6 +50,14 @@ class FakeDraftStore:
     async def load(self, *, user_id, project_id):
         return self.rows.get((user_id, project_id))
 
+    async def load_latest(self, *, user_id):
+        active = getattr(self, "active", None)
+        if active and active[0] == user_id:
+            row = self.rows.get(active)
+            if row:
+                return {"project_id": active[1], **row}
+        return None
+
     async def clear(self, *, user_id, project_id) -> None:
         self.rows.pop((user_id, project_id), None)
 
@@ -51,6 +69,9 @@ class FakeDraftStore:
 class _FakeBackend:
     async def get_project(self, project_id, *, auth_claims=None):
         return {"id": project_id, "name": f"Project {project_id}"}
+
+    async def list_project_module_manifests(self, project_id, *, auth_claims=None):
+        return []
 
 
 @pytest.fixture(autouse=True)
@@ -194,8 +215,10 @@ async def test_session_use_project_requires_id():
 
 @pytest.mark.asyncio
 async def test_dirty_draft_is_persisted_and_restored(monkeypatch):
-    saved_flow = {"nodes": [{"id": "start", "type": "CommandTriggerNode",
-                             "data": {"command": "/start"}}], "edges": []}
+    saved_flow = {
+        "nodes": [{"id": "start", "type": "CommandTriggerNode", "data": {"command": "/start"}}],
+        "edges": [],
+    }
 
     async def fake_load_flow(project_id, **kwargs):
         return saved_flow
@@ -212,9 +235,11 @@ async def test_dirty_draft_is_persisted_and_restored(monkeypatch):
     try:
         await _call(srv, "session_use_project", {"project_id": "9"})
         # Make the draft dirty via a real flow tool (add a node).
-        await _call(srv, "flow_add_node",
-                    {"id": "m1", "type": "SendTextMessageNode",
-                     "data": {"messageText": "hi"}, "after": "start"})
+        await _call(
+            srv,
+            "flow_add_node",
+            {"id": "m1", "type": "SendTextMessageNode", "data": {"messageText": "hi"}, "after": "start"},
+        )
         ws = store.get("42")
         assert ws.flow_dirty is True
         draft_store = mcp_server.get_draft_store()
@@ -243,10 +268,13 @@ async def test_parallel_flow_patches_share_active_project(monkeypatch):
     import asyncio
 
     async def fake_load_flow(project_id, **kwargs):
-        return {"nodes": [
-            {"id": "m1", "type": "SendTextMessageNode", "data": {"messageText": "a"}},
-            {"id": "m2", "type": "SendTextMessageNode", "data": {"messageText": "b"}},
-        ], "edges": []}
+        return {
+            "nodes": [
+                {"id": "m1", "type": "SendTextMessageNode", "data": {"messageText": "a"}},
+                {"id": "m2", "type": "SendTextMessageNode", "data": {"messageText": "b"}},
+            ],
+            "edges": [],
+        }
 
     async def fake_load_collections(project_id, **kwargs):
         return []
@@ -306,10 +334,13 @@ async def test_session_status_returns_collections_and_dirty(monkeypatch):
 @pytest.mark.asyncio
 async def test_session_undo_restores_flow_after_import(monkeypatch):
     async def fake_load_flow(project_id, **kwargs):
-        return {"nodes": [
-            {"id": "start", "type": "CommandTriggerNode", "data": {"command": "/start"}},
-            {"id": "m1", "type": "SendTextMessageNode", "data": {"messageText": "hi"}},
-        ], "edges": [{"id": "e1", "source": "start", "target": "m1"}]}
+        return {
+            "nodes": [
+                {"id": "start", "type": "CommandTriggerNode", "data": {"command": "/start"}},
+                {"id": "m1", "type": "SendTextMessageNode", "data": {"messageText": "hi"}},
+            ],
+            "edges": [{"id": "e1", "source": "start", "target": "m1"}],
+        }
 
     async def fake_load_collections(project_id, **kwargs):
         return []
@@ -326,10 +357,12 @@ async def test_session_undo_restores_flow_after_import(monkeypatch):
         imported = await _call(
             srv,
             "flow_import",
-            {"flow_json": {
-                "nodes": [{"id": "only", "type": "CommandTriggerNode", "data": {"command": "/only"}}],
-                "edges": [],
-            }},
+            {
+                "flow_json": {
+                    "nodes": [{"id": "only", "type": "CommandTriggerNode", "data": {"command": "/only"}}],
+                    "edges": [],
+                }
+            },
         )
         assert imported.isError is False
         ws = get_workspace_store().get("42")
@@ -353,8 +386,13 @@ def _seed_flow_loaders(monkeypatch):
 
     async def fake_load_flow(project_id, **kwargs):
         return {
-            "nodes": [{"id": f"n{project_id}", "type": "SendTextMessageNode",
-                       "data": {"messageText": str(project_id)}}],
+            "nodes": [
+                {
+                    "id": f"n{project_id}",
+                    "type": "SendTextMessageNode",
+                    "data": {"messageText": str(project_id)},
+                }
+            ],
             "edges": [],
         }
 
@@ -462,9 +500,7 @@ async def test_explicit_project_id_overrides_active_pointer(monkeypatch):
         # Re-point active back to 1.
         await _call(srv, "session_use_project", {"project_id": "1"})
         # Explicit project_id=2 on the tool overrides the active pointer (1).
-        r = await _call(
-            srv, "flow_patch", {"id": "n2", "data": {"messageText": "OVR"}, "project_id": "2"}
-        )
+        r = await _call(srv, "flow_patch", {"id": "n2", "data": {"messageText": "OVR"}, "project_id": "2"})
     finally:
         mcp_server._current_user.reset(tok)
 
@@ -482,6 +518,7 @@ async def test_explicit_project_id_overrides_active_pointer(monkeypatch):
 def _structured(_res):
     """MCP javob content'idagi YAML blokni dict qilib qaytaradi (structuredContent o'chirilgan)."""
     import yaml as _yaml
+
     _text = _res.content[0].text if _res.content else ""
     for _chunk in (_text.rsplit("\n\n", 1)[-1], _text):
         try:

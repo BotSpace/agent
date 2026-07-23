@@ -14,6 +14,7 @@ resume-vs-fresh detection path is exercised deterministically.
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -71,6 +72,14 @@ def patched(monkeypatch):
 
     monkeypatch.setattr(graph_mod, "build_graph", _build_graph)
     monkeypatch.setattr(llm_mod, "build_client", lambda *a, **k: object())
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.effective_model_roles",
+        AsyncMock(return_value=llm_mod.ModelRoles(planner="m", executor="m", critic="m", embedding="m")),
+    )
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.build_effective_client",
+        AsyncMock(return_value=object()),
+    )
     return fake_graph
 
 
@@ -216,9 +225,7 @@ class _InterruptOnceGraph:
             )
             return {"__interrupt__": [iobj]}
         # Resumed: finish with a final assistant message.
-        return {
-            "messages": [Message(role="assistant", content=[TextPart(text="cleared")])]
-        }
+        return {"messages": [Message(role="assistant", content=[TextPart(text="cleared")])]}
 
 
 class _FakeStore:
@@ -262,9 +269,7 @@ async def test_subgraph_approval_interrupt_resumes_no_409(patched, monkeypatch):
     request_id (so approve_run no longer sees None → 409), await resolution, then
     RESUME the sub-graph in place — not bubble up."""
     interrupt_graph = _InterruptOnceGraph()
-    monkeypatch.setattr(
-        graph_mod, "build_graph", lambda cfg, checkpointer=None: interrupt_graph
-    )
+    monkeypatch.setattr(graph_mod, "build_graph", lambda cfg, checkpointer=None: interrupt_graph)
 
     cp = _FakeCheckpointer()
     store = _FakeStore()
@@ -286,8 +291,7 @@ async def test_subgraph_approval_interrupt_resumes_no_409(patched, monkeypatch):
     assert ("set_pending_approval", "MAIN-REQ-1", store.events[0][2]) in names
     assert store.events[0][2] is not None  # set
     assert any(
-        e[0] == "set_pending_approval" and e[1] == "MAIN-REQ-1" and e[2] is None
-        for e in store.events
+        e[0] == "set_pending_approval" and e[1] == "MAIN-REQ-1" and e[2] is None for e in store.events
     )  # cleared
 
     # approval_required + approval_resolved were emitted (wrapped with sub id).
@@ -388,9 +392,7 @@ async def test_subagent_token_delta_surfaced_for_parent_aggregation(token_patche
     graph = token_patched
     graph.total_in, graph.total_out = 120, 45
     ctx = _ctx(_TokenCheckpointer())
-    res = await _handler(
-        TaskRunInput(subagent_type="analyzer", prompt="build"), ctx
-    )
+    res = await _handler(TaskRunInput(subagent_type="analyzer", prompt="build"), ctx)
     assert not res.is_error
     # Fresh: prior = 0 → delta == full usage.
     assert res.data["input_tokens"] == 120
@@ -408,9 +410,7 @@ async def test_subagent_token_delta_not_double_counted_on_resume(token_patched):
     # Turn 1 (fresh): sub-graph used 120/45.
     graph.total_in, graph.total_out = 120, 45
     ctx1 = _ctx(cp)
-    res1 = await _handler(
-        TaskRunInput(subagent_type="analyzer", prompt="build"), ctx1
-    )
+    res1 = await _handler(TaskRunInput(subagent_type="analyzer", prompt="build"), ctx1)
     sid = res1.data["session_id"]
     thread = res1.data["sub_thread_id"]
     assert res1.data["input_tokens"] == 120  # fresh full usage

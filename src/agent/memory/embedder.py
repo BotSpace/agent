@@ -1,4 +1,4 @@
-"""Embeddings — provider-agnostic interface (OpenAI default, fallback hash)."""
+"""Embeddings — provider-agnostic interface."""
 
 from __future__ import annotations
 
@@ -60,4 +60,4 @@ def get_embedder() -> Embedder:
     s = get_settings()
     if s.openai_api_key:
         return OpenAIEmbedder(api_key=s.openai_api_key, model=s.model_embedding)
-    return HashEmbedder()
+    raise RuntimeError("OPENAI_API_KEY is required for embeddings")

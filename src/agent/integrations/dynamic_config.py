@@ -1,7 +1,7 @@
 """Dynamic LLM config resolver.
 
-Backend public-config API'dan provider/model/region oladi va env settings
-ustidan ustunlik bilan qo'llaydi. Har run boshida bir marta chaqiriladi;
+Backend public/internal config API'lari yagona LLM konfiguratsiya manbai.
+Har run boshida bir marta chaqiriladi;
 natija shu run ichida barqaror (bir xil).
 
 Public config kalitlari (backend tomonidan belgilangan):
@@ -15,11 +15,8 @@ Internal config kalitlari (X-Internal-Token kerak, secrets bilan):
   ai_agent.aws_access_key_id     — Bedrock AWS access key id
   ai_agent.aws_secret_access_key — Bedrock AWS secret access key
 
-Ustunlik tartibi (har kalit uchun):
-  1. Backend internal-config qiymati — mavjud va bo'sh bo'lmasa
-  2. Backend public-config qiymati (faqat base_url uchun) — mavjud va bo'sh bo'lmasa
-  3. Env-based settings (settings.llm_provider, settings.model_*, settings.aws_region,
-     settings.openai_api_key / openrouter_api_key / anthropic_api_key)
+Provider/model/region public endpointdan, secretlar internal endpointdan olinadi.
+Providerning standart API URL'i protokol standarti sifatida kodda qoladi.
 """
 
 from __future__ import annotations
@@ -66,25 +63,23 @@ def _nonempty(value: object) -> str | None:
 
 
 async def effective_provider() -> str:
-    """Return the active LLM provider string, backend config over env."""
+    """Return the backend-owned active LLM provider."""
     cfg = await fetch_public_config()
-    from_backend = _nonempty(cfg.get(_PUBLIC_KEY_PROVIDER))
-    if from_backend:
-        logger.info("LLM provider from backend config: %s", from_backend)
-        return from_backend
-    s = get_settings()
-    return s.llm_provider
+    provider = _nonempty(cfg.get(_PUBLIC_KEY_PROVIDER))
+    if not provider:
+        raise RuntimeError(f"backend config {_PUBLIC_KEY_PROVIDER} is required")
+    logger.info("LLM provider from backend config: %s", provider)
+    return provider
 
 
 async def effective_region() -> str:
-    """Return the active AWS region, backend config over env."""
+    """Return the backend-owned AWS region."""
     cfg = await fetch_public_config()
-    from_backend = _nonempty(cfg.get(_PUBLIC_KEY_REGION))
-    if from_backend:
-        logger.info("LLM region from backend config: %s", from_backend)
-        return from_backend
-    s = get_settings()
-    return s.aws_region
+    region = _nonempty(cfg.get(_PUBLIC_KEY_REGION))
+    if not region:
+        raise RuntimeError(f"backend config {_PUBLIC_KEY_REGION} is required for Bedrock")
+    logger.info("LLM region from backend config: %s", region)
+    return region
 
 
 async def effective_model_roles() -> ModelRoles:
@@ -97,55 +92,32 @@ async def effective_model_roles() -> ModelRoles:
     from ..llm.router import ModelRoles
 
     cfg = await fetch_public_config()
-    s = get_settings()
-
     model_override = _nonempty(cfg.get(_PUBLIC_KEY_MODEL))
-    if model_override:
-        logger.info("LLM model from backend config: %s (all roles)", model_override)
-        return ModelRoles(
-            planner=model_override,
-            executor=model_override,
-            critic=model_override,
-            embedding=s.model_embedding,
-        )
-
-    return ModelRoles.from_settings(s)
+    if not model_override:
+        raise RuntimeError(f"backend config {_PUBLIC_KEY_MODEL} is required")
+    s = get_settings()
+    logger.info("LLM model from backend config: %s (all roles)", model_override)
+    return ModelRoles(
+        planner=model_override,
+        executor=model_override,
+        critic=model_override,
+        embedding=s.model_embedding,
+    )
 
 
 async def effective_api_key(provider: str | None = None) -> str | None:
-    """Return the active LLM API key, internal-config over env.
-
-    Reads ``ai_agent.api_key`` from the backend internal-config endpoint.
-    Falls back to the env-based per-provider key when internal config is
-    absent, empty, or unreachable.
-
-    ``provider`` is used only for the env fallback selection.
-    """
+    """Return the backend-owned LLM API key (Bedrock may legitimately omit it)."""
     internal_cfg = await fetch_internal_config()
-    from_internal = _nonempty(internal_cfg.get(_INTERNAL_KEY_API_KEY))
-    if from_internal:
+    api_key = _nonempty(internal_cfg.get(_INTERNAL_KEY_API_KEY))
+    if api_key:
         logger.info("LLM api_key from internal config (provider=%s)", provider)
-        return from_internal
-
-    s = get_settings()
-    p = provider or s.llm_provider
-    if p == "openai":
-        return s.openai_api_key
-    if p == "openrouter":
-        return s.openrouter_api_key
-    if p == "anthropic":
-        return s.anthropic_api_key
-    # bedrock does not use an api_key field
-    return None
+    return api_key
 
 
 async def effective_aws_access_key_id() -> str | None:
     """Return the active AWS access key id, internal-config over env.
 
-    Reads ``ai_agent.aws_access_key_id`` from the backend internal-config
-    endpoint. Falls back to ``settings.aws_access_key_id`` when internal config
-    is absent, empty, or unreachable. Never raises; empty string is treated as
-    "not set" (returns None).
+    An empty value is valid when the pod uses the AWS workload identity chain.
     """
     internal_cfg = await fetch_internal_config()
     from_internal = _nonempty(internal_cfg.get(_INTERNAL_KEY_AWS_ACCESS_KEY_ID))
@@ -153,17 +125,13 @@ async def effective_aws_access_key_id() -> str | None:
         logger.info("AWS access_key_id from internal config")
         return from_internal
 
-    s = get_settings()
-    return _nonempty(s.aws_access_key_id)
+    return None
 
 
 async def effective_aws_secret_access_key() -> str | None:
     """Return the active AWS secret access key, internal-config over env.
 
-    Reads ``ai_agent.aws_secret_access_key`` from the backend internal-config
-    endpoint. Falls back to ``settings.aws_secret_access_key`` when internal
-    config is absent, empty, or unreachable. Never raises; empty string is
-    treated as "not set" (returns None).
+    An empty value is valid when the pod uses the AWS workload identity chain.
     """
     internal_cfg = await fetch_internal_config()
     from_internal = _nonempty(internal_cfg.get(_INTERNAL_KEY_AWS_SECRET_ACCESS_KEY))
@@ -171,30 +139,16 @@ async def effective_aws_secret_access_key() -> str | None:
         logger.info("AWS secret_access_key from internal config")
         return from_internal
 
-    s = get_settings()
-    return _nonempty(s.aws_secret_access_key)
+    return None
 
 
 async def effective_base_url(provider: str | None = None) -> str | None:
-    """Return the active LLM base URL, internal-config > public-config > provider default.
-
-    Reads ``ai_agent.base_url`` from internal config first, then from public
-    config. When neither source provides a non-empty value, falls back to the
-    provider's default base URL (see ``_PROVIDER_DEFAULT_BASE_URL``). Returns
-    ``None`` only when the provider has no default (e.g. bedrock, region-based)
-    or the provider is unknown.
-    """
+    """Return backend override or the provider protocol's canonical endpoint."""
     internal_cfg = await fetch_internal_config()
     from_internal = _nonempty(internal_cfg.get(_INTERNAL_KEY_BASE_URL))
     if from_internal:
         logger.info("LLM base_url from internal config (provider=%s): %s", provider, from_internal)
         return from_internal
-
-    pub_cfg = await fetch_public_config()
-    from_public = _nonempty(pub_cfg.get(_PUBLIC_KEY_BASE_URL))
-    if from_public:
-        logger.info("LLM base_url from public config (provider=%s): %s", provider, from_public)
-        return from_public
 
     default = _PROVIDER_DEFAULT_BASE_URL.get(provider) if provider else None
     if default:
@@ -205,13 +159,8 @@ async def effective_base_url(provider: str | None = None) -> str | None:
 async def build_effective_client():
     """Build an LLMClient with effective provider, region, api_key, and base_url.
 
-    Precedence for each dimension:
-      - provider / region: backend public-config > env
-      - api_key: backend internal-config > env per-provider key
-      - base_url: backend internal-config > backend public-config > provider default
-
-    For bedrock: api_key/base_url overrides are not applicable — AWS credentials
-    always come from env (access_key_id / secret_access_key / region).
+    Provider/model/region come from backend public config; secrets and optional
+    base URL override come from backend internal config.
     For openrouter: effective api_key is the OpenRouter key; base_url defaults to
     ``https://openrouter.ai/api/v1`` unless overridden; site_url/app_name come
     from env settings.
@@ -240,7 +189,7 @@ async def build_effective_client():
     base_url = await effective_base_url(provider)
 
     if provider == "openrouter":
-        effective_key = api_key or s.openrouter_api_key
+        effective_key = api_key
         effective_burl = base_url or OPENROUTER_BASE_URL
         logger.info(
             "Building OpenRouterClient with effective key=%s base_url=%s",
@@ -272,7 +221,7 @@ async def build_effective_client():
     if provider == "deepseek":
         from ..llm.deepseek import DEEPSEEK_BASE_URL, DeepSeekClient
 
-        effective_key = api_key or s.deepseek_api_key
+        effective_key = api_key
         effective_burl = base_url or DEEPSEEK_BASE_URL
         logger.info(
             "Building DeepSeekClient with effective key=%s base_url=%s",
@@ -282,7 +231,7 @@ async def build_effective_client():
         return DeepSeekClient(api_key=effective_key, base_url=effective_burl)
 
     if provider == "openai":
-        effective_key = api_key or s.openai_api_key
+        effective_key = api_key
         if base_url:
             logger.info("Building OpenAIClient with base_url override: %s", base_url)
             from openai import AsyncOpenAI
@@ -297,16 +246,9 @@ async def build_effective_client():
                 AsyncOpenAI(api_key=effective_key, base_url=base_url)
             )
             return oa_client
-        if api_key and api_key != s.openai_api_key:
-            logger.info("Building OpenAIClient with effective api_key from internal config")
-            return OpenAIClient(api_key=api_key)
-        return build_client(provider, s)
+        return OpenAIClient(api_key=effective_key)
 
     if provider == "anthropic":
-        effective_key = api_key or s.anthropic_api_key
-        if effective_key and effective_key != s.anthropic_api_key:
-            logger.info("Building AnthropicClient with effective api_key from internal config")
-            return AnthropicClient(api_key=effective_key)
-        return build_client(provider, s)
+        return AnthropicClient(api_key=api_key)
 
     return build_client(provider, s)

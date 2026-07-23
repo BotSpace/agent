@@ -3,7 +3,10 @@
 - load_project_collections never raises (returns [] on failure).
 - build_dynamic_block lists "Available collections: <name>{fields}".
 """
+
 import asyncio
+
+import pytest
 
 from agent.integrations.backend import load_project_collections
 from agent.prompts.system import build_dynamic_block
@@ -101,16 +104,16 @@ def test_load_collections_resolves_go_relation_id_back_to_target_slug():
     ]
 
 
-def test_load_collections_list_failure_returns_empty():
+def test_load_collections_list_failure_is_reported():
     class Boom:
         async def cms_list_collections(self, pid, *, auth_claims=None):
             raise RuntimeError("backend down")
 
-    out = _run(load_project_collections("123", client=Boom()))
-    assert out == []
+    with pytest.raises(RuntimeError, match="backend down"):
+        _run(load_project_collections("123", client=Boom()))
 
 
-def test_load_collections_isolated_field_failure():
+def test_load_collections_field_failure_is_reported():
     class PartlyBroken:
         async def cms_list_collections(self, pid, *, auth_claims=None):
             return [{"name": "ok_col"}, {"name": "bad_col"}]
@@ -120,17 +123,8 @@ def test_load_collections_isolated_field_failure():
                 raise RuntimeError("field fetch failed")
             return {"fields": [{"name": "a"}]}
 
-    out = _run(load_project_collections("123", client=PartlyBroken()))
-    # bad_col survives with empty fields; ok_col keeps its fields.
-    assert out == [
-        {
-            "name": "ok_col",
-            "fields": ["a"],
-            "field_kinds": {},
-            "field_contracts": [{"name": "a", "kind": "text", "required": False}],
-        },
-        {"name": "bad_col", "fields": [], "field_kinds": {}, "field_contracts": []},
-    ]
+    with pytest.raises(RuntimeError, match="field fetch failed"):
+        _run(load_project_collections("123", client=PartlyBroken()))
 
 
 def test_dynamic_block_lists_collections():

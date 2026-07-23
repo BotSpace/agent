@@ -45,20 +45,20 @@ class Settings(BaseSettings):
     model_planner: str = Field(default="gpt-5.2", alias="AGENT_MODEL_PLANNER")
     model_executor: str = Field(default="gpt-5.2", alias="AGENT_MODEL_EXECUTOR")
     model_critic: str = Field(default="gpt-5.2", alias="AGENT_MODEL_CRITIC")
-    model_embedding: str = Field(
-        default="text-embedding-3-small", alias="AGENT_MODEL_EMBEDDING"
-    )
+    model_embedding: str = Field(default="text-embedding-3-small", alias="AGENT_MODEL_EMBEDDING")
 
     anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
     deepseek_api_key: str | None = Field(default=None, alias="DEEPSEEK_API_KEY")
     openrouter_api_key: str | None = Field(default=None, alias="OPENROUTER_API_KEY")
     openrouter_site_url: str | None = Field(
-        default="https://botspace.uz", alias="OPENROUTER_SITE_URL",
+        default="https://botspace.uz",
+        alias="OPENROUTER_SITE_URL",
         description="HTTP-Referer header for OpenRouter rankings/attribution.",
     )
     openrouter_app_name: str | None = Field(
-        default="Botmother Agent", alias="OPENROUTER_APP_NAME",
+        default="Botmother Agent",
+        alias="OPENROUTER_APP_NAME",
         description="X-Title header for OpenRouter dashboard display.",
     )
     aws_access_key_id: str | None = Field(default=None, alias="AWS_ACCESS_KEY_ID")
@@ -89,40 +89,28 @@ class Settings(BaseSettings):
     redis_url: str = Field(default="redis://localhost:6380/0", alias="AGENT_REDIS_URL")
 
     # ── external services ───────────────────────────────────────────────
-    backend_base_url: str = Field(
-        default="http://localhost:8000", alias="BACKEND_BASE_URL"
-    )
-    backend_internal_token: str | None = Field(
-        default=None, alias="BACKEND_INTERNAL_TOKEN"
-    )
-    mongo_base_url: str = Field(
-        default="mongodb://localhost:27017", alias="MONGO_BASE_URL"
-    )
+    backend_base_url: str = Field(default="http://localhost:8000", alias="BACKEND_BASE_URL")
+    backend_internal_token: str | None = Field(default=None, alias="BACKEND_INTERNAL_TOKEN")
+    mongo_base_url: str = Field(default="mongodb://localhost:27017", alias="MONGO_BASE_URL")
     mongo_db_prefix: str = Field(default="project_", alias="MONGO_DB_PREFIX")
     # Engine-side flow simulator service — `flow.simulate` tool POSTs the
     # working flow + a list of user steps and gets back per-step bot messages.
-    simulator_url: str = Field(
-        default="http://engine-simulator:8200", alias="AGENT_SIMULATOR_URL"
-    )
+    simulator_url: str = Field(default="http://engine-simulator:8200", alias="AGENT_SIMULATOR_URL")
 
     # ── auth ────────────────────────────────────────────────────────────
-    session_secret: str = Field(
-        default="change-me-to-a-32-char-secret-string", alias="SESSION_SECRET"
-    )
+    session_secret: str = Field(default="change-me-to-a-32-char-secret-string", alias="SESSION_SECRET")
     jwt_algorithm: str = Field(default="RS256", alias="JWT_ALGORITHM")
-    jwt_public_key_path: str = Field(
-        default="keys/public.pem", alias="JWT_PUBLIC_KEY_PATH"
-    )
-    internal_api_token: str | None = Field(
-        default=None, alias="AGENT_INTERNAL_API_TOKEN"
-    )
+    jwt_public_key_path: str = Field(default="keys/public.pem", alias="JWT_PUBLIC_KEY_PATH")
+    internal_api_token: str | None = Field(default=None, alias="AGENT_INTERNAL_API_TOKEN")
     # MCP OAuth (resource server) — discovery metadata uchun tashqi URL'lar.
     public_base_url: str = Field(
-        default="https://botspace.uz", alias="AGENT_PUBLIC_BASE_URL",
+        default="https://botspace.uz",
+        alias="AGENT_PUBLIC_BASE_URL",
         description="MCP resource'ning canonical bazasi — resource = {base}/mcp.",
     )
     oauth_issuer: str = Field(
-        default="https://api.botspace.uz", alias="AGENT_OAUTH_ISSUER",
+        default="https://api.botspace.uz",
+        alias="AGENT_OAUTH_ISSUER",
         description="OAuth authorization server (backend) issuer URL'i.",
     )
 
@@ -132,9 +120,7 @@ class Settings(BaseSettings):
     # Template RAG re-ingestion interval (hours). 0 disables the
     # background scheduler entirely (manual `python -m
     # agent.scripts.ingest_templates` only).
-    template_sync_interval_hours: float = Field(
-        default=6.0, alias="AGENT_TEMPLATE_SYNC_INTERVAL_HOURS"
-    )
+    template_sync_interval_hours: float = Field(default=6.0, alias="AGENT_TEMPLATE_SYNC_INTERVAL_HOURS")
     # Delay before the first sync after pod startup (seconds). Keeps
     # the lifespan handler returning fast — first sync runs in
     # background after the API is already serving requests.
@@ -146,9 +132,7 @@ class Settings(BaseSettings):
     # (manual `python -m agent.scripts.ingest_modules` only). The module
     # catalog changes when the platform lists/de-lists a module, so a
     # slightly longer default than templates is fine.
-    module_sync_interval_hours: float = Field(
-        default=12.0, alias="AGENT_MODULE_SYNC_INTERVAL_HOURS"
-    )
+    module_sync_interval_hours: float = Field(default=12.0, alias="AGENT_MODULE_SYNC_INTERVAL_HOURS")
     # Delay before the first module sync after pod startup (seconds).
     # Offset from the template sync's default so the two ingest loops
     # don't hammer the backend / embedder at the same instant on boot.
@@ -159,9 +143,7 @@ class Settings(BaseSettings):
     # ── observability ───────────────────────────────────────────────────
     otel_endpoint: str | None = Field(default=None, alias="OTEL_EXPORTER_OTLP_ENDPOINT")
     langsmith_api_key: str | None = Field(default=None, alias="LANGSMITH_API_KEY")
-    langsmith_project: str = Field(
-        default="botmother-agent", alias="LANGSMITH_PROJECT"
-    )
+    langsmith_project: str = Field(default="botmother-agent", alias="LANGSMITH_PROJECT")
 
     # ── derived ─────────────────────────────────────────────────────────
     @property
@@ -236,9 +218,14 @@ def validate_security_config(settings: Settings) -> None:
             "SESSION_SECRET is a placeholder — set a real, unique secret "
             "(shared with the dashboard) before starting the service."
         )
+    if settings.rag_enabled and not settings.openai_api_key:
+        errors.append("OPENAI_API_KEY is required when AGENT_RAG_ENABLED=true")
+    if not settings.backend_internal_token:
+        errors.append("BACKEND_INTERNAL_TOKEN is required")
+    if not settings.redis_url:
+        errors.append("AGENT_REDIS_URL is required")
+    if not settings.database_url:
+        errors.append("AGENT_DATABASE_URL is required")
 
     if errors:
-        raise RuntimeError(
-            "Insecure auth configuration — refusing to start:\n  - "
-            + "\n  - ".join(errors)
-        )
+        raise RuntimeError("Insecure auth configuration — refusing to start:\n  - " + "\n  - ".join(errors))

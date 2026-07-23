@@ -146,9 +146,7 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
     spec = REGISTRY.get(input.subagent_type)
     if spec is None:
         available = ", ".join(r.name for r in list_subagents())
-        return ToolResult.error(
-            f"Unknown sub-agent `{input.subagent_type}`. Available: {available}"
-        )
+        return ToolResult.error(f"Unknown sub-agent `{input.subagent_type}`. Available: {available}")
 
     services = ctx.services or {}
 
@@ -290,12 +288,8 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
     checkpointer = services.get("checkpointer")
     own_checkpointer = False
     if checkpointer is None:
-        try:
-            checkpointer = await create_async_checkpointer(s.database_url)
-            own_checkpointer = checkpointer is not None
-        except Exception as cp_err:
-            logger.warning("Sub-agent checkpointer init failed, in-memory: %s", cp_err)
-            checkpointer = None
+        checkpointer = await create_async_checkpointer(s.database_url)
+        own_checkpointer = True
 
     # Nested chaqiruvlar uchun depth/identity'ni oldinga uzatamiz: sub-agent
     # ichidagi task.run shu services'ni ctx orqali oladi.
@@ -356,9 +350,7 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
     # Token aggregatsiya uchun: SHU chaqiruvdan oldingi kumulyativ totallarni o'qib
     # ol — keyin result'dagi yangi kumulyativdan ayirib DELTA olamiz (resume'da
     # ikki marta sanamaslik uchun). Fresh sessiyada prior = (0, 0).
-    prior_in, prior_out = await _prior_token_totals(
-        graph, checkpointer, invoke_config, resuming=resuming
-    )
+    prior_in, prior_out = await _prior_token_totals(graph, checkpointer, invoke_config, resuming=resuming)
 
     try:
         if resuming:
@@ -384,9 +376,7 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
                 user_id=ctx.user_id,
                 thread_id=sub_thread_id,
                 user_prompt=seeded_prompt,
-                baseline_flow=(
-                    ctx.state.get("baseline_flow") if input.propagate_flow else None
-                ),
+                baseline_flow=(ctx.state.get("baseline_flow") if input.propagate_flow else None),
             )
             if input.propagate_flow and ctx.state.get("working_flow"):
                 base["working_flow"] = ctx.state["working_flow"]
@@ -463,9 +453,7 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
                         },
                     )
 
-                result = await graph.ainvoke(
-                    Command(resume=answer), config=invoke_config
-                )
+                result = await graph.ainvoke(Command(resume=answer), config=invoke_config)
     except GraphInterrupt as gi:
         # ainvoke GraphInterrupt exception tashladi — result["__interrupt__"]
         # o'rniga exception sifatida keldi. Resume loop ni shu yerda ham ishlatamiz.
@@ -473,6 +461,7 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
         main_request_id = services.get("request_id") or ctx.run_id
         if store is not None and main_request_id:
             from ...runtime.worker import _wait_resolution
+
             try:
                 rloop = asyncio.get_running_loop()
             except RuntimeError:
@@ -493,15 +482,23 @@ async def task_run(input: TaskRunInput, ctx: ToolContext) -> ToolResult:
                 answer = await _wait_resolution(main_request_id, rloop)
                 if ikind == "approval":
                     await store.set_pending_approval(main_request_id, None)
-                    await _wrap_emit("approval_resolved", {"tool_call_id": ipayload.get("tool_call_id"), "approved": bool(answer.get("approved")) if isinstance(answer, dict) else bool(answer)})
+                    await _wrap_emit(
+                        "approval_resolved",
+                        {
+                            "tool_call_id": ipayload.get("tool_call_id"),
+                            "approved": bool(answer.get("approved"))
+                            if isinstance(answer, dict)
+                            else bool(answer),
+                        },
+                    )
                 else:
                     answer_str = ", ".join(answer) if isinstance(answer, list) else str(answer)
                     await store.set_pending_clarification(main_request_id, None)
-                    await _wrap_emit("clarification_resolved", {"tool_call_id": ipayload.get("tool_call_id"), "answer": answer_str})
-                try:
-                    result = await graph.ainvoke(Command(resume=answer), config=invoke_config)
-                except Exception:
-                    result = {}
+                    await _wrap_emit(
+                        "clarification_resolved",
+                        {"tool_call_id": ipayload.get("tool_call_id"), "answer": answer_str},
+                    )
+                result = await graph.ainvoke(Command(resume=answer), config=invoke_config)
         # Fall through to normal result handling below
     except Exception as e:
         # To'liq traceback'ni log'ga yozamiz — UI'ga faqat qisqa xulosa boradi,

@@ -1,4 +1,4 @@
-"""Per-run persistence + SSE pubsub via Redis (with in-process fallback).
+"""Per-run persistence and live SSE delivery.
 
 Schema (Postgres):
 
@@ -329,9 +329,7 @@ class RunStore:
         msg = "Agent qayta ishga tushdi — run to'xtadi. Iltimos, qaytadan urinib ko'ring."
         async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
             async with conn.cursor() as cur:
-                await cur.execute(
-                    "SELECT request_id FROM agent_runs WHERE status IN ('running', 'queued')"
-                )
+                await cur.execute("SELECT request_id FROM agent_runs WHERE status IN ('running', 'queued')")
                 ids = [r[0] for r in await cur.fetchall()]
                 if ids:
                     await cur.execute(
@@ -430,9 +428,7 @@ class RunStore:
                 log_subagent_started(request_id, name)
         return seq
 
-    async def emit_ephemeral(
-        self, request_id: str, event_type: str, payload: dict[str, Any]
-    ) -> None:
+    async def emit_ephemeral(self, request_id: str, event_type: str, payload: dict[str, Any]) -> None:
         """Publish a LIVE-ONLY event to SSE subscribers WITHOUT persisting it.
 
         Used for high-frequency streaming deltas (``assistant_chunk`` /
@@ -462,10 +458,7 @@ class RunStore:
                     (request_id, since_seq),
                 )
                 rows = await cur.fetchall()
-                return [
-                    {"seq": r[0], "type": r[1], "payload": r[2], "at": str(r[3])}
-                    for r in rows
-                ]
+                return [{"seq": r[0], "type": r[1], "payload": r[2], "at": str(r[3])} for r in rows]
 
     def subscribe(self, request_id: str) -> asyncio.Queue:
         q: asyncio.Queue = asyncio.Queue()
@@ -567,9 +560,7 @@ class RunStore:
         except Exception:
             return []
 
-    async def list_threads_for_user(
-        self, *, user_id: str, limit: int = 100
-    ) -> list[dict[str, Any]]:
+    async def list_threads_for_user(self, *, user_id: str, limit: int = 100) -> list[dict[str, Any]]:
         """Admin view: all of ONE user's threads across every project.
 
         Like ``list_threads`` but scoped by ``user_id`` alone (not a project),
@@ -619,9 +610,7 @@ class RunStore:
         except Exception:
             return []
 
-    async def delete_thread(
-        self, *, project_id: str | None, user_id: str | None, thread_id: str
-    ) -> int:
+    async def delete_thread(self, *, project_id: str | None, user_id: str | None, thread_id: str) -> int:
         """Delete a thread's runs (and, via FK cascade, their events) plus its
         messages. Scoped by project_id/user_id so a user can only delete their
         own threads. Returns the number of deleted runs. Never raises.
@@ -653,9 +642,7 @@ class RunStore:
         except Exception:
             return 0
 
-    async def delete_all_threads(
-        self, *, project_id: str | None, user_id: str | None
-    ) -> int:
+    async def delete_all_threads(self, *, project_id: str | None, user_id: str | None) -> int:
         """Delete ALL of a user's threads for a project (their runs + cascaded
         events + messages). Scoped by project_id/user_id. Returns deleted run
         count. Never raises. A project_id is required — refuse a global wipe."""
@@ -758,9 +745,7 @@ class RunStore:
                 # 1) user turn for this run
                 um = user_by_req.get(req)
                 if um is not None:
-                    turns.append(
-                        {"kind": "user", "id": f"m{um[0]}", "text": um[1]}
-                    )
+                    turns.append({"kind": "user", "id": f"m{um[0]}", "text": um[1]})
 
                 # 2) walk events in seq order: assistant text + tool call/result
                 tool_results: dict[str, dict[str, Any]] = {}
@@ -780,7 +765,9 @@ class RunStore:
                         if isinstance(plan, list):
                             if plan_turn is None:
                                 plan_turn = {
-                                    "kind": "plan", "id": f"{req}-plan{seq}", "plan": plan,
+                                    "kind": "plan",
+                                    "id": f"{req}-plan{seq}",
+                                    "plan": plan,
                                 }
                                 turns.append(plan_turn)
                             else:
@@ -796,8 +783,7 @@ class RunStore:
                             item = payload.get("item")
                             if isinstance(item, dict) and item.get("id"):
                                 plan_turn["plan"] = [
-                                    item if p.get("id") == item.get("id") else p
-                                    for p in plan_turn["plan"]
+                                    item if p.get("id") == item.get("id") else p for p in plan_turn["plan"]
                                 ]
                         continue
                     if etype == "assistant_message":
@@ -945,8 +931,7 @@ class ResolutionStore:
     than the one running the worker coroutine. This bridges them over a
     short-lived Redis list keyed by ``request_id``: the POST-handling replica
     ``RPUSH``es the answer, the worker's replica ``BLPOP``s it and resolves its
-    local future. When Redis is unavailable it degrades to in-process only
-    (single replica still works via the local future).
+    local future. Redis is required for cross-replica delivery.
     """
 
     _KEY = "agent:resolution:{}"
@@ -954,41 +939,43 @@ class ResolutionStore:
 
     def __init__(self, redis_url: str) -> None:
         self._url = redis_url
-        self._disabled = False
 
     def _key(self, request_id: str) -> str:
         return self._KEY.format(request_id)
+
+    def ping(self) -> None:
+        """Verify the required cross-replica Redis transport at startup."""
+        import redis
+
+        client = redis.Redis.from_url(self._url)
+        try:
+            client.ping()
+        finally:
+            client.close()
 
     def publish(self, request_id: str, payload: Any) -> bool:
         """Durably enqueue a resolution for a (possibly remote) waiter.
 
         Synchronous — called from the ``/approve|/clarify`` route when no LOCAL
-        future is awaiting (the worker is on another replica). Returns True if
-        the answer was enqueued, False if Redis is unavailable.
+        future is awaiting (the worker is on another replica). Returns True
+        after the answer is enqueued; connection errors propagate.
         """
-        if self._disabled:
-            return False
-        try:
-            import redis  # lazy: optional dep, absent in unit tests
+        import redis
 
-            client = redis.Redis.from_url(self._url)
-            try:
-                pipe = client.pipeline()
-                pipe.rpush(self._key(request_id), json.dumps(payload))
-                pipe.expire(self._key(request_id), self._TTL_SECONDS)
-                pipe.execute()
-            finally:
-                client.close()
-            return True
-        except Exception:
-            self._disabled = True
-            return False
+        client = redis.Redis.from_url(self._url)
+        try:
+            pipe = client.pipeline()
+            pipe.rpush(self._key(request_id), json.dumps(payload))
+            pipe.expire(self._key(request_id), self._TTL_SECONDS)
+            pipe.execute()
+        finally:
+            client.close()
+        return True
 
     async def wait(self, request_id: str) -> Any:
         """Block until a resolution is pushed (by ``publish`` on ANY replica).
 
-        Raises on any Redis error so the caller can fall back to the in-process
-        future alone.
+        Raises on any Redis error so the interrupted run reports the outage.
         """
         import redis.asyncio as aioredis  # lazy: optional dep
 
@@ -1005,13 +992,9 @@ class ResolutionStore:
 
 
 @lru_cache(maxsize=1)
-def get_resolution_store() -> ResolutionStore | None:
-    """Singleton Redis-backed resolution store, or None when Redis isn't
-    available (import fails) — the worker then relies on the in-process future
-    only. Keeps unit tests (no ``redis`` installed) on the in-memory path."""
-    try:
-        import redis
-        import redis.asyncio  # noqa: F401
-    except Exception:
-        return None
+def get_resolution_store() -> ResolutionStore:
+    """Return the required Redis-backed cross-replica resolution store."""
+    import redis
+    import redis.asyncio  # noqa: F401
+
     return ResolutionStore(get_settings().redis_url)
