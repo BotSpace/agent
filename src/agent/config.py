@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 LLMProvider = Literal["anthropic", "openai", "bedrock", "openrouter", "deepseek"]
@@ -86,7 +86,22 @@ class Settings(BaseSettings):
         default="postgresql+psycopg://agent:agent@localhost:5433/agent",
         alias="AGENT_DATABASE_URL",
     )
-    redis_url: str = Field(default="redis://localhost:6380/0", alias="AGENT_REDIS_URL")
+    redis_url: str | None = Field(default=None, alias="AGENT_REDIS_URL")
+    redis_host: str = Field(default="localhost", alias="AGENT_REDIS_HOST")
+    redis_port: int = Field(default=6380, alias="AGENT_REDIS_PORT")
+    redis_password: str | None = Field(default=None, alias="AGENT_REDIS_PASSWORD")
+
+    @model_validator(mode="after")
+    def build_redis_url(self) -> "Settings":
+        """Build the Redis URL from Kubernetes-provided connection parts."""
+        if self.redis_url:
+            return self
+
+        from urllib.parse import quote
+
+        auth = f":{quote(self.redis_password, safe='')}@" if self.redis_password else ""
+        self.redis_url = f"redis://{auth}{self.redis_host}:{self.redis_port}/0"
+        return self
 
     # ── external services ───────────────────────────────────────────────
     backend_base_url: str = Field(default="http://localhost:8000", alias="BACKEND_BASE_URL")
