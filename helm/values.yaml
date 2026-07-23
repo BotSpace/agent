@@ -66,6 +66,26 @@ configMaps:
     LANGSMITH_PROJECT: "botspace"
 
 # References to EXISTING secrets NOT managed by this chart
+# Redis is shared with the backend. The secret contains the connection parts;
+# the agent combines them into AGENT_REDIS_URL at startup without storing the
+# password in Git or in a ConfigMap.
+env:
+  - name: AGENT_REDIS_HOST
+    valueFrom:
+      secretKeyRef:
+        name: backend-golang-app
+        key: APP_ENGINE_REDIS_HOST
+  - name: AGENT_REDIS_PORT
+    valueFrom:
+      secretKeyRef:
+        name: backend-golang-app
+        key: APP_ENGINE_REDIS_PORT
+  - name: AGENT_REDIS_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: backend-golang-app
+        key: APP_ENGINE_REDIS_PASSWORD
+
 envFrom:
   - secretRef:
       name: agent-runtime-secret
