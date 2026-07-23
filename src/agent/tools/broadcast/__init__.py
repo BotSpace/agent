@@ -95,30 +95,17 @@ async def broadcast_send(input: BroadcastSendInput, ctx: ToolContext) -> ToolRes
         return ToolResult.error("No broadcast text — call broadcast.preview first.")
     if pid is None:
         return ToolResult.error("No project_id available.")
+    if ids:
+        return ToolResult.error(
+            "Targeted broadcast backendda qo'llanmaydi; telegram_ids bilan yuborish "
+            "barcha foydalanuvchilarga xabar ketishiga olib kelishi mumkin."
+        )
 
     body: dict[str, Any] = {"project_id": pid, "caption": text, "message_type": "text"}
-    if ids:
-        # KNOWN GAP on the Go backend: the message module's CreateRequest has
-        # no custom-recipient-list field (Django's `target_telegram_ids`) —
-        # only project-wide broadcasts are supported server-side today. We
-        # still attach it (harmless extra JSON field, ignored by Go) so this
-        # starts working automatically once the coordinator adds targeting;
-        # until then, ids-scoped sends silently broadcast to the WHOLE
-        # project instead of just `ids` — surface that to the caller.
-        body["target_telegram_ids"] = ids
     try:
         msg = await _backend(ctx).create_message(body, auth_claims=ctx.state.get("auth_claims"))
     except BackendError as e:
         return ToolResult.error(format_backend_error(None, e))
-    if ids:
-        return ToolResult.ok(
-            f"Broadcast queued (message id={msg.get('id')}). "
-            "NOTE: the current backend does not support targeted recipient lists — "
-            "this broadcast went to ALL project users, not just the requested "
-            f"{len(ids)} id(s).",
-            data={"message": msg},
-            state_updates={"pending_broadcast": None, "last_broadcast_id": msg.get("id")},
-        )
     return ToolResult.ok(
         f"Broadcast queued (message id={msg.get('id')}). Total recipients: {msg.get('total') or 'pending'}.",
         data={"message": msg},

@@ -22,7 +22,7 @@ class ProjectSettingsUpdate(BaseModel):
     thinking_effort: str | None = None
 
 
-async def _max_thinking_allowed(user: "CurrentUser") -> bool:
+async def _max_thinking_allowed(user: CurrentUser) -> bool:
     """Max reasoning effort is a PAID-plan feature. Returns True for paid plans
     (pro/max) and for internal callers; fail-open (True) on a backend hiccup so a
     transient error never blocks a legitimately-paid user."""
@@ -38,6 +38,8 @@ async def _max_thinking_allowed(user: "CurrentUser") -> bool:
     except Exception:
         logger.warning("plan check failed; allowing max (fail-open)")
         return True
+
+
 from .routes.admin import router as admin_router
 from .routes.runs import router as runs_router
 from .routes.threads import router as threads_router
@@ -120,14 +122,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     mcp_asgi_app = None
     mcp_session_manager = None
     if s.mcp_enabled:
-        try:
-            from ..mcp.server import build_mcp_asgi_app
+        from ..mcp.server import build_mcp_asgi_app
 
-            mcp_asgi_app, mcp_session_manager = build_mcp_asgi_app()
-        except Exception:
-            logger.exception("MCP server qurib bo'lmadi — /mcp o'chiq qoldi")
-            mcp_asgi_app = None
-            mcp_session_manager = None
+        mcp_asgi_app, mcp_session_manager = build_mcp_asgi_app()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -144,24 +141,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Bootstrap database schema for runs + vector store
         store = get_run_store()
         await store.bootstrap()
+        from ..runtime.store import get_resolution_store
+
+        get_resolution_store().ping()
         # A redeploy/restart kills in-flight asyncio run tasks, but their DB status
         # stays "running"/"queued" — the UI then shows them stuck forever. Fail
         # those orphans on startup (paused waiting_* runs are left alone).
-        try:
-            n = await store.recover_orphaned_runs()
-            if n:
-                logger.info("recovered %d orphaned run(s) on startup", n)
-        except Exception as exc:
-            logger.warning("orphaned-run recovery failed: %s", exc)
+        n = await store.recover_orphaned_runs()
+        if n:
+            logger.info("recovered %d orphaned run(s) on startup", n)
         if s.rag_enabled:
-            try:
-                from ..memory import get_vector_store
+            from ..memory import get_vector_store
 
-                vs = get_vector_store()
-                await vs.bootstrap()
-            except Exception:
-                # vector store optional — bootstrap failures shouldn't kill the API
-                pass
+            vs = get_vector_store()
+            await vs.bootstrap()
         # Background scheduler: periodically refresh the template vector
         # index so newly-added templates become searchable without a
         # manual re-deploy. AGENT_TEMPLATE_SYNC_INTERVAL_HOURS=0 disables.
@@ -222,9 +215,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from .middleware import AccessLogMiddleware, RateLimitMiddleware
 
     if s.rate_limit_enabled:
-        app.add_middleware(
-            RateLimitMiddleware, limit=s.rate_limit_per_min, window_sec=60.0
-        )
+        app.add_middleware(RateLimitMiddleware, limit=s.rate_limit_per_min, window_sec=60.0)
     if s.access_log_enabled:
         app.add_middleware(AccessLogMiddleware)
     app.state.settings = s

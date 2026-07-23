@@ -53,7 +53,14 @@ _EXCLUDED_NAMES = frozenset({"ask_user"})
 
 # Read-only deb hisoblanadigan operatsiya nomlari (oxirgi segment bo'yicha).
 _READ_ONLY_VERBS = (
-    "get", "list", "diff", "validate", "search", "export", "history", "snapshot",
+    "get",
+    "list",
+    "diff",
+    "validate",
+    "search",
+    "export",
+    "history",
+    "snapshot",
     "errors",
 )
 
@@ -114,11 +121,7 @@ _SNAPSHOT_BEFORE = frozenset(
 
 
 async def _persist_draft(ws: Workspace) -> None:
-    """Write-through persist of the workspace draft to agent Postgres (#1).
-
-    Graceful degrade lives inside DraftStore — on DB failure this is a no-op
-    plus a warning, and the MCP keeps working in-memory.
-    """
+    """Write-through persist of the workspace draft to agent Postgres (#1)."""
     if not ws.project_id:
         return
     await get_draft_store().upsert(
@@ -144,9 +147,7 @@ def _hydrate_from_draft(ws: Workspace, draft: dict) -> None:
     ws.snapshots = list(snaps) if isinstance(snaps, list) else []
 
 
-async def _auto_restore_session(
-    store: WorkspaceStore, user: AuthedUser
-) -> str | None:
+async def _auto_restore_session(store: WorkspaceStore, user: AuthedUser) -> str | None:
     """Transparent session recovery (#5).
 
     After a pod restart / TTL expiry the per-client active-project pointer is
@@ -157,13 +158,7 @@ async def _auto_restore_session(
     notice), or None if nothing to restore. MUST be called with the user lock
     held. Explicit session_use_project always wins (it sets the pointer, so this
     only fires when the pointer is empty)."""
-    try:
-        draft = await get_draft_store().load_latest(user_id=user.user_id)
-    except AttributeError:
-        # Older/fake stores without load_latest — degrade silently.
-        return None
-    except Exception:  # pragma: no cover — defensive
-        return None
+    draft = await get_draft_store().load_latest(user_id=user.user_id)
     if not draft or not draft.get("project_id"):
         return None
     project_id = str(draft["project_id"])
@@ -172,6 +167,7 @@ async def _auto_restore_session(
     _hydrate_from_draft(ws, draft)
     ws.project_id = project_id
     return project_id
+
 
 # docs_guide topic → (sarlavha, kontent loader). Kontent agent'ning ICHKI
 # agentlariga beriladigan system prompt'lar — MCP klient modeli ham xuddi shu
@@ -258,7 +254,7 @@ _I18N_CATALOG_NOTE = (
     "\n\n### KO'P TILLI (i18n) MATN\n"
     "Yuqoridagi node'lardagi foydalanuvchiga ko'rinadigan matn maydonlari "
     "(messageText / newText, caption, klaviatura tugma yorliqlari, poll question, "
-    'venue title/address, PaymentNode buttonText) marker obyektni qabul qiladi: '
+    "venue title/address, PaymentNode buttonText) marker obyektni qabul qiladi: "
     '{"__i18n": true, "en": "..", "uz": "..", "ru": ".."}. Engine ishga tushganda '
     "aktiv tilga yassilaydi. Ishlashi uchun AVVAL `flow_set_languages(languages, "
     "default_language)` chaqir. Batafsil: `docs_guide(topic='i18n')`.\n"
@@ -327,9 +323,7 @@ def _trace_project_id(user: AuthedUser, arguments: dict) -> str | None:
     if explicit is not None:
         return explicit
     try:
-        return get_workspace_store().active_project_id(
-            user.user_id, client_key=user.client_key
-        )
+        return get_workspace_store().active_project_id(user.user_id, client_key=user.client_key)
     except Exception:
         return None
 
@@ -442,9 +436,7 @@ def _session_tools() -> list[mtypes.Tool]:
                     "topic": {
                         "type": "string",
                         "enum": sorted(_GUIDE_TOPICS),
-                        "description": "; ".join(
-                            f"{k} — {v}" for k, v in sorted(_GUIDE_TOPICS.items())
-                        ),
+                        "description": "; ".join(f"{k} — {v}" for k, v in sorted(_GUIDE_TOPICS.items())),
                     }
                 },
                 "required": ["topic"],
@@ -492,9 +484,7 @@ def _result_to_mcp(
     )
 
 
-async def _handle_session_use_project(
-    user: AuthedUser, arguments: dict
-) -> mtypes.CallToolResult:
+async def _handle_session_use_project(user: AuthedUser, arguments: dict) -> mtypes.CallToolResult:
     project_id = str(arguments.get("project_id") or "").strip()
     if not project_id:
         return _result_to_mcp("project_id majburiy.", is_error=True, data=None)
@@ -508,8 +498,12 @@ async def _handle_session_use_project(
     # check session_use_project accepted any id.
     try:
         project = await backend.get_project(project_id, auth_claims=user.claims)
-    except Exception:
-        project = None
+    except Exception as exc:
+        return _result_to_mcp(
+            f"Loyiha topilmadi yoki sizga ruxsat yo'q: {project_id}. {exc}",
+            is_error=True,
+            data=None,
+        )
     if not isinstance(project, dict) or not project:
         return _result_to_mcp(
             f"Loyiha topilmadi yoki sizga ruxsat yo'q: {project_id}",
@@ -530,15 +524,12 @@ async def _handle_session_use_project(
 
         if restored:
             _hydrate_from_draft(ws, draft)
-            # Refresh collections from backend (cheap, keeps CMS list current);
-            # fall back to the persisted list on failure.
-            try:
-                collections = await load_project_collections(
-                    project_id, auth_claims=ws.auth_claims, client=backend
-                )
-                ws.collections = collections
-            except Exception:
-                collections = ws.collections
+            # Refresh collections from backend so the restored draft never uses
+            # a stale schema.
+            collections = await load_project_collections(
+                project_id, auth_claims=ws.auth_claims, client=backend
+            )
+            ws.collections = collections
             # Module node types are dynamic (per-project enabled modules) — always
             # refresh so a freshly-enabled module's nodes appear; keep old list on
             # failure (never raises).
@@ -576,14 +567,8 @@ async def _handle_session_use_project(
 
         nodes = len(flow.get("nodes") or [])
         edges = len(flow.get("edges") or [])
-        col_names = [
-            c.get("name") for c in collections if isinstance(c, dict) and c.get("name")
-        ]
-        module_types = [
-            m.get("type")
-            for m in ws.module_nodes
-            if isinstance(m, dict) and m.get("type")
-        ]
+        col_names = [c.get("name") for c in collections if isinstance(c, dict) and c.get("name")]
+        module_types = [m.get("type") for m in ws.module_nodes if isinstance(m, dict) and m.get("type")]
         if restored:
             head = (
                 f"Loyiha {project_id} tanlandi. Saqlanmagan draft tiklandi "
@@ -591,10 +576,7 @@ async def _handle_session_use_project(
             )
         else:
             head = f"Loyiha {project_id} tanlandi.\nFlow: {nodes} node, {edges} edge."
-        text = (
-            f"{head}\n"
-            f"Kolleksiyalar ({len(col_names)}): {', '.join(col_names) if col_names else '—'}"
-        )
+        text = f"{head}\nKolleksiyalar ({len(col_names)}): {', '.join(col_names) if col_names else '—'}"
         if module_types:
             text += (
                 f"\nModul node turlari ({len(module_types)}): {', '.join(module_types)}"
@@ -641,9 +623,7 @@ async def _handle_session_status(user: AuthedUser) -> mtypes.CallToolResult:
         flow = ws.working_flow or {}
         nodes = len(flow.get("nodes") or [])
         edges = len(flow.get("edges") or [])
-        col_names = [
-            c.get("name") for c in ws.collections if isinstance(c, dict) and c.get("name")
-        ]
+        col_names = [c.get("name") for c in ws.collections if isinstance(c, dict) and c.get("name")]
         text = (
             f"Aktiv loyiha: {ws.project_id}"
             + (f" ({ws.project_name})" if ws.project_name else "")
@@ -700,9 +680,7 @@ async def _handle_session_undo(user: AuthedUser) -> mtypes.CallToolResult:
         )
 
 
-async def _handle_session_log_prompt(
-    user: AuthedUser, arguments: dict
-) -> mtypes.CallToolResult:
+async def _handle_session_log_prompt(user: AuthedUser, arguments: dict) -> mtypes.CallToolResult:
     prompt = str(arguments.get("prompt") or "").strip()
     if not prompt:
         return _result_to_mcp("prompt majburiy.", is_error=True, data=None)
@@ -722,7 +700,6 @@ async def _handle_session_log_prompt(
         is_error=False,
         data={"trace_id": trace_id},
     )
-
 
 
 # ── build-rules digest (server-side guarantee) ───────────────────────────────
@@ -858,7 +835,9 @@ async def _execute_registry_tool(
         ):
             content = _load_build_rules_digest() + "\n\n" + (content or "")
         return _result_to_mcp(
-            content, is_error=result.is_error, data=result.data,
+            content,
+            is_error=result.is_error,
+            data=result.data,
             data_in_content=result.data_in_content,
         )
 
@@ -878,9 +857,7 @@ def build_mcp_server(registry: ToolRegistry | None = None) -> Server:
         tools.extend(_to_mcp_tool(reg_name, registry) for reg_name in name_map.values())
         return tools
 
-    async def _dispatch(
-        name: str, arguments: dict, user: AuthedUser
-    ) -> mtypes.CallToolResult:
+    async def _dispatch(name: str, arguments: dict, user: AuthedUser) -> mtypes.CallToolResult:
         if name == _SESSION_USE_PROJECT:
             return await _handle_session_use_project(user, arguments)
         if name == _SESSION_STATUS:

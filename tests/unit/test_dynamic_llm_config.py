@@ -15,6 +15,8 @@ import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from agent.integrations.backend import (
     _invalidate_public_config_cache,
     fetch_public_config,
@@ -66,11 +68,11 @@ def test_fetch_public_config_returns_data(monkeypatch):
     assert result == payload
 
 
-def test_fetch_public_config_returns_empty_on_error(monkeypatch):
+def test_fetch_public_config_propagates_network_error(monkeypatch):
     _invalidate_public_config_cache()
     monkeypatch.setattr("httpx.AsyncClient", lambda **kw: _mock_httpx_error())
-    result = _run(fetch_public_config())
-    assert result == {}
+    with pytest.raises(Exception, match="network error"):
+        _run(fetch_public_config())
 
 
 def test_fetch_public_config_caches_within_ttl(monkeypatch):
@@ -132,31 +134,31 @@ def test_effective_provider_uses_backend_value(monkeypatch):
         "agent.integrations.dynamic_config.fetch_public_config",
         AsyncMock(return_value={"ai_agent.provider": "bedrock"}),
     )
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.fetch_internal_config",
+        AsyncMock(return_value={}),
+    )
     assert _run(effective_provider()) == "bedrock"
 
 
-def test_effective_provider_falls_back_to_env(monkeypatch):
+def test_effective_provider_requires_backend_value(monkeypatch):
     _invalidate_public_config_cache()
     monkeypatch.setattr(
         "agent.integrations.dynamic_config.fetch_public_config",
         AsyncMock(return_value={}),
     )
-    # Default env setting is "openai" (from Settings default)
-    result = _run(effective_provider())
-    assert isinstance(result, str)
-    assert result  # non-empty
+    with pytest.raises(RuntimeError, match=r"ai_agent\.provider"):
+        _run(effective_provider())
 
 
-def test_effective_provider_ignores_empty_string(monkeypatch):
+def test_effective_provider_rejects_empty_string(monkeypatch):
     _invalidate_public_config_cache()
     monkeypatch.setattr(
         "agent.integrations.dynamic_config.fetch_public_config",
         AsyncMock(return_value={"ai_agent.provider": "   "}),
     )
-    # Should fall back to env value, not return whitespace
-    result = _run(effective_provider())
-    assert result.strip() == result
-    assert result  # still something from env
+    with pytest.raises(RuntimeError, match=r"ai_agent\.provider"):
+        _run(effective_provider())
 
 
 # ── effective_region ──────────────────────────────────────────────────────────
@@ -171,14 +173,14 @@ def test_effective_region_uses_backend_value(monkeypatch):
     assert _run(effective_region()) == "ap-southeast-1"
 
 
-def test_effective_region_falls_back_to_env(monkeypatch):
+def test_effective_region_requires_backend_value(monkeypatch):
     _invalidate_public_config_cache()
     monkeypatch.setattr(
         "agent.integrations.dynamic_config.fetch_public_config",
         AsyncMock(return_value={}),
     )
-    from agent.config import get_settings
-    assert _run(effective_region()) == get_settings().aws_region
+    with pytest.raises(RuntimeError, match=r"ai_agent\.region"):
+        _run(effective_region())
 
 
 # ── effective_model_roles ─────────────────────────────────────────────────────
@@ -196,48 +198,38 @@ def test_effective_model_roles_backend_model_applied_to_all_roles(monkeypatch):
     assert roles.critic == "qwen3-coder-480b"
     # embedding stays from env
     from agent.config import get_settings
+
     assert roles.embedding == get_settings().model_embedding
 
 
-def test_effective_model_roles_falls_back_to_env_when_key_absent(monkeypatch):
+def test_effective_model_roles_requires_backend_model(monkeypatch):
     _invalidate_public_config_cache()
     monkeypatch.setattr(
         "agent.integrations.dynamic_config.fetch_public_config",
         AsyncMock(return_value={}),
     )
-    from agent.config import get_settings
-    s = get_settings()
-    roles = _run(effective_model_roles())
-    assert roles.planner == s.model_planner
-    assert roles.executor == s.model_executor
-    assert roles.critic == s.model_critic
-    assert roles.embedding == s.model_embedding
+    with pytest.raises(RuntimeError, match=r"ai_agent\.model"):
+        _run(effective_model_roles())
 
 
-def test_effective_model_roles_falls_back_when_backend_down(monkeypatch):
-    """When fetch_public_config returns {} (backend unreachable), use env settings."""
+def test_effective_model_roles_rejects_missing_backend_config(monkeypatch):
     _invalidate_public_config_cache()
     monkeypatch.setattr(
         "agent.integrations.dynamic_config.fetch_public_config",
         AsyncMock(return_value={}),
     )
-    from agent.config import get_settings
-    s = get_settings()
-    roles = _run(effective_model_roles())
-    assert roles.executor == s.model_executor
+    with pytest.raises(RuntimeError, match=r"ai_agent\.model"):
+        _run(effective_model_roles())
 
 
-def test_effective_model_roles_ignores_empty_model(monkeypatch):
-    """Empty string model from backend must not override env settings."""
+def test_effective_model_roles_rejects_empty_model(monkeypatch):
     _invalidate_public_config_cache()
     monkeypatch.setattr(
         "agent.integrations.dynamic_config.fetch_public_config",
         AsyncMock(return_value={"ai_agent.model": ""}),
     )
-    from agent.config import get_settings
-    s = get_settings()
-    roles = _run(effective_model_roles())
-    assert roles.executor == s.model_executor
+    with pytest.raises(RuntimeError, match=r"ai_agent\.model"):
+        _run(effective_model_roles())
 
 
 # ── bedrock region reaches BedrockClient ─────────────────────────────────────
@@ -248,10 +240,16 @@ def test_build_effective_client_bedrock_uses_effective_region(monkeypatch):
     _invalidate_public_config_cache()
     monkeypatch.setattr(
         "agent.integrations.dynamic_config.fetch_public_config",
-        AsyncMock(return_value={
-            "ai_agent.provider": "bedrock",
-            "ai_agent.region": "us-west-2",
-        }),
+        AsyncMock(
+            return_value={
+                "ai_agent.provider": "bedrock",
+                "ai_agent.region": "us-west-2",
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        "agent.integrations.dynamic_config.fetch_internal_config",
+        AsyncMock(return_value={}),
     )
 
     created_kwargs: dict = {}

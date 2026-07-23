@@ -10,8 +10,8 @@ ring (last 5) per draft for session_undo.
 Design notes:
   - Same bootstrap pattern as runtime/store.py: CREATE TABLE IF NOT EXISTS on
     first use, one short-lived connection per call (psycopg async).
-  - GRACEFUL DEGRADE: if the DB is unreachable, every method swallows the error
-    and logs a warning. The MCP keeps working purely in-memory.
+  - Database errors propagate. The caller must never mistake an in-memory
+    change for a durable draft.
   - Keyed by (user_id, project_id) — survives restarts and lets a user keep
     separate drafts per project.
 """
@@ -19,12 +19,9 @@ Design notes:
 from __future__ import annotations
 
 import json
-import logging
 from typing import Any
 
 import psycopg
-
-logger = logging.getLogger(__name__)
 
 _MAX_SNAPSHOTS = 5
 
@@ -55,33 +52,20 @@ from ._lazy_store import LazyStore
 
 
 class DraftStore:
-    """Postgres-backed (user_id, project_id) → draft row, with graceful degrade."""
+    """Postgres-backed (user_id, project_id) → durable draft row."""
 
     def __init__(self, dsn: str) -> None:
         self._dsn = _normalize(dsn)
         self._bootstrapped = False
-        self._degraded = False  # set after the first connect failure
 
-    async def _bootstrap(self) -> bool:
-        """Returns True if the store is usable, False if degraded."""
-        if self._degraded:
-            return False
+    async def _bootstrap(self) -> None:
         if self._bootstrapped:
-            return True
-        try:
-            async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
-                async with conn.cursor() as cur:
-                    await cur.execute(_SCHEMA)
-                await conn.commit()
-            self._bootstrapped = True
-            return True
-        except Exception as exc:
-            self._degraded = True
-            logger.warning(
-                "MCP draft persistence unavailable, degrading to in-memory only: %s",
-                exc,
-            )
-            return False
+            return
+        async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(_SCHEMA)
+            await conn.commit()
+        self._bootstrapped = True
 
     async def upsert(
         self,
@@ -95,13 +79,11 @@ class DraftStore:
         collections: list[dict[str, Any]] | None,
         snapshots: list[dict[str, Any]] | None,
     ) -> None:
-        if not await self._bootstrap():
-            return
-        try:
-            async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
-                async with conn.cursor() as cur:
-                    await cur.execute(
-                        """
+        await self._bootstrap()
+        async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
                         INSERT INTO mcp_flow_drafts
                             (user_id, project_id, project_name, working_flow,
                              baseline_flow, flow_dirty, collections, snapshots,
@@ -117,38 +99,31 @@ class DraftStore:
                             snapshots     = EXCLUDED.snapshots,
                             updated_at    = NOW()
                         """,
-                        (
-                            user_id,
-                            project_id,
-                            project_name,
-                            json.dumps(working_flow) if working_flow is not None else None,
-                            json.dumps(baseline_flow) if baseline_flow is not None else None,
-                            flow_dirty,
-                            json.dumps(collections or []),
-                            json.dumps((snapshots or [])[-_MAX_SNAPSHOTS:]),
-                        ),
-                    )
-                await conn.commit()
-        except Exception as exc:
-            logger.warning("MCP draft upsert failed (%s/%s): %s", user_id, project_id, exc)
+                    (
+                        user_id,
+                        project_id,
+                        project_name,
+                        json.dumps(working_flow) if working_flow is not None else None,
+                        json.dumps(baseline_flow) if baseline_flow is not None else None,
+                        flow_dirty,
+                        json.dumps(collections or []),
+                        json.dumps((snapshots or [])[-_MAX_SNAPSHOTS:]),
+                    ),
+                )
+            await conn.commit()
 
     async def load(self, *, user_id: str, project_id: str) -> dict[str, Any] | None:
-        if not await self._bootstrap():
-            return None
-        try:
-            async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
-                async with conn.cursor() as cur:
-                    await cur.execute(
-                        """SELECT project_name, working_flow, baseline_flow,
+        await self._bootstrap()
+        async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """SELECT project_name, working_flow, baseline_flow,
                                   flow_dirty, collections, snapshots
                            FROM mcp_flow_drafts
                            WHERE user_id = %s AND project_id = %s""",
-                        (user_id, project_id),
-                    )
-                    row = await cur.fetchone()
-        except Exception as exc:
-            logger.warning("MCP draft load failed (%s/%s): %s", user_id, project_id, exc)
-            return None
+                    (user_id, project_id),
+                )
+                row = await cur.fetchone()
         if not row:
             return None
         return {
@@ -166,21 +141,15 @@ class DraftStore:
         Called on session_use_project. Restore (load_latest) prefers the most
         recently *selected* project over the most recently *edited* one, so a
         mutation on another project can't silently drift the session. No-op if
-        the draft row doesn't exist yet (upsert creates it first). Graceful
-        degrade → silent."""
-        if not await self._bootstrap():
-            return
-        try:
-            async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
-                async with conn.cursor() as cur:
-                    await cur.execute(
-                        "UPDATE mcp_flow_drafts SET active_at = NOW() "
-                        "WHERE user_id = %s AND project_id = %s",
-                        (user_id, project_id),
-                    )
-                await conn.commit()
-        except Exception as exc:
-            logger.warning("MCP draft touch_active failed (%s/%s): %s", user_id, project_id, exc)
+        the draft row doesn't exist yet (upsert creates it first)."""
+        await self._bootstrap()
+        async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "UPDATE mcp_flow_drafts SET active_at = NOW() WHERE user_id = %s AND project_id = %s",
+                    (user_id, project_id),
+                )
+            await conn.commit()
 
     async def load_latest(self, *, user_id: str) -> dict[str, Any] | None:
         """Session recovery anchor for a user across all projects (#2, #5).
@@ -188,25 +157,20 @@ class DraftStore:
         After a restart the active-project pointer is lost. We restore the
         project the user last EXPLICITLY selected (active_at), falling back to
         the most recently edited draft (updated_at) if none was ever selected.
-        Includes `project_id` in the returned dict. Graceful degrade → None."""
-        if not await self._bootstrap():
-            return None
-        try:
-            async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
-                async with conn.cursor() as cur:
-                    await cur.execute(
-                        """SELECT project_id, project_name, working_flow,
+        Includes `project_id` in the returned dict."""
+        await self._bootstrap()
+        async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """SELECT project_id, project_name, working_flow,
                                   baseline_flow, flow_dirty, collections, snapshots
                            FROM mcp_flow_drafts
                            WHERE user_id = %s
                            ORDER BY active_at DESC NULLS LAST, updated_at DESC
                            LIMIT 1""",
-                        (user_id,),
-                    )
-                    row = await cur.fetchone()
-        except Exception as exc:
-            logger.warning("MCP draft load_latest failed (%s): %s", user_id, exc)
-            return None
+                    (user_id,),
+                )
+                row = await cur.fetchone()
         if not row:
             return None
         return {
@@ -221,18 +185,14 @@ class DraftStore:
 
     async def clear(self, *, user_id: str, project_id: str) -> None:
         """Drop the persisted draft after a successful save."""
-        if not await self._bootstrap():
-            return
-        try:
-            async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
-                async with conn.cursor() as cur:
-                    await cur.execute(
-                        "DELETE FROM mcp_flow_drafts WHERE user_id = %s AND project_id = %s",
-                        (user_id, project_id),
-                    )
-                await conn.commit()
-        except Exception as exc:
-            logger.warning("MCP draft clear failed (%s/%s): %s", user_id, project_id, exc)
+        await self._bootstrap()
+        async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "DELETE FROM mcp_flow_drafts WHERE user_id = %s AND project_id = %s",
+                    (user_id, project_id),
+                )
+            await conn.commit()
 
 
 _store: LazyStore[DraftStore] = LazyStore(lambda: DraftStore(get_settings().database_url))

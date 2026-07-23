@@ -41,8 +41,16 @@ from .templates import build_flow_template_tools
 # `keyboard_kind` ('inline'|'reply') + `rows` (button rows). Surfaced in the
 # error so the retry is correct on the first try instead of burning turns.
 _KEYBOARD_ALIAS_FIELDS = frozenset(
-    {"keyboard", "replyMarkup", "reply_markup", "inlineKeyboard",
-     "inline_keyboard", "buttons", "keyboardType", "inline_buttons"}
+    {
+        "keyboard",
+        "replyMarkup",
+        "reply_markup",
+        "inlineKeyboard",
+        "inline_keyboard",
+        "buttons",
+        "keyboardType",
+        "inline_buttons",
+    }
 )
 
 
@@ -130,10 +138,7 @@ def _collection_schemas(ctx: ToolContext) -> dict[str, dict[str, str]] | None:
         if not isinstance(name, str) or not name:
             continue
         kinds = c.get("field_kinds")
-        out[name] = {
-            str(k): str(v)
-            for k, v in (kinds.items() if isinstance(kinds, dict) else [])
-        }
+        out[name] = {str(k): str(v) for k, v in (kinds.items() if isinstance(kinds, dict) else [])}
     return out or None
 
 
@@ -233,6 +238,7 @@ async def flow_get(input: FlowGetInput, ctx: ToolContext) -> ToolResult:
     # To'liq flow — AI uchun YAML (JSON emas: arzon token + o'qishli). data_in_content
     # → MCP YAML(data)ni takrorlamaydi.
     import yaml as _yaml
+
     payload = flow.model_dump()
     body = _yaml.safe_dump(
         payload, allow_unicode=True, sort_keys=False, default_flow_style=False, width=100
@@ -254,7 +260,9 @@ class FlowAddNodeInput(BaseModel):
     )
     target_handle: str | None = Field(default="target-handler")
     edge_id: str | None = Field(default=None)
-    position: dict[str, float] | None = Field(default=None, description="{x,y} — omit, run flow.layout_auto last.")
+    position: dict[str, float] | None = Field(
+        default=None, description="{x,y} — omit, run flow.layout_auto last."
+    )
 
 
 def _edge_id(source: str, target: str, source_handle: str | None = None) -> str:
@@ -262,9 +270,7 @@ def _edge_id(source: str, target: str, source_handle: str | None = None) -> str:
     return f"e-{source}-{target}-{handle}"
 
 
-async def _add_module_node(
-    input: FlowAddNodeInput, ctx: ToolContext, mod: dict[str, Any]
-) -> ToolResult:
+async def _add_module_node(input: FlowAddNodeInput, ctx: ToolContext, mod: dict[str, Any]) -> ToolResult:
     """Add/replace an external MODULE node type (`moduleId.NodeName`).
 
     Module nodes are validated against the per-project manifest (not a static
@@ -315,9 +321,8 @@ async def _add_module_node(
         )
         connected_from = input.after
 
-    msg = (
-        f"Module node `{input.id}` ({input.type}, module={mod.get('module')}) saved"
-        + (f", connected from `{connected_from}`." if connected_from else ".")
+    msg = f"Module node `{input.id}` ({input.type}, module={mod.get('module')}) saved" + (
+        f", connected from `{connected_from}`." if connected_from else "."
     )
     return ToolResult.ok(
         msg,
@@ -357,8 +362,7 @@ async def flow_add_node(input: FlowAddNodeInput, ctx: ToolContext) -> ToolResult
             else " No module node types are enabled for this project."
         )
         return ToolResult.error(
-            f"Unknown node type `{input.type}`. Use flow.list_node_types to discover "
-            f"built-in types.{hint}"
+            f"Unknown node type `{input.type}`. Use flow.list_node_types to discover built-in types.{hint}"
         )
 
     # Per-type strict Pydantic validation (rejects unknown fields, type errors,
@@ -382,8 +386,7 @@ async def flow_add_node(input: FlowAddNodeInput, ctx: ToolContext) -> ToolResult
         unknown = [k for k in input.data if k not in known]
         if unknown:
             return ToolResult.error(
-                f"Unknown data fields for `{input.type}`: {unknown}. "
-                f"Allowed: {sorted(known)}."
+                f"Unknown data fields for `{input.type}`: {unknown}. Allowed: {sorted(known)}."
             )
         data_dict = dict(input.data)
 
@@ -408,9 +411,8 @@ async def flow_add_node(input: FlowAddNodeInput, ctx: ToolContext) -> ToolResult
         )
         connected_from = input.after
 
-    msg = (
-        f"Node `{input.id}` ({input.type}) saved"
-        + (f", connected from `{connected_from}`." if connected_from else ".")
+    msg = f"Node `{input.id}` ({input.type}) saved" + (
+        f", connected from `{connected_from}`." if connected_from else "."
     )
     return ToolResult.ok(
         msg,
@@ -727,7 +729,7 @@ class FlowSetLanguagesInput(BaseModel):
         description=(
             "Bot tillari — ISO kodlari, masalan ['uz','ru','en']. Engine faqat shu "
             "ro'yxatdagi tilni public_lang / Telegram language_code sifatida tanlaydi — "
-            "i18n marker ({\"__i18n\":...}) umuman ishlashi uchun MAJBURIY."
+            'i18n marker ({"__i18n":...}) umuman ishlashi uchun MAJBURIY.'
         ),
     )
     default_language: str = Field(
@@ -782,7 +784,7 @@ class FlowListNodeTypesInput(BaseModel):
             "Free-text search across node name + summary + full doc (ToolSearch-style). "
             "Returns the FULL schema for every matching node. Bitta qidiruvda har so'z "
             "substring bo'lishi kerak (AND). Bir nechta qidiruv: `query=[\"to'lov\", "
-            "\"collection read\"]` — har biri alohida qidiriladi, natijalar BIRLASHTIRILADI (OR)."
+            '"collection read"]` — har biri alohida qidiriladi, natijalar BIRLASHTIRILADI (OR).'
         ),
     )
     types: list[str] | None = Field(
@@ -796,7 +798,7 @@ class FlowListNodeTypesInput(BaseModel):
         default=None,
         description=(
             "Enabled MODULE slug(lar) — o'sha modul(lar)ning BARCHA node'lari (schema "
-            "bilan). Bir nechta modul: `module=[\"a\",\"b\"]`. Modullar katalogda alohida "
+            'bilan). Bir nechta modul: `module=["a","b"]`. Modullar katalogda alohida '
             "kategoriya bo'lib ko'rinadi; default'da node'lari yuklanmaydi, shu bilan ol."
         ),
     )
@@ -807,8 +809,8 @@ class FlowListNodeTypesInput(BaseModel):
     category: str | list[str] | None = Field(
         default=None,
         description=(
-            "Filter: bitta yoki BIR NECHTA kategoriya, masalan `category=\"payment\"` yoki "
-            "`category=[\"payment\",\"ai\"]`. Qiymatlar: trigger|send|edit|flow_control|data|"
+            'Filter: bitta yoki BIR NECHTA kategoriya, masalan `category="payment"` yoki '
+            '`category=["payment","ai"]`. Qiymatlar: trigger|send|edit|flow_control|data|'
             "integration|interaction|subflow|payment|ai (yoki module slug'lari)."
         ),
     )
@@ -873,7 +875,8 @@ async def flow_list_node_types(input: FlowListNodeTypesInput, ctx: ToolContext) 
     # doc'li node'lar deyarli hamma query'ga mos kelib shovqin qiladi). To'liq
     # doc baribir natijada `description` sifatida qaytadi.
     specs = [
-        s for s in all_node_types(include_hidden=bool(want))
+        s
+        for s in all_node_types(include_hidden=bool(want))
         if not s.agent_hidden or s.type in want
         if _keep(s.type, s.summary, category=s.category)
     ]
@@ -905,30 +908,24 @@ async def flow_list_node_types(input: FlowListNodeTypesInput, ctx: ToolContext) 
             mod_name = str(mod.get("module_name") or "").lower()
             if slug not in modules and mod_name not in modules:
                 continue
-        elif not _keep(
-            mod["type"], mod.get("description"), category=mod.get("category") or "integration"
-        ):
+        elif not _keep(mod["type"], mod.get("description"), category=mod.get("category") or "integration"):
             continue
-        fields = [
-            {"name": f, "required": True, "source": "module"}
-            for f in (mod.get("required_fields") or [])
-        ] + [
-            {"name": f, "required": False, "source": "module"}
-            for f in (mod.get("optional_fields") or [])
-        ] + [
-            {
-                "name": cf.get("key"),
-                "required": True,
-                "type": "credential",
-                "credential_type_key": cf.get("type_key"),
-            }
-            for cf in (mod.get("credential_fields") or [])
-        ]
+        fields = (
+            [{"name": f, "required": True, "source": "module"} for f in (mod.get("required_fields") or [])]
+            + [{"name": f, "required": False, "source": "module"} for f in (mod.get("optional_fields") or [])]
+            + [
+                {
+                    "name": cf.get("key"),
+                    "required": True,
+                    "type": "credential",
+                    "credential_type_key": cf.get("type_key"),
+                }
+                for cf in (mod.get("credential_fields") or [])
+            ]
+        )
         # Real source handle ids from the module manifest — an edge whose
         # sourceHandle doesn't match one of these is INVISIBLE in the editor.
-        mod_handles = [
-            h for h in (mod.get("source_handles") or []) if isinstance(h, dict) and h.get("id")
-        ]
+        mod_handles = [h for h in (mod.get("source_handles") or []) if isinstance(h, dict) and h.get("id")]
         handle_ids = [str(h["id"]) for h in mod_handles] or ["source-default"]
         handle_note = (
             "  OUTPUT handles (use as source_handle when connecting FROM this "
@@ -942,11 +939,7 @@ async def flow_list_node_types(input: FlowListNodeTypesInput, ctx: ToolContext) 
                 "category": mod.get("category") or "integration",
                 "description": (
                     f"[MODULE {mod.get('module')}] {mod.get('description')}"
-                    + (
-                        f"  trigger:{mod.get('trigger_mode')}"
-                        if mod.get("is_trigger")
-                        else ""
-                    )
+                    + (f"  trigger:{mod.get('trigger_mode')}" if mod.get("is_trigger") else "")
                     + handle_note
                 ),
                 "source_handles": handle_ids,
@@ -961,6 +954,7 @@ async def flow_list_node_types(input: FlowListNodeTypesInput, ctx: ToolContext) 
     # Group by category so the LLM gets an overview without drowning in schema detail.
     # Full per-type schema (fields + validators) is still in data["types"].
     from collections import defaultdict
+
     by_cat: dict[str, list[str]] = defaultdict(list)
     for p in payload:
         marker = "[trigger]" if p.get("is_trigger") else ""
@@ -974,6 +968,7 @@ async def flow_list_node_types(input: FlowListNodeTypesInput, ctx: ToolContext) 
     # dan ortig'ini kesamiz. data_in_content=True → MCP YAML(data)ni takrorlamaydi.
     if focused and payload:
         import yaml as _yaml
+
         shown = payload[:_MAX_SCHEMA_DUMP]
         lines.append("")
         lines.append(
@@ -1015,23 +1010,17 @@ async def flow_diff(_: FlowDiffInput, ctx: ToolContext) -> ToolResult:
     if d.added_nodes:
         lines.append(
             "Qo'shiladi: "
-            + ", ".join(
-                f"{node_id} ({current_nodes[node_id].type})" for node_id in d.added_nodes
-            )
+            + ", ".join(f"{node_id} ({current_nodes[node_id].type})" for node_id in d.added_nodes)
         )
     if d.modified_nodes:
         lines.append(
             "O'zgartiriladi: "
-            + ", ".join(
-                f"{node_id} ({current_nodes[node_id].type})" for node_id in d.modified_nodes
-            )
+            + ", ".join(f"{node_id} ({current_nodes[node_id].type})" for node_id in d.modified_nodes)
         )
     if d.removed_nodes:
         lines.append(
             "O'chiriladi: "
-            + ", ".join(
-                f"{node_id} ({baseline_nodes[node_id].type})" for node_id in d.removed_nodes
-            )
+            + ", ".join(f"{node_id} ({baseline_nodes[node_id].type})" for node_id in d.removed_nodes)
         )
     if d.added_edges or d.removed_edges:
         lines.append(f"Bog'lanishlar: +{len(d.added_edges)}, -{len(d.removed_edges)}")
@@ -1066,9 +1055,7 @@ async def _run_regression_after_save(
         from ...mcp.flow_tests import get_flow_test_store
         from .power import _fmt_test_results, _run_saved_tests
 
-        tests = await get_flow_test_store().list(
-            project_id=str(project_id), only_enabled=True
-        )
+        tests = await get_flow_test_store().list(project_id=str(project_id), only_enabled=True)
         if not tests:
             return None
         # `ok` is the load-bearing flag for callers: True only when every enabled
@@ -1086,9 +1073,7 @@ async def _run_regression_after_save(
             state=sim_state,
             services=ctx.services,
         )
-        agg = await _run_saved_tests(
-            sim_ctx, flow=saved_flow, tests=tests, project_id=str(project_id)
-        )
+        agg = await _run_saved_tests(sim_ctx, flow=saved_flow, tests=tests, project_id=str(project_id))
         if not agg.get("ran"):
             return {
                 "ok": True,  # nothing ran → not a failure
@@ -1175,9 +1160,7 @@ async def flow_save(input: FlowSaveInput, ctx: ToolContext) -> ToolResult:
         module_nodes=_module_nodes(ctx),
     )
     if not result.ok:
-        return ToolResult.error(
-            "Flow has validation errors — fix them before saving:\n" + result.render()
-        )
+        return ToolResult.error("Flow has validation errors — fix them before saving:\n" + result.render())
     if input.apply_layout:
         auto_layout(flow)
 
@@ -1199,6 +1182,7 @@ async def flow_save(input: FlowSaveInput, ctx: ToolContext) -> ToolResult:
         await backend.update_project(project_id, {"flow": flow_dict}, auth_claims=claims)
     except BackendError as e:
         from ...integrations.backend import format_backend_error
+
         # 401 — refresh logikasi backend client'da bo'lishi kerak, lekin agar bu
         # yerga yetib kelgan bo'lsa, refresh muvaffaqiyatsiz tugagan. Agentga
         # aniq sabab beramiz.
@@ -1224,20 +1208,17 @@ async def flow_save(input: FlowSaveInput, ctx: ToolContext) -> ToolResult:
 
     # Versiyalash — har muvaffaqiyatli save yangi versiya yozadi (flow.history /
     # flow.rollback shu store'dan o'qiydi). LangGraph save'lari ham, MCP
-    # save'lari ham shu yo'l orqali versiyalanadi. Graceful degrade store ichida;
-    # bu guard versiyalash xatosi save natijasiga sizib chiqmasligini ta'minlaydi.
-    try:
-        from ...mcp.flow_versions import get_flow_version_store
+    # save'lari ham shu yo'l orqali versiyalanadi. Version yozilmasa operatsiya
+    # muvaffaqiyatli deb ko'rsatilmaydi.
+    from ...mcp.flow_versions import get_flow_version_store
 
-        await get_flow_version_store().append(
-            project_id=str(project_id),
-            user_id=str(ctx.user_id) if ctx.user_id is not None else None,
-            flow=flow_dict,
-            node_count=n_nodes,
-            edge_count=n_edges,
-        )
-    except Exception:  # pragma: no cover — defensive
-        pass
+    await get_flow_version_store().append(
+        project_id=str(project_id),
+        user_id=str(ctx.user_id) if ctx.user_id is not None else None,
+        flow=flow_dict,
+        node_count=n_nodes,
+        edge_count=n_edges,
+    )
 
     # #6 — default to a compact summary so flow.save (and its MCP
     # structuredContent) does NOT echo the full ~30k-token flow back to the
@@ -1320,8 +1301,7 @@ async def flow_save(input: FlowSaveInput, ctx: ToolContext) -> ToolResult:
 
     if input.fail_on_regression and regression_failed:
         return ToolResult.error(
-            msg
-            + "\n⚠️ fail_on_regression=true — save PERSISTED, lekin regressiya "
+            msg + "\n⚠️ fail_on_regression=true — save PERSISTED, lekin regressiya "
             "yiqildi. Tuzating va qayta save qiling, yoki flow_rollback bilan "
             "oldingi versiyaga qayting.",
             state_updates=state_updates,
@@ -1344,7 +1324,8 @@ def build_flow_tools() -> list[Tool]:
     # with `flow.list_node_types`. The connect_*/ask_* helpers from
     # build_flow_action_tools are kept.
     action_tools = [
-        t for t in build_flow_action_tools()
+        t
+        for t in build_flow_action_tools()
         if not (t.name.startswith("flow.add_") and t.name != "flow.add_node")
     ]
     return [

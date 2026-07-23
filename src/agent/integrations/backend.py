@@ -47,8 +47,6 @@ async def fetch_public_config() -> dict[str, Any]:
     """GET {BACKEND_BASE_URL}/api/v1/shared/config/public/ and cache for TTL.
 
     Returns flat dict ``{"ai_agent.provider": "...", ...}``.
-    NEVER raises — on any network/parse error returns ``{}`` so caller can
-    fall back to env-based settings.
     """
     global _public_config_cache, _public_config_fetched_at
 
@@ -58,22 +56,15 @@ async def fetch_public_config() -> dict[str, Any]:
 
     s = get_settings()
     url = s.backend_base_url.rstrip("/") + "/api/v1/shared/config/public"
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(url, headers={"Accept": "application/json"})
-            resp.raise_for_status()
-            # BaseViewSetMixin wraps payloads as {"status": true, "data": {...}};
-            # peel the envelope so we get the flat {key: value} config dict.
-            data = _unwrap_envelopes(resp.json())
-        if not isinstance(data, dict):
-            logger.warning("fetch_public_config: unexpected response type %s", type(data))
-            data = {}
-        _public_config_cache = data
-        _public_config_fetched_at = now
-        return data
-    except Exception as exc:
-        logger.warning("fetch_public_config failed (falling back to env): %s", exc)
-        return {}
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        resp = await client.get(url, headers={"Accept": "application/json"})
+        resp.raise_for_status()
+        data = _unwrap_envelopes(resp.json())
+    if not isinstance(data, dict):
+        raise RuntimeError(f"public config response must be an object, got {type(data)}")
+    _public_config_cache = data
+    _public_config_fetched_at = now
+    return data
 
 
 def _invalidate_public_config_cache() -> None:
@@ -97,9 +88,7 @@ async def fetch_internal_config() -> dict[str, Any]:
     Returns flat dict with ALL config keys including secrets such as
     ``ai_agent.api_key`` and ``ai_agent.base_url``.
 
-    NEVER raises — returns ``{}`` when:
-      - ``BACKEND_INTERNAL_TOKEN`` is not configured in settings
-      - Any network / HTTP / parse error occurs
+    Missing authentication, network failures, and malformed payloads propagate.
     """
     global _internal_config_cache, _internal_config_fetched_at
 
@@ -109,31 +98,24 @@ async def fetch_internal_config() -> dict[str, Any]:
 
     s = get_settings()
     if not s.backend_internal_token:
-        logger.debug("fetch_internal_config: BACKEND_INTERNAL_TOKEN not set — skipping")
-        return {}
+        raise RuntimeError("BACKEND_INTERNAL_TOKEN is required")
 
     url = s.backend_base_url.rstrip("/") + "/api/v1/shared/config/internal"
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(
-                url,
-                headers={
-                    "Accept": "application/json",
-                    "X-Internal-Token": s.backend_internal_token,
-                },
-            )
-            resp.raise_for_status()
-            # Peel the {"status": true, "data": {...}} envelope to a flat dict.
-            data = _unwrap_envelopes(resp.json())
-        if not isinstance(data, dict):
-            logger.warning("fetch_internal_config: unexpected response type %s", type(data))
-            data = {}
-        _internal_config_cache = data
-        _internal_config_fetched_at = now
-        return data
-    except Exception as exc:
-        logger.warning("fetch_internal_config failed (falling back to env): %s", exc)
-        return {}
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        resp = await client.get(
+            url,
+            headers={
+                "Accept": "application/json",
+                "X-Internal-Token": s.backend_internal_token,
+            },
+        )
+        resp.raise_for_status()
+        data = _unwrap_envelopes(resp.json())
+    if not isinstance(data, dict):
+        raise RuntimeError(f"internal config response must be an object, got {type(data)}")
+    _internal_config_cache = data
+    _internal_config_fetched_at = now
+    return data
 
 
 def _invalidate_internal_config_cache() -> None:
@@ -475,14 +457,8 @@ def _unwrap_item(payload: Any) -> dict[str, Any]:
 def _auth_kw(auth_claims: dict | None) -> dict[str, Any]:
     """Split agent auth claims into BackendClient._request kwargs.
 
-    Yangi rejim: BackendClient agent'ning INTERNAL_API_TOKEN bilan
-    chaqiradi va `X-User-Id` header'ida foydalanuvchi id'sini beradi —
-    foydalanuvchi JWT'si forward qilinmaydi. Backend
-    InternalTokenAuthentication shu pattern'ni qabul qiladi.
-
-    Eski rejim (JWT forward + refresh) hali ham qoldirilgan
-    fallback sifatida — internal token sozlanmagan dev/test
-    muhitlarida tools ishlasin.
+    User-scoped Go backend routes use the caller's Bearer JWT. Internal-only
+    routes are called without these kwargs and use X-Internal-Token.
     """
     if not auth_claims:
         return {}
@@ -508,18 +484,12 @@ class BackendClient:
         """Compose auth headers.
 
         Priority:
-          1. Internal token + X-User-Id (system-to-system) — used when
-             both INTERNAL_API_TOKEN is configured AND we know the
-             user_id (which we do after agent's JWT verification).
-          2. Bearer JWT (legacy / fallback when no internal token).
-          3. Internal token only — for endpoints that don't need a
+          1. Bearer JWT for user-scoped routes.
+          2. Internal token for endpoints that don't need a
              user context (e.g. /api/template/internal/list/).
         """
         h = {"Accept": "application/json"}
-        if self._internal_token and user_id:
-            h["X-Internal-Token"] = self._internal_token
-            h["X-User-Id"] = user_id
-        elif bearer:
+        if bearer:
             h["Authorization"] = f"Bearer {bearer}"
         elif self._internal_token:
             h["X-Internal-Token"] = self._internal_token
@@ -563,12 +533,10 @@ class BackendClient:
                 )
                 return None
             data = resp.json() or {}
-            # Go (flat) shape first, then fall back to the old Django envelope
-            # shape so this keeps working if ever pointed at the old backend.
-            root = data.get("data") if isinstance(data.get("data"), dict) else data
-            token = (root or {}).get("token") or {}
-            access = root.get("access_token") or token.get("access") or root.get("access")
-            new_refresh = root.get("refresh_token") or token.get("refresh") or root.get("refresh")
+            if not isinstance(data, dict):
+                return None
+            access = data.get("access_token")
+            new_refresh = data.get("refresh_token")
             if isinstance(access, str) and access:
                 logger.info(
                     "Agent access token refreshed mid-run (rotated_refresh=%s)",
@@ -601,7 +569,6 @@ class BackendClient:
         auth_claims: dict | None = None,
     ) -> Any:
         url = self._base_url + path
-        use_internal = bool(self._internal_token and user_id)
         resp = await self._client.request(
             method,
             url,
@@ -609,35 +576,9 @@ class BackendClient:
             json=json,
             headers=self._headers(bearer=bearer, user_id=user_id),
         )
-        # Bearer fallback when the internal-token + X-User-Id impersonation
-        # mode 401s. The Go backend (unlike Django's InternalTokenAuthentication)
-        # does NOT support X-Internal-Token + X-User-Id impersonation on
-        # user-scoped resource routes (projects/credentials/enviroment/relase/
-        # file/messages/subscription/cms/chat/debug — verified empirically:
-        # every one of those routes is mounted behind `middleware.Auth`, which
-        # only recognises `Authorization: Bearer <jwt>`; only a handful of
-        # true backend-to-backend routes — shared/config/internal, the
-        # credential/payment "internal" resolve endpoints, template internal
-        # feed — check X-Internal-Token). Since the Go and Django JWT signing
-        # keys now match, forwarding the caller's own bearer JWT is always a
-        # safe, equivalent fallback here — retry once with bearer-only headers
-        # before giving up. use_internal is then cleared so the refresh-on-401
-        # block below still gets a chance if THAT bearer also turns out to be
-        # expired.
-        if resp.status_code == 401 and use_internal and bearer:
-            resp = await self._client.request(
-                method,
-                url,
-                params=params,
-                json=json,
-                headers=self._headers(bearer=bearer),
-            )
-            use_internal = False
-        # Refresh-on-401 only when we're using a forwarded user JWT.
-        # When the request was made with the internal token + X-User-Id
-        # there is no refresh to perform — the internal token does not
-        # expire, and a 401 there means the X-User-Id is invalid.
-        if resp.status_code == 401 and not use_internal and refresh_token:
+        # Refresh-on-401 applies only to caller JWT requests. Internal calls do
+        # not have a refresh token and fail directly on authentication errors.
+        if resp.status_code == 401 and bearer and refresh_token:
             refreshed = await self._try_refresh(refresh_token)
             if refreshed:
                 new_access, new_refresh = refreshed
@@ -1866,24 +1807,14 @@ async def load_project_collections(
     which collections (and fields) the cms-manager created and can reference
     them correctly in flow nodes / expressions.
 
-    Robust by contract: NEVER raises. On any failure (no project, backend
-    error, malformed payload) it returns `[]` and logs a warning, so a backend
-    hiccup can't break runs. Per-collection field fetch failures are isolated —
-    one bad collection won't drop the others.
+    Backend and schema failures propagate; an empty list means the project
+    actually has no collections.
     """
     pid = "" if project_id is None else str(project_id)
     if not pid or pid == "global":
         return []
-    try:
-        backend = client or get_backend_client()
-        cols = await backend.cms_list_collections(pid, auth_claims=auth_claims)
-    except Exception:
-        logger.warning(
-            "Failed to list collections for project=%s; continuing without them",
-            pid,
-            exc_info=True,
-        )
-        return []
+    backend = client or get_backend_client()
+    cols = await backend.cms_list_collections(pid, auth_claims=auth_claims)
 
     out: list[dict[str, Any]] = []
     collection_slugs_by_id = {
@@ -1907,36 +1838,25 @@ async def load_project_collections(
         # reads `field_kinds` when present.
         field_kinds: dict[str, str] = {}
         field_contracts: list[dict[str, Any]] = []
-        try:
-            detail = await backend.cms_get_collection(pid, name, auth_claims=auth_claims)
-            for f in (detail.get("fields") or []) if isinstance(detail, dict) else []:
-                fname = f.get("name") if isinstance(f, dict) else None
-                if fname:
-                    fields.append(str(fname))
-                    # Django's CMS field schema key is "kind"; the Go port
-                    # renamed it to "type" (see internal/modules/cms field
-                    # DTO) — accept either so this works on both backends.
-                    kind = (f.get("kind") or f.get("type")) if isinstance(f, dict) else None
-                    if kind:
-                        field_kinds[str(fname)] = str(kind)
-                    contract: dict[str, Any] = {
-                        "name": str(fname),
-                        "kind": str(kind or "text"),
-                        "required": bool(f.get("required")),
-                    }
-                    relation = f.get("relation_collection") or f.get("relationCollection")
-                    if not relation and f.get("relation_collection_id"):
-                        relation = collection_slugs_by_id.get(str(f["relation_collection_id"]))
-                    if relation:
-                        contract["relation_collection"] = str(relation)
-                    field_contracts.append(contract)
-        except Exception:
-            logger.warning(
-                "Failed to load fields for collection=%s (project=%s); listing name only",
-                name,
-                pid,
-                exc_info=True,
-            )
+        detail = await backend.cms_get_collection(pid, name, auth_claims=auth_claims)
+        for f in (detail.get("fields") or []) if isinstance(detail, dict) else []:
+            fname = f.get("name") if isinstance(f, dict) else None
+            if fname:
+                fields.append(str(fname))
+                kind = (f.get("kind") or f.get("type")) if isinstance(f, dict) else None
+                if kind:
+                    field_kinds[str(fname)] = str(kind)
+                contract: dict[str, Any] = {
+                    "name": str(fname),
+                    "kind": str(kind or "text"),
+                    "required": bool(f.get("required")),
+                }
+                relation = f.get("relation_collection") or f.get("relationCollection")
+                if not relation and f.get("relation_collection_id"):
+                    relation = collection_slugs_by_id.get(str(f["relation_collection_id"]))
+                if relation:
+                    contract["relation_collection"] = str(relation)
+                field_contracts.append(contract)
         out.append(
             {
                 "name": str(name),
@@ -1973,22 +1893,13 @@ async def load_project_module_nodes(
           "produces_state": ["llm_output", ...],
         }, ...]
 
-    Robust by contract: NEVER raises. On any failure returns []. Module nodes are
-    then simply unavailable for the session (agent falls back to built-ins).
+    Backend failures propagate. An empty list means no modules are enabled.
     """
     pid = "" if project_id is None else str(project_id)
     if not pid or pid == "global":
         return []
-    try:
-        backend = client or get_backend_client()
-        manifests = await backend.list_project_module_manifests(pid, auth_claims=auth_claims)
-    except Exception:
-        logger.warning(
-            "Failed to load module manifests for project=%s; continuing without modules",
-            pid,
-            exc_info=True,
-        )
-        return []
+    backend = client or get_backend_client()
+    manifests = await backend.list_project_module_manifests(pid, auth_claims=auth_claims)
 
     out: list[dict[str, Any]] = []
     for m in manifests or []:

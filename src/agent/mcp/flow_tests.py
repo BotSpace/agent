@@ -1,13 +1,11 @@
-"""Per-project saved regression tests (#10) — Postgres-backed, graceful degrade.
+"""Per-project saved regression tests (#10) — Postgres-backed.
 
 A user can save a named simulate scenario (steps, with `expect` assertions) as a
 regression test for a project, then re-run all of them after each change so a
 later edit can't silently break an earlier scenario.
 
-Same bootstrap/degrade philosophy as flow_versions.py / draft_store.py:
-CREATE TABLE IF NOT EXISTS on first use, one short-lived connection per call
-(psycopg async), and every method swallows DB errors so a DB outage can never
-break flow_save or the test tools (they just report "tests unavailable").
+The table is bootstrapped on first use. Database failures are propagated so a
+caller can distinguish an outage from an actually empty test collection.
 
 `name` is UNIQUE per project — `save` UPSERTs (re-saving the same name replaces
 its steps). `steps` is the simulate step format (with optional `expect`).
@@ -16,12 +14,9 @@ its steps). `steps` is the simulate step format (with optional `expect`).
 from __future__ import annotations
 
 import json
-import logging
 from typing import Any
 
 import psycopg
-
-logger = logging.getLogger(__name__)
 
 _SCHEMA = """\
 CREATE TABLE IF NOT EXISTS mcp_flow_tests (
@@ -44,31 +39,20 @@ from ._lazy_store import LazyStore
 
 
 class FlowTestStore:
-    """Postgres-backed per-project saved regression tests, graceful degrade."""
+    """Postgres-backed per-project saved regression tests."""
 
     def __init__(self, dsn: str) -> None:
         self._dsn = _normalize(dsn)
         self._bootstrapped = False
-        self._degraded = False
 
-    async def _bootstrap(self) -> bool:
-        if self._degraded:
-            return False
+    async def _bootstrap(self) -> None:
         if self._bootstrapped:
-            return True
-        try:
-            async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
-                async with conn.cursor() as cur:
-                    await cur.execute(_SCHEMA)
-                await conn.commit()
-            self._bootstrapped = True
-            return True
-        except Exception as exc:
-            self._degraded = True
-            logger.warning(
-                "MCP flow-tests store unavailable, degrading to no-op: %s", exc
-            )
-            return False
+            return
+        async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(_SCHEMA)
+            await conn.commit()
+        self._bootstrapped = True
 
     async def save(
         self,
@@ -80,63 +64,43 @@ class FlowTestStore:
         enabled: bool = True,
     ) -> bool:
         """UPSERT a named test for the project. Returns True if persisted."""
-        if not await self._bootstrap():
-            return False
-        try:
-            async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
-                async with conn.cursor() as cur:
-                    await cur.execute(
-                        """
-                        INSERT INTO mcp_flow_tests
-                            (project_id, user_id, name, steps, enabled,
-                             created_at, updated_at)
-                        VALUES (%s, %s, %s, %s::jsonb, %s, NOW(), NOW())
-                        ON CONFLICT (project_id, name) DO UPDATE
-                            SET steps = EXCLUDED.steps,
-                                enabled = EXCLUDED.enabled,
-                                user_id = EXCLUDED.user_id,
-                                updated_at = NOW()
-                        """,
-                        (
-                            project_id,
-                            user_id,
-                            name,
-                            json.dumps(steps),
-                            bool(enabled),
-                        ),
-                    )
-                await conn.commit()
-            return True
-        except Exception as exc:
-            logger.warning(
-                "MCP flow-test save failed (project=%s name=%s): %s",
-                project_id, name, exc,
-            )
-            return False
+        await self._bootstrap()
+        async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO mcp_flow_tests
+                        (project_id, user_id, name, steps, enabled,
+                         created_at, updated_at)
+                    VALUES (%s, %s, %s, %s::jsonb, %s, NOW(), NOW())
+                    ON CONFLICT (project_id, name) DO UPDATE
+                        SET steps = EXCLUDED.steps,
+                            enabled = EXCLUDED.enabled,
+                            user_id = EXCLUDED.user_id,
+                            updated_at = NOW()
+                    """,
+                    (
+                        project_id,
+                        user_id,
+                        name,
+                        json.dumps(steps),
+                        bool(enabled),
+                    ),
+                )
+            await conn.commit()
+        return True
 
-    async def list(
-        self, *, project_id: str, only_enabled: bool = False
-    ) -> list[dict[str, Any]]:
+    async def list(self, *, project_id: str, only_enabled: bool = False) -> list[dict[str, Any]]:
         """Return tests for the project: {name, steps, enabled, updated_at}."""
-        if not await self._bootstrap():
-            return []
-        sql = (
-            "SELECT name, steps, enabled, updated_at FROM mcp_flow_tests "
-            "WHERE project_id = %s"
-        )
+        await self._bootstrap()
+        sql = "SELECT name, steps, enabled, updated_at FROM mcp_flow_tests WHERE project_id = %s"
         if only_enabled:
             sql += " AND enabled = TRUE"
         sql += " ORDER BY name ASC"
-        try:
-            async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
-                async with conn.cursor() as cur:
-                    await cur.execute(sql, (project_id,))
-                    rows = await cur.fetchall()
-        except Exception as exc:
-            logger.warning(
-                "MCP flow-test list failed (project=%s): %s", project_id, exc
-            )
-            return []
+        async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(sql, (project_id,))
+                rows = await cur.fetchall()
         return [
             {
                 "name": r[0],
@@ -148,23 +112,14 @@ class FlowTestStore:
         ]
 
     async def get(self, *, project_id: str, name: str) -> dict[str, Any] | None:
-        if not await self._bootstrap():
-            return None
-        try:
-            async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
-                async with conn.cursor() as cur:
-                    await cur.execute(
-                        "SELECT name, steps, enabled FROM mcp_flow_tests "
-                        "WHERE project_id = %s AND name = %s",
-                        (project_id, name),
-                    )
-                    row = await cur.fetchone()
-        except Exception as exc:
-            logger.warning(
-                "MCP flow-test get failed (project=%s name=%s): %s",
-                project_id, name, exc,
-            )
-            return None
+        await self._bootstrap()
+        async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT name, steps, enabled FROM mcp_flow_tests WHERE project_id = %s AND name = %s",
+                    (project_id, name),
+                )
+                row = await cur.fetchone()
         if not row:
             return None
         return {
@@ -175,31 +130,25 @@ class FlowTestStore:
 
     async def delete(self, *, project_id: str, name: str) -> bool:
         """Delete a test. Returns True if a row was removed."""
-        if not await self._bootstrap():
-            return False
-        try:
-            async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
-                async with conn.cursor() as cur:
-                    await cur.execute(
-                        "DELETE FROM mcp_flow_tests "
-                        "WHERE project_id = %s AND name = %s",
-                        (project_id, name),
-                    )
-                    deleted = cur.rowcount
-                await conn.commit()
-            return bool(deleted)
-        except Exception as exc:
-            logger.warning(
-                "MCP flow-test delete failed (project=%s name=%s): %s",
-                project_id, name, exc,
-            )
-            return False
+        await self._bootstrap()
+        async with await psycopg.AsyncConnection.connect(self._dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "DELETE FROM mcp_flow_tests WHERE project_id = %s AND name = %s",
+                    (project_id, name),
+                )
+                deleted = cur.rowcount
+            await conn.commit()
+        return bool(deleted)
 
 
-_store: LazyStore[FlowTestStore] = LazyStore(
-    lambda: FlowTestStore(get_settings().database_url)
-)
+_store: LazyStore[FlowTestStore] = LazyStore(lambda: FlowTestStore(get_settings().database_url))
 
 
 def get_flow_test_store() -> FlowTestStore:
     return _store.get()
+
+
+def set_flow_test_store(store: FlowTestStore | None) -> None:
+    """Test hook — inject a fake/None store."""
+    _store.reset(store)

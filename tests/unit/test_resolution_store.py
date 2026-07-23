@@ -1,13 +1,9 @@
-"""Faza 2.4 — cross-replica interrupt resolution.
-
-Redis is an application dependency. These tests pin the in-process fallback
-contract and the Redis-backed store's degrade-to-disabled behaviour without
-making assertions about which packages happen to be installed in the runner.
-"""
+"""Faza 2.4 — cross-replica interrupt resolution."""
 
 import asyncio
 
 import pytest
+from redis.exceptions import ConnectionError
 
 from agent.runtime import worker
 from agent.runtime.store import ResolutionStore, get_resolution_store
@@ -17,17 +13,23 @@ def test_resolution_store_is_configured_when_redis_dependency_is_installed():
     assert isinstance(get_resolution_store(), ResolutionStore)
 
 
-def test_submit_returns_false_when_no_local_waiter():
-    # Force the fallback path: no local future + no working Redis means there
-    # is nothing to resolve and the route can signal 409.
-    store = get_resolution_store()
-    assert store is not None
-    store._disabled = True
-    assert worker.submit_resolution("no-such-request", {"approved": True}) is False
+def test_submit_reports_redis_failure_when_no_local_waiter(monkeypatch):
+    class BrokenStore:
+        def publish(self, request_id, payload):
+            raise RuntimeError("redis down")
+
+    monkeypatch.setattr("agent.runtime.store.get_resolution_store", lambda: BrokenStore())
+    with pytest.raises(RuntimeError, match="redis down"):
+        worker.submit_resolution("no-such-request", {"approved": True})
 
 
 @pytest.mark.asyncio
-async def test_wait_and_submit_roundtrip_in_memory():
+async def test_wait_and_submit_roundtrip_local_fast_path(monkeypatch):
+    class WaitingStore:
+        async def wait(self, request_id):
+            await asyncio.Future()
+
+    monkeypatch.setattr("agent.runtime.store.get_resolution_store", lambda: WaitingStore())
     loop = asyncio.get_running_loop()
     request_id = "req-roundtrip-1"
 
@@ -49,9 +51,7 @@ async def test_wait_and_submit_roundtrip_in_memory():
     assert request_id not in worker._RESOLUTIONS
 
 
-def test_publish_disables_on_redis_failure():
-    # Unreachable/absent Redis → publish() degrades to disabled + returns False,
-    # never raising into the request handler.
+def test_publish_reports_redis_failure():
     store = ResolutionStore("redis://127.0.0.1:1/0")
-    assert store.publish("req", {"approved": True}) is False
-    assert store._disabled is True
+    with pytest.raises(ConnectionError):
+        store.publish("req", {"approved": True})

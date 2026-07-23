@@ -151,29 +151,13 @@ async def release_list(input: ReleaseListInput, ctx: ToolContext) -> ToolResult:
 
 class ReleaseDeployInput(BaseModel):
     project_id: str | int | None = None
-    # str because the Go backend's plan ids are UUIDs (plans.list returns
-    # UUID strings, not Django's legacy integer ids). Kept optional: the Go
-    # release-create endpoint no longer accepts/uses plan_id at all (project
-    # plans were dropped from release creation server-side) — this field is
-    # currently a no-op, retained only for backward-compatible tool inputs.
-    plan_id: str | int | None = Field(
-        default=None,
-        description=(
-            "Plan id (from plans.list). NOTE: currently ignored by the backend — "
-            "release creation no longer requires/uses a plan."
-        ),
-    )
-    months: int | None = Field(
-        default=None, description="Billing period in months (1, 3, 6, 12). Default: 1."
-    )
 
 
 @tool(
     name="release.deploy",
     description=(
         "Deploy the saved flow of the project to production. This creates a new release "
-        "(version) and brings up the engine container. For the first release of a "
-        "project, plan_id is required — call plans.list first."
+        "(version) and brings up the engine runtime. Release creation does not require a plan."
     ),
     input_model=ReleaseDeployInput,
     destructive=True,
@@ -185,8 +169,6 @@ async def release_deploy(input: ReleaseDeployInput, ctx: ToolContext) -> ToolRes
     try:
         release = await _backend(ctx).create_release(
             pid,
-            plan_id=input.plan_id,
-            months=input.months,
             auth_claims=ctx.state.get("auth_claims"),
         )
     except BackendError as e:

@@ -201,10 +201,8 @@ async def credentials_list_types(
     except BackendError as e:
         return ToolResult.error(format_backend_error("credentials.list_types", e))
     if not types:
-        return ToolResult.ok(
-            "No credential types returned. Built-in fallback: "
-            f"{_TYPE_FIELDS} (+ google_* OAuth).",
-            data={"types": []},
+        return ToolResult.error(
+            "Backend credential type katalogi bo'sh. Credential turini taxmin qilib bo'lmaydi."
         )
     lines = [f"{len(types)} credential type(s):"]
     payload = []

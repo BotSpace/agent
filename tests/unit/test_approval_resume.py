@@ -12,6 +12,7 @@ stored in a declared `approvals` channel, consumed once.
 Uses a self-contained dummy always_approve tool (`test.wipe`) so the mechanism
 is exercised independently of any product tool.
 """
+
 import asyncio
 
 from langgraph.types import Command
@@ -56,6 +57,11 @@ class _ScriptedLLM:
         return GenerateResult(message=msg, stop_reason=stop, usage=Usage())
 
 
+class _NoopBackend:
+    async def update_project(self, project_id, body, *, auth_claims=None):
+        return {"id": project_id, **body}
+
+
 def _clear_call(call_id: str) -> Message:
     return Message(
         role="assistant",
@@ -78,6 +84,7 @@ def _build(turns: list[Message]):
         registry=reg,
         models=ModelRoles(planner="m", executor="m", critic="m", embedding="m"),
         approve_destructive=False,  # isolates the always_approve path: test.wipe gates regardless
+        services={"backend": _NoopBackend()},
     )
     return build_graph(cfg)  # default MemorySaver checkpointer
 
@@ -86,13 +93,18 @@ def test_flow_clear_executes_after_approval_with_new_call_id():
     # Turn 1: model issues flow.clear (id=c1) → blocks on approval.
     # Turn 2 (post-approval): model re-issues flow.clear with a NEW id (c2).
     # Turn 3: model finishes.
-    graph = _build([
-        _clear_call("c1"),
-        _clear_call("c2"),
-        Message.assistant_text("Flow tozalandi, yangidan boshladik."),
-    ])
+    graph = _build(
+        [
+            _clear_call("c1"),
+            _clear_call("c2"),
+            Message.assistant_text("Flow tozalandi, yangidan boshladik."),
+        ]
+    )
     state = initial_state(
-        run_id="r", project_id="1185", user_id="u", thread_id="t1",
+        run_id="r",
+        project_id="1185",
+        user_id="u",
+        thread_id="t1",
         user_prompt="hammasini o'chir va yangidan boshla",
         baseline_flow=_baseline(),
     )
@@ -115,14 +127,19 @@ def test_flow_clear_executes_after_approval_with_new_call_id():
 def test_second_flow_clear_re_gates_after_consume():
     # After one approved+executed flow.clear, a LATER flow.clear must ask again
     # (consume-once) — approval is not a permanent grant.
-    graph = _build([
-        _clear_call("c1"),   # blocks
-        _clear_call("c2"),   # executes after approval
-        _clear_call("c3"),   # a fresh clear later in the same thread → must re-gate
-        Message.assistant_text("done"),
-    ])
+    graph = _build(
+        [
+            _clear_call("c1"),  # blocks
+            _clear_call("c2"),  # executes after approval
+            _clear_call("c3"),  # a fresh clear later in the same thread → must re-gate
+            Message.assistant_text("done"),
+        ]
+    )
     state = initial_state(
-        run_id="r", project_id="1185", user_id="u", thread_id="t2",
+        run_id="r",
+        project_id="1185",
+        user_id="u",
+        thread_id="t2",
         user_prompt="o'chir",
         baseline_flow=_baseline(),
     )

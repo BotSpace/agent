@@ -36,14 +36,18 @@ def _maybe_traceable(name: str):
     Lets us wrap run_agent without forcing the dependency in tests/dev."""
     enabled = (os.getenv("LANGSMITH_TRACING") or os.getenv("LANGCHAIN_TRACING_V2") or "").lower() == "true"
     if not enabled or not os.getenv("LANGSMITH_API_KEY"):
+
         def _noop(fn):
             return fn
+
         return _noop
     try:
         from langsmith import traceable  # type: ignore[import-untyped]
     except ImportError:
+
         def _noop(fn):
             return fn
+
         return _noop
     return traceable(name=name, run_type="chain")
 
@@ -69,9 +73,7 @@ def submit_resolution(request_id: str, payload: Any) -> bool:
     from .store import get_resolution_store
 
     store = get_resolution_store()
-    if store is not None:
-        return store.publish(request_id, payload)
-    return False
+    return store.publish(request_id, payload)
 
 
 async def _wait_resolution(request_id: str, loop: asyncio.AbstractEventLoop) -> Any:
@@ -81,26 +83,25 @@ async def _wait_resolution(request_id: str, loop: asyncio.AbstractEventLoop) -> 
     from .store import get_resolution_store
 
     store = get_resolution_store()
-    poller: asyncio.Task | None = None
-    if store is not None:
-        async def _bridge() -> None:
-            # Resolve the local future from a resolution published on ANY
-            # replica. Swallows Redis errors — the in-process future still
-            # works for the single-replica case.
-            try:
-                answer = await store.wait(request_id)
-            except Exception:
-                return
-            if not fut.done():
-                fut.set_result(answer)
 
-        poller = asyncio.create_task(_bridge())
+    async def _bridge() -> None:
+        try:
+            answer = await store.wait(request_id)
+        except Exception as exc:
+            if not fut.done():
+                error = RuntimeError("approval resolution Redis transport failed")
+                error.__cause__ = exc
+                fut.set_exception(error)
+            return
+        if not fut.done():
+            fut.set_result(answer)
+
+    poller = asyncio.create_task(_bridge())
     try:
         return await fut
     finally:
         _RESOLUTIONS.pop(request_id, None)
-        if poller is not None:
-            poller.cancel()
+        poller.cancel()
 
 
 @_maybe_traceable("botmother.agent.run")
@@ -163,11 +164,7 @@ async def run_agent(
             approve_destructive=not auto_approve,
             lazy_tools=True,
         )
-        try:
-            checkpointer = await create_async_checkpointer(s.database_url)
-        except Exception as cp_err:
-            print(f"[agent_worker] checkpointer init failed, using in-memory: {cp_err}", flush=True)
-            checkpointer = None
+        checkpointer = await create_async_checkpointer(s.database_url)
         # Share the worker-owned checkpointer with sub-agents (task.run) so their
         # threads persist on the same Postgres saver and can resume across turns.
         # task.run must NOT close this — the worker owns its lifecycle (finally).
@@ -197,6 +194,7 @@ async def run_agent(
         pre_run_remaining: int | None = None
         try:
             from ..integrations.backend import get_backend_client
+
             # Read the budget with the run's auth_claims — they carry the BEARER
             # JWT the user-scoped /subscription/usage route requires. Passing only
             # {"user_id": ...} (no bearer) 401s → remaining=None → mid-run
@@ -207,7 +205,9 @@ async def run_agent(
             remaining = (usage.get("ai_token_usage") or {}).get("remaining")
             pre_run_remaining = int(remaining) if remaining is not None else None
         except Exception:
-            logger.warning("Pre-run token budget fetch failed; running without mid-run enforcement", exc_info=True)
+            logger.warning(
+                "Pre-run token budget fetch failed; running without mid-run enforcement", exc_info=True
+            )
             pre_run_remaining = None
         state["pre_run_tokens_remaining"] = pre_run_remaining
         if auth_claims:
@@ -273,13 +273,16 @@ async def run_agent(
                 await store.set_pending_approval(request_id, None)
                 await emit(
                     "approval_resolved",
-                    {"tool_call_id": payload.get("tool_call_id"), "approved": bool(answer.get("approved")) if isinstance(answer, dict) else bool(answer)},
+                    {
+                        "tool_call_id": payload.get("tool_call_id"),
+                        "approved": bool(answer.get("approved"))
+                        if isinstance(answer, dict)
+                        else bool(answer),
+                    },
                 )
             else:
                 await store.set_pending_clarification(request_id, None)
-                answer_str = (
-                    ", ".join(answer) if isinstance(answer, list) else str(answer)
-                )
+                answer_str = ", ".join(answer) if isinstance(answer, list) else str(answer)
                 await emit(
                     "clarification_resolved",
                     {"tool_call_id": payload.get("tool_call_id"), "answer": answer_str},
@@ -317,6 +320,7 @@ async def run_agent(
 
         try:
             from ..integrations.backend import get_backend_client
+
             backend = get_backend_client()
             await backend.report_token_usage(
                 user_id=rec.user_id or "",
