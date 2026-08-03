@@ -5,6 +5,7 @@ import pytest
 from agent.flow import FlowDocument, validate
 from agent.tools.base import ToolContext
 from agent.tools.flow import build_flow_tools
+from agent.tools.flow.node_data_models import get_data_model
 
 
 def _tools():
@@ -19,6 +20,45 @@ def _ctx() -> ToolContext:
         state={"working_flow": {"nodes": [], "edges": []}},
         services={},
     )
+
+
+@pytest.mark.asyncio
+async def test_ai_agent_accepts_json_schema_object_and_stores_string() -> None:
+    schema = {
+        "type": "object",
+        "properties": {"answer": {"type": "string"}},
+        "required": ["answer"],
+    }
+    result = await _tools()["flow.add_node"].run(
+        {
+            "id": "agent",
+            "type": "AIAgentNode",
+            "data": {
+                "systemPrompt": "Return a structured answer.",
+                "userInputText": "{{message.text}}",
+                "outputKey": "agent_output",
+                "jsonSchema": schema,
+            },
+        },
+        _ctx(),
+    )
+
+    assert not result.is_error, result.content
+    node = result.state_updates["working_flow"]["nodes"][0]
+    assert isinstance(node["data"]["jsonSchema"], str)
+    assert '"type":"object"' in node["data"]["jsonSchema"]
+    assert '"required":["answer"]' in node["data"]["jsonSchema"]
+
+
+def test_ai_agent_schema_contract_exposes_object_or_string() -> None:
+    model = get_data_model("AIAgentNode")
+    assert model is not None
+    schema = model.model_json_schema()
+    json_schema = schema["properties"]["jsonSchema"]
+    variants = json_schema.get("anyOf", [])
+    variant_types = {variant.get("type") for variant in variants}
+
+    assert {"string", "object"} <= variant_types
 
 
 @pytest.mark.asyncio

@@ -16,10 +16,11 @@ node_type → (model) -> model. Hozircha bo'sh (kerakli guard'lar engine'da).
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from ...flow.manifest_compiler.compiler import LocalizedText, compile_node_model
 from ...flow.manifest_compiler.loader import load_node_manifests
@@ -32,6 +33,31 @@ __all__ = [
     "render_params_doc",
     "render_summary_table",
 ]
+
+def _ai_agent_addendum(model: type[BaseModel]) -> type[BaseModel]:
+    """Accept JSON Schema as an object or serialized JSON, store it canonically as text."""
+
+    class AIAgentNodeData(model):  # type: ignore[valid-type,misc]
+        jsonSchema: str | dict[str, Any] | None = None
+
+        @model_validator(mode="before")
+        @classmethod
+        def _normalize_json_schema(cls, value: Any) -> Any:
+            if not isinstance(value, dict):
+                return value
+            raw_schema = value.get("jsonSchema")
+            if raw_schema is None or isinstance(raw_schema, str):
+                return value
+            if not isinstance(raw_schema, dict):
+                raise ValueError("jsonSchema must be a JSON object or a serialized JSON object")
+            normalized = dict(value)
+            normalized["jsonSchema"] = json.dumps(
+                raw_schema, ensure_ascii=False, separators=(",", ":")
+            )
+            return normalized
+
+    return AIAgentNodeData
+
 
 def _check_membership_addendum(model: type[BaseModel]) -> type[BaseModel]:
     """CheckMembership: channels/channelsCollection/chatId — kamida bittasi shart.
@@ -59,11 +85,12 @@ def _check_membership_addendum(model: type[BaseModel]) -> type[BaseModel]:
 # node_type → (model_cls) -> model_cls. Manifest ifoda eta olmaydigan qoidalar
 # shu yerga (xavfsizlik guard'lari ENGINE'da — bu yerda emas).
 _ADDENDA: dict[str, Callable[[type[BaseModel]], type[BaseModel]]] = {
+    "AIAgentNode": _ai_agent_addendum,
     "CheckMembershipNode": _check_membership_addendum,
 }
 
 
-class _CompiledRegistry(Mapping):
+class _CompiledRegistry(Mapping[str, type[BaseModel]]):
     """Manifestdan lazy kompilyatsiya qilinadigan dict-like model registr.
 
     `NODE_DATA_MODELS[type]` → kompilyatsiya qilingan Pydantic model. Birinchi

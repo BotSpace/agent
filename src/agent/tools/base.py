@@ -183,10 +183,11 @@ _FIELD_FORMAT_HINTS: dict[str, str] = {
         "are NOT accepted."
     ),
     "jsonSchema": (
-        "HINT: `jsonSchema` is the JSON Schema serialized as a STRING (not an "
-        "object). Example: "
-        "'{\"type\":\"object\",\"properties\":{\"intent\":{\"type\":\"string\"}},"
-        "\"required\":[\"intent\"]}'. Only used when structuredOutput=true."
+        "HINT: `jsonSchema` accepts either a JSON Schema OBJECT or the same schema "
+        "serialized as a string. Example: "
+        "{\"type\":\"object\",\"properties\":{\"intent\":{\"type\":\"string\"}},"
+        "\"required\":[\"intent\"]}. A non-empty schema enables structured output "
+        "automatically; no separate switch is needed."
     ),
 }
 
