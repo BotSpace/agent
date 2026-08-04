@@ -65,9 +65,12 @@ def _format_node_data_error(node_type: str, err: ValidationError, data_model) ->
     errs = err.errors()
     lines: list[str] = []
     saw_keyboard_alias = False
+    saw_keyboard_rows = False
     for e in errs[:5]:
         loc = ".".join(str(p) for p in e["loc"]) or "(root)"
         root = str(e["loc"][0]) if e["loc"] else loc
+        if root == "rows":
+            saw_keyboard_rows = True
         if e.get("type") == "extra_forbidden":
             if root in _KEYBOARD_ALIAS_FIELDS:
                 saw_keyboard_alias = True
@@ -82,7 +85,13 @@ def _format_node_data_error(node_type: str, err: ValidationError, data_model) ->
     if saw_keyboard_alias:
         out += (
             "\nKlaviatura: alohida `keyboard`/`replyMarkup` maydoni YO'Q — "
-            "`keyboard_kind` ('inline'|'reply') + `rows` (tugma qatorlari ro'yxati) ishlat."
+            "`keyboard_kind` ('inline'|'reply') + `rows` ishlat."
+        )
+    if saw_keyboard_rows:
+        out += (
+            "\n`rows` canonical misol: "
+            "[{\"columns\":[{\"text\":\"Yordam\",\"type\":\"callback\","
+            "\"value\":\"help\"}]}]. `[[...]]` va `callbackData` ishlatma."
         )
     return out
 
@@ -470,7 +479,15 @@ async def flow_patch(input: FlowPatchInput, ctx: ToolContext) -> ToolResult:
     if node is None:
         return node_missing_error(input.id, flow)
     old_data = dict(node.data)
-    node.data = {**node.data, **input.data}
+    merged_data = {**node.data, **input.data}
+    data_model = get_data_model(node.type)
+    if data_model is not None:
+        try:
+            validated = data_model.model_validate(merged_data)
+        except ValidationError as e:
+            return ToolResult.error(_format_node_data_error(node.type, e, data_model))
+        merged_data = validated.model_dump(by_alias=True, exclude_none=True)
+    node.data = merged_data
     # #3 — if the keyboard text changed for a same-id button, the engine's
     # edge sourceHandle (target-handler-{id}-{text}) breaks; auto-remap.
     remapped = remap_button_edge_handles(flow, input.id, old_data, node.data)
@@ -523,13 +540,30 @@ async def flow_patch_many(input: FlowPatchManyInput, ctx: ToolContext) -> ToolRe
                 f"Mavjud id'lar: {[n.id for n in flow.nodes]}. flow_get(summary_only=true) "
                 "bilan tekshirib, butun batch'ni qayta yuboring."
             )
+    validated_patches: list[tuple[FlowPatchManyItem, dict[str, Any]]] = []
+    for idx, item in enumerate(input.patches):
+        node = flow.get_node(item.id)
+        assert node is not None
+        merged_data = {**node.data, **item.data}
+        data_model = get_data_model(node.type)
+        if data_model is not None:
+            try:
+                validated = data_model.model_validate(merged_data)
+            except ValidationError as e:
+                return ToolResult.error(
+                    f"patches[{idx}] invalid — HECH NARSA qo'llanmadi.\n"
+                    + _format_node_data_error(node.type, e, data_model)
+                )
+            merged_data = validated.model_dump(by_alias=True, exclude_none=True)
+        validated_patches.append((item, merged_data))
+
     total_remapped = 0
     patched_ids: list[str] = []
-    for item in input.patches:
+    for item, merged_data in validated_patches:
         node = flow.get_node(item.id)
         assert node is not None
         old_data = dict(node.data)
-        node.data = {**node.data, **item.data}
+        node.data = merged_data
         total_remapped += remap_button_edge_handles(flow, item.id, old_data, node.data)
         patched_ids.append(item.id)
     msg = f"Patched {len(patched_ids)} node(s): {', '.join(patched_ids)}"

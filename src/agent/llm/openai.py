@@ -77,6 +77,46 @@ class OpenAIClient(LLMClient):
 
     # ── conversion: internal → OpenAI ──────────────────────────────────
     @staticmethod
+    def _sanitize_tool_pairs(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Drop stale tool calls/results that cannot form a valid OpenAI turn."""
+        sanitized: list[dict[str, Any]] = []
+        pending_ids: set[str] = set()
+        for index, message in enumerate(messages):
+            role = message.get("role")
+            if role == "assistant" and message.get("tool_calls"):
+                following_result_ids: set[str] = set()
+                for candidate in messages[index + 1 :]:
+                    if candidate.get("role") != "tool":
+                        break
+                    result_id = candidate.get("tool_call_id")
+                    if isinstance(result_id, str):
+                        following_result_ids.add(result_id)
+                filtered_calls = [
+                    call
+                    for call in message["tool_calls"]
+                    if call.get("id") in following_result_ids
+                ]
+                cleaned = dict(message)
+                if filtered_calls:
+                    cleaned["tool_calls"] = filtered_calls
+                    pending_ids = {str(call["id"]) for call in filtered_calls}
+                else:
+                    cleaned.pop("tool_calls", None)
+                    pending_ids.clear()
+                if cleaned.get("content") or cleaned.get("tool_calls"):
+                    sanitized.append(cleaned)
+                continue
+            if role == "tool":
+                tool_call_id = message.get("tool_call_id")
+                if isinstance(tool_call_id, str) and tool_call_id in pending_ids:
+                    sanitized.append(message)
+                    pending_ids.discard(tool_call_id)
+                continue
+            pending_ids.clear()
+            sanitized.append(message)
+        return sanitized
+
+    @staticmethod
     def _to_openai_messages(messages: list[Message]) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
         for msg in messages:
@@ -138,7 +178,7 @@ class OpenAIClient(LLMClient):
             if "content" not in assistant_msg and "tool_calls" not in assistant_msg:
                 continue
             out.append(assistant_msg)
-        return out
+        return OpenAIClient._sanitize_tool_pairs(out)
 
     @staticmethod
     def _tool_spec_for_api(options: GenerateOptions) -> list[dict[str, Any]]:

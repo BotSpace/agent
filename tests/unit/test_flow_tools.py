@@ -4,6 +4,7 @@ from agent.flow.manifest_compiler.node_catalog import NODE_TYPES
 from agent.integrations.backend import BackendClient
 from agent.tools.base import ToolContext
 from agent.tools.flow import FlowSaveInput, build_flow_tools
+from agent.tools.flow.node_data_models import get_data_model
 from agent.tools.project import build_project_tools
 
 
@@ -359,6 +360,57 @@ async def test_patch_remaps_button_edge_handle_on_text_change():
     handles = [e.sourceHandle for e in flow.edges if e.source == "menu"]
     assert "target-handler-menu-Yangi" in handles
     assert "target-handler-menu-Eski" not in handles
+
+
+def test_keyboard_schema_teaches_canonical_shape():
+    model = get_data_model("SendTextMessageNode")
+    assert model is not None
+    description = model.model_fields["rows"].description or ""
+
+    assert '"columns"' in description
+    assert '"type":"callback"' in description
+    assert '"value":"callback_data"' in description
+    assert "do not use callbackData" in description
+
+
+@pytest.mark.asyncio
+async def test_add_node_rejects_legacy_keyboard_shape():
+    tools = _tools()
+    ctx = ToolContext(run_id="r", project_id="42", user_id="u")
+
+    res = await tools["flow.add_node"].run({
+        "id": "welcome",
+        "type": "SendTextMessageNode",
+        "data": {
+            "messageText": "Salom",
+            "keyboard_kind": "inline",
+            "rows": [[{"text": "Yordam", "callbackData": "/help"}]],
+        },
+    }, ctx)
+
+    assert res.is_error
+    assert "rows.0" in res.content
+
+
+@pytest.mark.asyncio
+async def test_patch_validates_merged_node_data():
+    tools = _tools()
+    ctx = ToolContext(run_id="r", project_id="42", user_id="u")
+    created = await tools["flow.add_node"].run({
+        "id": "welcome",
+        "type": "SendTextMessageNode",
+        "data": {"messageText": "Salom"},
+    }, ctx)
+    ctx.state.update(created.state_updates)
+
+    res = await tools["flow.patch"].run({
+        "id": "welcome",
+        "data": {"inventedKeyboard": []},
+    }, ctx)
+
+    assert res.is_error
+    assert "inventedKeyboard" in res.content
+    assert ctx.state["working_flow"]["nodes"][0]["data"]["messageText"] == "Salom"
 
 
 # ── #5: connect_button works for EditOrSendMessageNode ───────────────────────
