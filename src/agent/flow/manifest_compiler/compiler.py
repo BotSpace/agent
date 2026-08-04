@@ -106,6 +106,17 @@ def _emit_field(f: dict, defaults: dict) -> list[_Emit]:
             out.append((ok, list[dict[str, Any]], "Named exit outputs.", False, defaults.get(ok)))
         return out
 
+    if ftype == "nested-rows":
+        key = f.get("key") or "rows"
+        description = (
+            "Keyboard rows. Canonical shape: "
+            "[{\"columns\":[{\"text\":\"Button\",\"type\":\"callback\","
+            "\"value\":\"callback_data\"}]}]. "
+            "Do not send a nested array and do not use callbackData."
+        )
+        out.append((key, list[dict[str, Any]], description, not optional, defaults.get(key)))
+        return out
+
     if ftype == "condition-list":
         ck = f.get("conditionsKey") or "conditions"
         out.append((ck, list[dict[str, Any]], "Condition rows.", not optional, defaults.get(ck)))

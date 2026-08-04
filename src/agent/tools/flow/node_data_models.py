@@ -34,6 +34,7 @@ __all__ = [
     "render_summary_table",
 ]
 
+
 def _ai_agent_addendum(model: type[BaseModel]) -> type[BaseModel]:
     """Accept JSON Schema as an object or serialized JSON, store it canonically as text."""
 

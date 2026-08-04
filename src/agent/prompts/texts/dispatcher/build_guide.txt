@@ -52,7 +52,10 @@ so'ra; xavfsiz texnik qarorni blueprint/compilerning o'zi qabul qiladi.
    TAXMIN QILMA.** Eng ko'p uchraydigan XATO taxminlar va TO'G'RISI:
    - ReplyButtonTriggerNode: `buttonText` YO'Q → `selectedButtons`.
    - Klaviatura: `keyboard`/`replyMarkup` YO'Q → `keyboard_kind` ('inline'|'reply')
-     + `rows` (tugma qatorlari ro'yxati).
+     + `rows`. **FAQAT canonical format:**
+     `[{"columns":[{"text":"Yordam","type":"callback","value":"help"}]}]`.
+     Har row `{columns:[...]}` OBJECT; `[[...]]` 2D array EMAS. Tugmada
+     `callbackData`/`callback_data` EMAS, `type:"callback" + value:"..."` ishlat.
    - CallbackQueryTriggerNode: `withArgs` YO'Q → callback'ni filtrlash uchun
      `filter` ('starts_with'|'equals'|…) + `context: {value: "prefix_"}`; qiymatni
      saqlash uchun `state_key` + `state_type` ishlat. Masalan
